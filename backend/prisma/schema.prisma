@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AiDecisionType {
+  LIST
+  REPRICE
+  PAUSE
+  REJECT
+  MANUAL_REVIEW
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+  ERROR
+}
+
+enum OrderStatus {
+  NEW
+  VALIDATING
+  READY_FOR_PURCHASE
+  MANUAL_REVIEW
+  PURCHASED
+  SHIPPED
+  CANCELLED
+  ERROR
+}
+
+enum ActionType {
+  LIST
+  REPRICE
+  PAUSE
+  BUY
+  REVIEW
+}
+
+enum ActionStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+  ERROR
+}
+
+model ProductCandidate {
+  id                String            @id @default(cuid())
+  source            String            @default("serpapi")
+  ebayTitle         String
+  ebayUrl           String?
+  ebaySoldPrice     Decimal?          @db.Decimal(10, 2)
+  ebayShippingPrice Decimal?          @db.Decimal(10, 2)
+  ebayCondition     String?
+  ebayCategory      String?
+  rawSerpapiJson    Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  amazonMatches     AmazonMatch[]
+  profitSnapshots   ProfitSnapshot[]
+  aiDecisions       AiDecision[]
+  ebayListings      EbayListing[]
+  actionItems       ActionItem[]
+}
+
+model AmazonMatch {
+  id                 String            @id @default(cuid())
+  productCandidateId String
+  asin               String
+  amazonTitle        String
+  amazonUrl          String?
+  brand              String?
+  model              String?
+  upc                String?
+  currentPrice       Decimal?          @db.Decimal(10, 2)
+  buyBoxPrice        Decimal?          @db.Decimal(10, 2)
+  availabilityStatus String?
+  salesRank          Int?
+  rating             Decimal?          @db.Decimal(3, 2)
+  reviewCount        Int?
+  rawKeepaJson       Json?
+  matchConfidence    Decimal           @default(0) @db.Decimal(4, 3)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  productCandidate   ProductCandidate  @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  profitSnapshots    ProfitSnapshot[]
+  aiDecisions        AiDecision[]
+  ebayListings       EbayListing[]
+  actionItems        ActionItem[]
+
+  @@index([asin])
+  @@index([productCandidateId])
+}
+
+model ProfitSnapshot {
+  id                    String           @id @default(cuid())
+  productCandidateId    String
+  amazonMatchId         String
+  estimatedEbaySalePrice Decimal          @db.Decimal(10, 2)
+  amazonCost            Decimal          @db.Decimal(10, 2)
+  estimatedFees         Decimal          @db.Decimal(10, 2)
+  estimatedTax          Decimal          @db.Decimal(10, 2)
+  bufferAmount          Decimal          @db.Decimal(10, 2)
+  expectedProfit        Decimal          @db.Decimal(10, 2)
+  roiPercent            Decimal          @db.Decimal(7, 3)
+  marginPercent         Decimal          @db.Decimal(7, 3)
+  calculationVersion    String           @default("v1")
+  createdAt             DateTime         @default(now())
+  productCandidate      ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch           AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Cascade)
+
+  @@index([productCandidateId])
+  @@index([amazonMatchId])
+}
+
+model AiDecision {
+  id                 String           @id @default(cuid())
+  productCandidateId String
+  amazonMatchId      String?
+  decision           AiDecisionType
+  confidence         Decimal          @db.Decimal(4, 3)
+  reasoningSummary   String
+  riskFlags          Json?
+  recommendedEbayTitle String?
+  recommendedEbayDescription String?
+  recommendedPrice   Decimal?         @db.Decimal(10, 2)
+  createdAt          DateTime         @default(now())
+  productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch        AmazonMatch?     @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId])
+}
+
+model EbayListing {
+  id                 String           @id @default(cuid())
+  productCandidateId String
+  amazonMatchId      String
+  ebayItemId         String?          @unique
+  ebayOfferId        String?
+  listingStatus      ListingStatus    @default(DRAFT)
+  listedPrice        Decimal          @db.Decimal(10, 2)
+  quantity           Int              @default(1)
+  title              String
+  description        String
+  shippingPolicyId   String?
+  returnPolicyId     String?
+  paymentPolicyId    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch        AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Restrict)
+  orders             Order[]
+}
+
+model Order {
+  id                            String           @id @default(cuid())
+  ebayOrderId                   String           @unique
+  ebayListingId                 String
+  buyerName                     String?
+  buyerShippingAddressEncrypted String?
+  salePrice                     Decimal          @db.Decimal(10, 2)
+  orderStatus                   OrderStatus      @default(NEW)
+  fulfillmentStatus             String?
+  amazonOrderStatus             String?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+  ebayListing                   EbayListing      @relation(fields: [ebayListingId], references: [id], onDelete: Restrict)
+  amazonPurchases               AmazonPurchase[]
+  actionItems                   ActionItem[]
+}
+
+model AmazonPurchase {
+  id             String   @id @default(cuid())
+  orderId        String
+  asin           String
+  amazonOrderId  String?
+  purchasePrice  Decimal? @db.Decimal(10, 2)
+  trackingNumber String?
+  carrier        String?
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  actor      String
+  beforeJson Json?
+  afterJson  Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+
+model ActionItem {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  amazonMatchId      String?
+  orderId            String?
+  type               ActionType
+  status             ActionStatus      @default(PENDING)
+  priority           Int               @default(100)
+  reason             String
+  payloadJson        Json?
+  createdBy          String            @default("system")
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: SetNull)
+  amazonMatch        AmazonMatch?      @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  order              Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([status, type])
+  @@index([productCandidateId])
+  @@index([orderId])
+}
+
+model RuleConfig {
+  id                         String   @id @default(cuid())
+  name                       String   @unique
+  active                     Boolean  @default(false)
+  minimumProfitUsd           Decimal  @default(10.00) @db.Decimal(10, 2)
+  minimumRoiPercent          Decimal  @default(25.000) @db.Decimal(7, 3)
+  minimumMatchConfidence     Decimal  @default(0.750) @db.Decimal(4, 3)
+  estimatedSalesTaxRate      Decimal  @default(0.080) @db.Decimal(5, 4)
+  returnRiskBuffer           Decimal  @default(2.00) @db.Decimal(10, 2)
+  priceChangeBuffer          Decimal  @default(2.00) @db.Decimal(10, 2)
+  maxDailyListings           Int      @default(10)
+  maxDailyPurchaseAmountUsd  Decimal  @default(250.00) @db.Decimal(10, 2)
+  blockedBrands              Json?
+  blockedCategories          Json?
+  amazonPriceCheckIntervalMinutes Int @default(30)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}

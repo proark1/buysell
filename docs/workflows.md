@@ -1,0 +1,85 @@
+# MVP Workflows
+
+## Product Discovery
+
+1. Submit a SerpApi search job.
+2. Normalize the eBay result into `ProductCandidate` rows.
+3. Store raw SerpApi JSON for debugging and future parser improvements.
+
+## Keepa Enrichment
+
+1. Match candidates by UPC/EAN/ISBN/MPN where possible.
+2. Fall back to title and specification matching when identifiers are missing.
+3. Store ambiguous matches with low confidence and require manual review.
+
+## Profit Calculation
+
+The first backend route is `POST /profit/calculate`. It accepts eBay sale price, Amazon cost, fee rates, tax, and buffers, then returns estimated profit, ROI, and margin percentage.
+
+## Listing Approval
+
+The first eBay integration should create drafts or approved listings only after a human confirms the AI recommendation.
+
+## Order Fulfillment
+
+When an eBay order arrives, the backend must recheck Keepa price and availability before sending a purchase task to the local agent. The local agent should require manual confirmation before submitting an Amazon order in the MVP.
+
+## Opportunity Search API
+
+`POST /opportunities/search` is the first end-to-end API shape for Weg 2. It requires `SERPAPI_API_KEY` and `KEEPA_API_KEY`, searches sold eBay candidates through SerpApi, asks Keepa for Amazon matches, scores the best match, calculates profit, and returns a deterministic `LIST`, `REJECT`, or `MANUAL_REVIEW` decision.
+
+Example request:
+
+```json
+{
+  "query": "wireless barcode scanner",
+  "limit": 5
+}
+```
+
+The route currently returns opportunities to the caller and does not create eBay listings or Amazon purchases. Persisting the returned opportunities into Prisma tables is the next implementation step.
+
+## Persisting Opportunities
+
+The opportunity search request accepts `"persist": true`. When enabled, the backend requires `DATABASE_URL` and writes each returned opportunity into `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `AuditLog` records. This keeps the first API safe by making persistence explicit while still supporting a dry-run mode for API/parser testing.
+
+## Action List
+
+When persisted opportunities produce a `LIST`, `REPRICE`, `PAUSE`, or `MANUAL_REVIEW` decision, the backend creates an `ActionItem`. Operators can fetch pending work with `GET /actions` and approve, reject, complete, cancel, or mark an item as errored with `PATCH /actions/:id`. This maps the chart's `Aktionsliste` step into a database-backed review queue before eBay or Amazon automation runs.
+
+
+## Local Agent Polling
+
+The local agent polls `GET /actions?status=APPROVED`, describes the approved work for the operator, and then marks the action completed after the manual step. This creates the bridge for PC-side browser automation while preserving the MVP safety stop before Amazon checkout or eBay listing execution.
+
+## Local Agent Authentication
+
+If `LOCAL_AGENT_SHARED_SECRET` is configured on the backend, action-list routes require the local agent to send the same value in the `x-local-agent-secret` header. The local agent already sends this header when `LOCAL_AGENT_SHARED_SECRET` is present in its environment, so approved action polling can be locked down without changing the operator workflow.
+
+## Rule Configuration
+
+`RuleConfig` stores adjustable safety thresholds such as minimum profit, ROI, match confidence, tax/buffer assumptions, daily limits, and brand/category blocklists. Opportunity search loads the active rule config before scoring, so filters can change without code edits.
+
+## Listing Draft Execution
+
+Approved `LIST` actions can be sent to `POST /actions/:id/execute`. The current executor prepares and audits an eBay listing draft payload without publishing to eBay, preserving the manual approval boundary while creating the future integration point for the eBay Sell API.
+
+## eBay Order Intake
+
+`POST /orders/ebay/manual` records an eBay order against a known `EbayListing`, encrypts the buyer shipping address, marks the order ready for purchase review, and creates a high-priority `BUY` action for the local agent/operator. This is the bridge between an eBay sale and the Amazon purchase workflow while keeping checkout manual in the MVP.
+
+## Amazon Purchase Recording
+
+After the operator/local agent completes an Amazon purchase, `POST /orders/:id/amazon-purchase` stores the Amazon order details, updates the eBay order status, and appends an audit log. Tracking details can be included immediately or added by posting another purchase/status update once Amazon provides carrier and tracking information.
+
+## Dashboard and Amazon Price Protection
+
+`GET /` now serves the Buysell Control Center instead of a 404. It shows candidates, listings, orders, actions, purchases, and settings. The dashboard can update the Amazon price-check interval and manually trigger `POST /api/monitor/amazon-prices/run`. The monitor checks active eBay listings against current Keepa/Amazon pricing and pauses the internal eBay listing plus creates a high-priority `PAUSE` action when Amazon cost rises above the stored source price.
+
+The backend also starts a scheduler on boot. It reads `amazonPriceCheckIntervalMinutes` from the active `RuleConfig` before each cycle, so changing the setting in the dashboard changes the next monitoring interval without redeploying.
+
+When a `PAUSE` action is executed, the backend now attempts to withdraw the corresponding eBay Inventory offer via eBay's Sell Inventory `withdrawOffer` endpoint if an `ebayOfferId` and eBay OAuth credentials are configured; otherwise it still pauses internally and records why the external withdraw was skipped.
+
+The dashboard now includes operator forms for searching opportunities, approving/rejecting/executing actions, creating manual eBay order intake records, and recording Amazon purchases, so the main MVP workflows can be driven from the browser instead of raw curl commands.
+
+The dashboard includes a connection section for `LOCAL_AGENT_SHARED_SECRET`; when saved in the browser, protected action execution and Amazon-purchase routes send the same `x-local-agent-secret` header as the local agent.

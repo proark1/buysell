@@ -1,0 +1,18 @@
+{
+  "name": "buysell",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "local-agent"
+  ],
+  "scripts": {
+    "build": "npm run build -w backend && npm run build -w local-agent",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w local-agent",
+    "lint": "npm run lint -w backend && npm run lint -w local-agent",
+    "start": "npm run start -w backend",
+    "railway:build": "npm run build",
+    "railway:start": "npm run start -w backend",
+    "test": "npm run test -w backend && npm run test -w local-agent"
+  }
+}
