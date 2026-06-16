@@ -10,6 +10,7 @@ export interface ActiveRuleConfig {
   maxDailyPurchaseAmountUsd: number;
   blockedBrands: string[];
   blockedCategories: string[];
+  amazonPriceCheckIntervalMinutes: number;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -24,7 +25,8 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   maxDailyListings: 10,
   maxDailyPurchaseAmountUsd: 250,
   blockedBrands: [],
-  blockedCategories: []
+  blockedCategories: [],
+  amazonPriceCheckIntervalMinutes: 30
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -59,6 +61,7 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     maxDailyListings: numberValue(config.maxDailyListings, defaultRuleConfig.maxDailyListings),
     maxDailyPurchaseAmountUsd: numberValue(config.maxDailyPurchaseAmountUsd, defaultRuleConfig.maxDailyPurchaseAmountUsd),
     blockedBrands: stringArray(config.blockedBrands),
-    blockedCategories: stringArray(config.blockedCategories)
+    blockedCategories: stringArray(config.blockedCategories),
+    amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes)
   };
 }
