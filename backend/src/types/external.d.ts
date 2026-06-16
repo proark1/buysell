@@ -8,6 +8,7 @@ declare module 'fastify' {
   export interface FastifyReply {
     status(code: number): FastifyReply;
     send(payload: unknown): unknown;
+    type(contentType: string): FastifyReply;
   }
 
   export interface FastifyRequest {
@@ -22,6 +23,7 @@ declare module 'fastify' {
     post(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
     patch(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
     listen(options: { port: number; host: string }): Promise<void>;
+    log: { info(payload: unknown, message?: string): void; error(payload: unknown, message?: string): void };
   }
 
   export default function Fastify(options?: unknown): FastifyInstance;
@@ -60,3 +62,5 @@ declare class Buffer extends Uint8Array {
   static from(value: string, encoding?: string): Buffer;
   toString(encoding?: string): string;
 }
+
+declare function setTimeout(handler: () => void, timeout?: number): unknown;

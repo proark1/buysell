@@ -71,3 +71,15 @@ Approved `LIST` actions can be sent to `POST /actions/:id/execute`. The current 
 ## Amazon Purchase Recording
 
 After the operator/local agent completes an Amazon purchase, `POST /orders/:id/amazon-purchase` stores the Amazon order details, updates the eBay order status, and appends an audit log. Tracking details can be included immediately or added by posting another purchase/status update once Amazon provides carrier and tracking information.
+
+## Dashboard and Amazon Price Protection
+
+`GET /` now serves the Buysell Control Center instead of a 404. It shows candidates, listings, orders, actions, purchases, and settings. The dashboard can update the Amazon price-check interval and manually trigger `POST /api/monitor/amazon-prices/run`. The monitor checks active eBay listings against current Keepa/Amazon pricing and pauses the internal eBay listing plus creates a high-priority `PAUSE` action when Amazon cost rises above the stored source price.
+
+The backend also starts a scheduler on boot. It reads `amazonPriceCheckIntervalMinutes` from the active `RuleConfig` before each cycle, so changing the setting in the dashboard changes the next monitoring interval without redeploying.
+
+When a `PAUSE` action is executed, the backend now attempts to withdraw the corresponding eBay Inventory offer via eBay's Sell Inventory `withdrawOffer` endpoint if an `ebayOfferId` and eBay OAuth credentials are configured; otherwise it still pauses internally and records why the external withdraw was skipped.
+
+The dashboard now includes operator forms for searching opportunities, approving/rejecting/executing actions, creating manual eBay order intake records, and recording Amazon purchases, so the main MVP workflows can be driven from the browser instead of raw curl commands.
+
+The dashboard includes a connection section for `LOCAL_AGENT_SHARED_SECRET`; when saved in the browser, protected action execution and Amazon-purchase routes send the same `x-local-agent-secret` header as the local agent.

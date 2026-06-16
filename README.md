@@ -138,3 +138,7 @@ CI validation:
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs install, typecheck, build, tests, and lint validation on pushes and pull requests.
 
 Note: CI currently uses `npm install` instead of `npm ci` until a `package-lock.json` is committed.
+
+Dashboard:
+
+Open `/` on the Railway app to use the Buysell Control Center. It displays products, listings, orders, actions, settings, and includes a manual Amazon price-check trigger.

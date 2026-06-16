@@ -15,7 +15,8 @@ await prisma.ruleConfig.upsert({
     maxDailyListings: 10,
     maxDailyPurchaseAmountUsd: '250.00',
     blockedBrands: [],
-    blockedCategories: []
+    blockedCategories: [],
+    amazonPriceCheckIntervalMinutes: 30
   },
   create: {
     id: 'default-rule-config',
@@ -30,7 +31,8 @@ await prisma.ruleConfig.upsert({
     maxDailyListings: 10,
     maxDailyPurchaseAmountUsd: '250.00',
     blockedBrands: [],
-    blockedCategories: []
+    blockedCategories: [],
+    amazonPriceCheckIntervalMinutes: 30
   }
 });
 

@@ -143,6 +143,7 @@ model EbayListing {
   productCandidateId String
   amazonMatchId      String
   ebayItemId         String?          @unique
+  ebayOfferId        String?
   listingStatus      ListingStatus    @default(DRAFT)
   listedPrice        Decimal          @db.Decimal(10, 2)
   quantity           Int              @default(1)
@@ -241,6 +242,7 @@ model RuleConfig {
   maxDailyPurchaseAmountUsd  Decimal  @default(250.00) @db.Decimal(10, 2)
   blockedBrands              Json?
   blockedCategories          Json?
+  amazonPriceCheckIntervalMinutes Int @default(30)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }
