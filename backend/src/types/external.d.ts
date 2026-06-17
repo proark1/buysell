@@ -49,6 +49,8 @@ declare module '@prisma/client' {
     amazonPurchase: any;
     credential: any;
     discoveryScanRun: any;
+    amazonDiscoveryRun: any;
+    amazonDiscoveryCandidate: any;
     $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
     $queryRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
     $connect(): Promise<void>;

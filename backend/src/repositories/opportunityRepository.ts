@@ -12,6 +12,7 @@ export interface PersistedOpportunityIds {
 export interface PersistOpportunityContext {
   discoveryRunId?: string;
   discoveryProfile?: string;
+  amazonCandidateId?: string;
 }
 
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
@@ -25,6 +26,7 @@ export async function persistOpportunity(
   const productCandidate = await db.productCandidate.create({
     data: {
       discoveryRunId: context.discoveryRunId,
+      amazonCandidateId: context.amazonCandidateId,
       discoveryProfile: context.discoveryProfile ?? opportunity.discoveryProfile,
       opportunityScore: opportunity.score?.total,
       safetyStatus: opportunity.safety?.status,

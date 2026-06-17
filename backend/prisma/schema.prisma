@@ -52,31 +52,34 @@ enum ActionStatus {
 }
 
 model ProductCandidate {
-  id                String            @id @default(cuid())
+  id                String                    @id @default(cuid())
   discoveryRunId    String?
+  amazonCandidateId String?
   discoveryProfile  String?
   opportunityScore  Int?
   safetyStatus      String?
   riskFlags         Json?
   scoreBreakdown    Json?
-  source            String            @default("serpapi")
+  source            String                    @default("serpapi")
   ebayTitle         String
   ebayUrl           String?
-  ebaySoldPrice     Decimal?          @db.Decimal(10, 2)
-  ebayShippingPrice Decimal?          @db.Decimal(10, 2)
+  ebaySoldPrice     Decimal?                  @db.Decimal(10, 2)
+  ebayShippingPrice Decimal?                  @db.Decimal(10, 2)
   ebayCondition     String?
   ebayCategory      String?
   rawSerpapiJson    Json?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
   amazonMatches     AmazonMatch[]
   profitSnapshots   ProfitSnapshot[]
   aiDecisions       AiDecision[]
   ebayListings      EbayListing[]
   actionItems       ActionItem[]
-  discoveryRun      DiscoveryScanRun? @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  discoveryRun      DiscoveryScanRun?         @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  amazonCandidate   AmazonDiscoveryCandidate? @relation(fields: [amazonCandidateId], references: [id], onDelete: SetNull)
 
   @@index([discoveryRunId])
+  @@index([amazonCandidateId])
   @@index([opportunityScore])
 }
 
@@ -279,6 +282,65 @@ model DiscoveryScanRun {
 
   @@index([profileKey, startedAt])
   @@index([status])
+}
+
+model AmazonDiscoveryRun {
+  id               String                     @id @default(cuid())
+  profileKey       String
+  categoryKey      String?
+  query            String?
+  mode             String                     @default("MANUAL")
+  status           String                     @default("RUNNING")
+  filtersJson      Json?
+  scannedCount     Int                        @default(0)
+  acceptedCount    Int                        @default(0)
+  rejectedCount    Int                        @default(0)
+  comparedCount    Int                        @default(0)
+  opportunityCount Int                        @default(0)
+  error            String?
+  startedAt        DateTime                   @default(now())
+  completedAt      DateTime?
+  candidates       AmazonDiscoveryCandidate[]
+
+  @@index([profileKey, startedAt])
+  @@index([status])
+}
+
+model AmazonDiscoveryCandidate {
+  id                 String             @id @default(cuid())
+  runId              String
+  asin               String
+  title              String
+  amazonUrl          String?
+  brand              String?
+  rootCategory       String?
+  categoryTree       Json?
+  currentPrice       Decimal?           @db.Decimal(10, 2)
+  buyBoxPrice        Decimal?           @db.Decimal(10, 2)
+  avg90Price         Decimal?           @db.Decimal(10, 2)
+  priceDropPercent   Decimal?           @db.Decimal(7, 3)
+  availabilityStatus String?
+  salesRank          Int?
+  rating             Decimal?           @db.Decimal(3, 2)
+  reviewCount        Int?
+  amazonScore        Int                @default(0)
+  safetyStatus       String?
+  riskFlags          Json?
+  scoreBreakdown     Json?
+  selected           Boolean            @default(false)
+  comparisonStatus   String             @default("NOT_COMPARED")
+  productCandidateId String?
+  amazonMatchId      String?
+  rawKeepaJson       Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  run                AmazonDiscoveryRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  productCandidates  ProductCandidate[]
+
+  @@unique([runId, asin])
+  @@index([runId, amazonScore])
+  @@index([asin])
+  @@index([comparisonStatus])
 }
 
 model Credential {

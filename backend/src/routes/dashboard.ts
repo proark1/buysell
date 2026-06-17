@@ -297,6 +297,37 @@ const dashboardHtml = `<!doctype html>
       <!-- DISCOVERY -->
       <section class="view" id="view-discovery">
         <div class="panel">
+          <div class="panel-head"><h2>Amazon Scout</h2><span class="hint">Find promising Amazon products before spending eBay checks</span></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="field"><label>Scout Profile</label><select id="amazonScoutProfile"></select></div>
+              <div class="field"><label>Category</label><select id="amazonScoutCategory"></select></div>
+              <div class="field" style="grid-column:span 2"><label>Optional Amazon Keywords</label><input id="amazonScoutQuery" placeholder="thermal label printer"></div>
+              <div class="field"><label>Max Products</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
+              <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
+              <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
+              <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
+              <div class="field"><label>Compare Limit</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
+              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSafeMode" type="checkbox" checked> Safe mode</label></div>
+              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutAuto" type="checkbox"> Auto compare top candidates</label></div>
+            </div>
+            <div class="actions-row">
+              <button class="btn primary" onclick="runAmazonScout()">Find Amazon Candidates</button>
+              <button class="btn" onclick="selectHighAmazonScores()">Select High Score</button>
+              <button class="btn primary" onclick="compareSelectedAmazon()">Compare Selected With eBay</button>
+              <span class="hint" id="amazonScoutHint"></span>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Amazon Candidates</h2><span class="hint" id="amazonScoutSummary">Run Amazon Scout to build a shortlist.</span></div>
+          <div class="panel-body"><div id="amazonScoutResults" class="result-list"><div class="empty">No Amazon scout results yet.</div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Recent Amazon Scout Runs</h2></div>
+          <div class="panel-body"><div class="table-wrap"><div id="amazonScoutRunsTable"></div></div></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2>Guided Discovery</h2><span class="hint">Rank safe, explainable product opportunities</span></div>
           <div class="panel-body">
             <div class="form-grid">
@@ -383,12 +414,12 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[]};
+var state={data:null,profiles:[],amazonProfiles:[],amazonScoutRunId:null,amazonScoutCandidates:[],selectedAmazon:{}};
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
   actions:['Actions','Approve, execute, and protect your listings'],
   catalog:['Listings & Orders','Manage marketplace inventory and fulfillment'],
-  discovery:['Discovery','Search and persist product opportunities'],
+  discovery:['Discovery','Scout Amazon first, then compare selected products with eBay'],
   keys:['API Keys & Credentials','Encrypted at rest, stored in your database'],
   settings:['Settings','Thresholds, intervals, and connections']
 };
@@ -397,7 +428,7 @@ var BADGE={
   ACTIVE:'green',PAUSED:'amber',DRAFT:'slate',ENDED:'slate',
   NEW:'blue',VALIDATING:'amber',READY_FOR_PURCHASE:'blue',MANUAL_REVIEW:'amber',PURCHASED:'green',SHIPPED:'teal',
   LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
-  PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue'
+  PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
 
@@ -448,6 +479,32 @@ function renderProfiles(){
 function loadProfiles(){
   fetch('/opportunities/profiles').then(function(r){return r.json()}).then(function(j){state.profiles=j.profiles||[];renderProfiles()}).catch(function(){});
 }
+function currentAmazonProfile(){
+  var key=document.getElementById('amazonScoutProfile').value||'starter-safe';
+  return state.amazonProfiles.find(function(p){return p.key===key})||state.amazonProfiles[0];
+}
+function renderAmazonProfiles(){
+  var profileSel=document.getElementById('amazonScoutProfile');
+  var categorySel=document.getElementById('amazonScoutCategory');
+  if(!profileSel||!categorySel||!state.amazonProfiles.length)return;
+  var current=profileSel.value||'starter-safe';
+  profileSel.innerHTML=state.amazonProfiles.map(function(p){return '<option value="'+esc(p.key)+'">'+esc(p.label)+'</option>'}).join('');
+  profileSel.value=state.amazonProfiles.some(function(p){return p.key===current})?current:state.amazonProfiles[0].key;
+  var profile=currentAmazonProfile();
+  var categoryCurrent=categorySel.value||(profile.categories[0]&&profile.categories[0].key);
+  categorySel.innerHTML=(profile.categories||[]).map(function(c){return '<option value="'+esc(c.key)+'">'+esc(c.label)+'</option>'}).join('');
+  categorySel.value=(profile.categories||[]).some(function(c){return c.key===categoryCurrent})?categoryCurrent:((profile.categories[0]&&profile.categories[0].key)||'custom');
+  document.getElementById('amazonScoutLimit').value=profile.defaultLimit||40;
+  document.getElementById('amazonScoutMinScore').value=profile.minimumAmazonScore||62;
+  document.getElementById('amazonScoutMaxCost').value=profile.maxAmazonCostUsd||150;
+  document.getElementById('amazonScoutMinDrop').value=profile.minPriceDropPercent||0;
+  document.getElementById('amazonScoutCompareLimit').value=profile.compareLimit||12;
+  var category=(profile.categories||[]).find(function(c){return c.key===categorySel.value});
+  document.getElementById('amazonScoutHint').textContent=category?category.description:profile.description;
+}
+function loadAmazonProfiles(){
+  fetch('/amazon-discovery/profiles').then(function(r){return r.json()}).then(function(j){state.amazonProfiles=j.profiles||[];renderAmazonProfiles()}).catch(function(){});
+}
 function scoreClass(score){return score>=75?'score':score>=60?'score mid':'score low'}
 function renderScanResults(res){
   var summary=res.summary||{};
@@ -471,11 +528,33 @@ function renderScanResults(res){
       '<div class="result-meta">ASIN <span class="mono">'+esc(o.amazon.asin)+'</span> · Match '+Number((o.amazon.matchConfidence||0)*100).toFixed(0)+'%</div></div>';
   }).join('');
 }
+function renderAmazonScoutCandidates(candidates){
+  state.amazonScoutCandidates=candidates||[];
+  if(!state.amazonScoutCandidates.length){
+    document.getElementById('amazonScoutResults').innerHTML='<div class="empty">No Amazon candidates yet.</div>';
+    return;
+  }
+  document.getElementById('amazonScoutResults').innerHTML=state.amazonScoutCandidates.map(function(c){
+    var selected=!!state.selectedAmazon[c.id]||!!c.selected;
+    var price=c.buyBoxPrice||c.currentPrice;
+    var score=c.amazonScore!==undefined?c.amazonScore:(c.score&&c.score.total)||0;
+    var scoreData=c.scoreBreakdown||c.score||{};
+    var reasons=(scoreData.reasons||[]).slice(0,3).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var risks=(Array.isArray(c.riskFlags)?c.riskFlags:[]).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var drop=c.priceDropPercent?(' · Down '+Number(c.priceDropPercent).toFixed(1)+'%'):'';
+    return '<div class="result-card"><div class="result-head"><label class="check"><input type="checkbox" data-amazon-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleAmazonCandidate(this)"></label><div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+      '<div class="result-title">'+esc(c.title||c.amazon?.title||'Amazon product')+'</div>'+
+      '<div class="result-meta">ASIN <span class="mono">'+esc(c.asin||c.amazon?.asin||'')+'</span> · Amazon '+money(price)+' · Avg90 '+money(c.avg90Price)+' · Rank '+txt(c.salesRank)+drop+'</div>'+
+      '</div>'+badge(c.comparisonStatus||c.safetyStatus||'PASS')+'</div>'+
+      '<div class="chips">'+(reasons||'<span class="chip">Amazon-only candidate</span>')+'</div>'+
+      (risks?'<div class="chips">'+risks+'</div>':'')+'</div>';
+  }).join('');
+}
 
 function render(){
   var d=state.data;if(!d)return;
-  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)']};
-  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans'};
+  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)']};
+  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts'};
   document.getElementById('stats').innerHTML=Object.keys(d.counts).map(function(k){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
@@ -530,6 +609,17 @@ function render(){
     {key:'rejectedCount',label:'Rejected'},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
+  document.getElementById('amazonScoutRunsTable').innerHTML=table(d.amazonDiscoveryRuns,[
+    {key:'profileKey',label:'Profile'},
+    {key:'categoryKey',label:'Category'},
+    {key:'status',label:'Status',fmt:badge},
+    {key:'scannedCount',label:'Scanned'},
+    {key:'acceptedCount',label:'Accepted'},
+    {key:'comparedCount',label:'Compared'},
+    {key:'opportunityCount',label:'Opps'},
+    {key:'startedAt',label:'Started',fmt:when}
+  ]);
+  if((d.amazonDiscoveryCandidates||[]).length&&!state.amazonScoutCandidates.length)renderAmazonScoutCandidates(d.amazonDiscoveryCandidates);
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
@@ -542,6 +632,8 @@ function render(){
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('scanMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('scanMaxCost').value=rc.maxAmazonCostUsd;
   document.getElementById('scanSafeMode').checked=!!rc.safeMode;
+  if(rc.maxAmazonCostUsd!==undefined)document.getElementById('amazonScoutMaxCost').value=rc.maxAmazonCostUsd;
+  document.getElementById('amazonScoutSafeMode').checked=!!rc.safeMode;
   var prettySet={minimumProfitUsd:'Min Profit (USD)',minimumRoiPercent:'Min ROI %',minimumMatchConfidence:'Min Match Confidence',minimumOpportunityScore:'Min Opportunity Score',safeMode:'Safe Mode',maxAmazonCostUsd:'Max Amazon Cost',estimatedSalesTaxRate:'Est. Sales Tax Rate',returnRiskBuffer:'Return Risk Buffer',priceChangeBuffer:'Price Change Buffer',maxDailyListings:'Max Daily Listings',maxDailyPurchaseAmountUsd:'Max Daily Spend (USD)',amazonPriceCheckIntervalMinutes:'Price-Check Interval (min)'};
   document.getElementById('settingsKv').innerHTML=Object.keys(prettySet).filter(function(k){return rc[k]!==undefined&&rc[k]!==null}).map(function(k){
     return '<div class="k">'+prettySet[k]+'</div><div class="v">'+esc(rc[k])+'</div>';
@@ -643,6 +735,55 @@ function updateAction(status){var id=actId();if(!id)return;apiFetch('/actions/'+
 function approveAction(){updateAction('APPROVED')}
 function rejectAction(){updateAction('REJECTED')}
 function executeAction(){var id=actId();if(!id)return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(function(r){return r.json()}).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
+function toggleAmazonCandidate(el){state.selectedAmazon[el.getAttribute('data-amazon-id')]=el.checked}
+function selectedAmazonIds(){return Object.keys(state.selectedAmazon).filter(function(id){return state.selectedAmazon[id]})}
+function selectHighAmazonScores(){
+  state.selectedAmazon={};
+  var min=Number(document.getElementById('amazonScoutMinScore').value||62);
+  state.amazonScoutCandidates.forEach(function(c){if(Number(c.amazonScore||0)>=min&&c.comparisonStatus!=='OPPORTUNITY')state.selectedAmazon[c.id]=true});
+  renderAmazonScoutCandidates(state.amazonScoutCandidates);
+  toast('Selected high-score candidates',selectedAmazonIds().length+' products','ok');
+}
+function runAmazonScout(){
+  var profile=document.getElementById('amazonScoutProfile').value||'starter-safe';
+  var category=document.getElementById('amazonScoutCategory').value||'custom';
+  var q=document.getElementById('amazonScoutQuery').value.trim();
+  if(profile==='custom'&&!q)return toast('Enter keywords','Custom Amazon Scout needs keywords.','warn');
+  var auto=document.getElementById('amazonScoutAuto').checked;
+  var body={
+    profileKey:profile,
+    categoryKey:category,
+    query:q||undefined,
+    limit:Number(document.getElementById('amazonScoutLimit').value||40),
+    mode:auto?'AUTO':'MANUAL',
+    autoCompare:auto,
+    compareLimit:Number(document.getElementById('amazonScoutCompareLimit').value||12),
+    safeMode:document.getElementById('amazonScoutSafeMode').checked,
+    minAmazonScore:Number(document.getElementById('amazonScoutMinScore').value||62),
+    maxAmazonCostUsd:Number(document.getElementById('amazonScoutMaxCost').value||150),
+    minPriceDropPercent:Number(document.getElementById('amazonScoutMinDrop').value||0)
+  };
+  toast('Running Amazon Scout',profile+' · '+category);
+  jpost('/amazon-discovery/run',body).then(function(res){
+    state.amazonScoutRunId=res.run&&res.run.id;
+    state.selectedAmazon={};
+    renderAmazonScoutCandidates((res.run&&res.run.candidates)||[]);
+    document.getElementById('amazonScoutSummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    toast('Amazon Scout complete',res.summary,'ok');
+    load();
+  }).catch(function(e){toast('Amazon Scout failed',e.message,'err')});
+}
+function compareSelectedAmazon(){
+  var ids=selectedAmazonIds();
+  if(!ids.length)return toast('No Amazon candidates selected','Select products first.','warn');
+  toast('Comparing with eBay',ids.length+' selected products');
+  jpost('/amazon-discovery/compare',{candidateIds:ids,limit:ids.length}).then(function(res){
+    toast('eBay comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,rejected:(res.rejected||[]).length},'ok');
+    state.amazonScoutCandidates=[];
+    state.selectedAmazon={};
+    load();
+  }).catch(function(e){toast('Comparison failed',e.message,'err')});
+}
 function searchOpportunities(){
   var q=document.getElementById('searchQuery').value.trim();
   var profile=document.getElementById('scanProfile').value||'starter-safe';
@@ -664,7 +805,10 @@ function recordPurchase(){apiFetch('/orders/'+encodeURIComponent(document.getEle
 
 document.getElementById('nav').addEventListener('click',function(e){var item=e.target.closest('.nav-item');if(item)navigate(item.getAttribute('data-view'))});
 document.getElementById('scanProfile').addEventListener('change',renderProfiles);
+document.getElementById('amazonScoutProfile').addEventListener('change',renderAmazonProfiles);
+document.getElementById('amazonScoutCategory').addEventListener('change',renderAmazonProfiles);
 loadProfiles();
+loadAmazonProfiles();
 load();
 setInterval(checkDb,30000);
 </script>

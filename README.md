@@ -70,6 +70,22 @@ curl http://localhost:3000/opportunities/profiles
 
 Guided discovery uses predefined sourcing profiles, safe-mode category/keyword exclusions, Keepa price-drop signals, eBay sold-price comps, match confidence, and deterministic profit gates to rank results from 0-100. The dashboard shows only accepted opportunities by default, with score reasons and risk flags so the operator can see why a product is worth attention.
 
+Amazon-first scout:
+
+```bash
+# Find promising Amazon candidates before spending eBay comparison checks
+curl -X POST http://localhost:3000/amazon-discovery/run \
+  -H 'content-type: application/json' \
+  -d '{"profileKey":"starter-safe","categoryKey":"office-electronics","limit":40,"minAmazonScore":62,"safeMode":true}'
+
+# Compare selected Amazon candidates with eBay sold comps
+curl -X POST http://localhost:3000/amazon-discovery/compare \
+  -H 'content-type: application/json' \
+  -d '{"candidateIds":["amazon_discovery_candidate_id"],"limit":10}'
+```
+
+Amazon Scout intentionally runs before eBay comparison. It uses Keepa/Amazon signals — current price, 90-day average, price-drop percentage, Buy Box/in-stock status, sales rank, ratings/reviews, and safety filters — to reduce a large category into a smaller shortlist. Operators can bulk-select high-score Amazon candidates and compare only those products with eBay, which keeps SerpApi/eBay checks focused on candidates that already look promising.
+
 Action list:
 
 ```bash
@@ -209,6 +225,8 @@ Discovery:
 
 The **Discovery** tab is intentionally profile-first instead of a raw product dump:
 
+- Start in **Amazon Scout** to scan a profile/category and build a shortlist from Amazon data before eBay comparison.
+- Select high-score Amazon candidates in bulk, then click **Compare Selected With eBay**.
 - Pick a profile such as **Starter Safe Products**, **Electronics Accessories**, **Tools & Office**, or **Home / Small Goods**.
 - Keep **Safe mode** enabled to exclude risky products such as clothing, shoes, food, supplements, cosmetics, medical items, weapons, adult items, and other blocked keywords/categories.
 - Run **Find Opportunities**. Accepted results are ranked by opportunity score, expected profit, ROI, Keepa price signal, demand signal, match confidence, and risk penalties.
