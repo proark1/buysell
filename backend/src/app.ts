@@ -5,11 +5,13 @@ import { registerOpportunityRoutes } from './routes/opportunities.js';
 import { registerActionRoutes } from './routes/actions.js';
 import { registerOrderRoutes } from './routes/orders.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
+import { registerCredentialRoutes } from './routes/credentials.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
 
   await registerDashboardRoutes(app);
+  await registerCredentialRoutes(app);
   await registerHealthRoutes(app);
   await registerProfitRoutes(app);
   await registerOpportunityRoutes(app);

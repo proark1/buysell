@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
-import { env } from '../config/env.js';
 import { getEbayAccessToken, prepareEbayListingDraft, withdrawEbayOffer } from '../clients/ebaySellClient.js';
+import { getSecret } from './secrets.js';
 
 interface ActionPayload {
   listingId?: string;
@@ -10,8 +10,6 @@ interface ActionPayload {
   recommendedTitle?: string;
   recommendedDescription?: string;
 }
-
-const hasEbayCredentials = (): boolean => Boolean(env.EBAY_CLIENT_ID && env.EBAY_CLIENT_SECRET && env.EBAY_REFRESH_TOKEN);
 
 export async function executeAction(db: PrismaClient, actionId: string): Promise<unknown> {
   const action = await db.actionItem.findUnique({ where: { id: actionId } });
@@ -26,7 +24,7 @@ export async function executeAction(db: PrismaClient, actionId: string): Promise
       description: payload.recommendedDescription ?? action.reason,
       price: payload.recommendedPrice ?? 0,
       quantity: 1,
-      marketplaceId: env.EBAY_MARKETPLACE_ID
+      marketplaceId: (await getSecret(db, 'EBAY_MARKETPLACE_ID')) ?? 'EBAY_US'
     });
 
     await db.actionItem.update({
@@ -58,13 +56,14 @@ export async function executeAction(db: PrismaClient, actionId: string): Promise
     const offerId = payload.ebayOfferId ?? listing?.ebayOfferId;
     let ebayResult: unknown = { skipped: true, reason: 'Missing eBay credentials or offer ID' };
 
-    if (offerId && hasEbayCredentials()) {
-      const accessToken = await getEbayAccessToken({
-        clientId: env.EBAY_CLIENT_ID as string,
-        clientSecret: env.EBAY_CLIENT_SECRET as string,
-        refreshToken: env.EBAY_REFRESH_TOKEN as string
-      });
-      ebayResult = await withdrawEbayOffer({ offerId, accessToken, sandbox: env.EBAY_SANDBOX === 'true' });
+    const clientId = await getSecret(db, 'EBAY_CLIENT_ID');
+    const clientSecret = await getSecret(db, 'EBAY_CLIENT_SECRET');
+    const refreshToken = await getSecret(db, 'EBAY_REFRESH_TOKEN');
+
+    if (offerId && clientId && clientSecret && refreshToken) {
+      const accessToken = await getEbayAccessToken({ clientId, clientSecret, refreshToken });
+      const sandbox = (await getSecret(db, 'EBAY_SANDBOX')) === 'true';
+      ebayResult = await withdrawEbayOffer({ offerId, accessToken, sandbox });
     }
 
     if (listing) await db.ebayListing.update({ where: { id: listing.id }, data: { listingStatus: 'PAUSED' } });

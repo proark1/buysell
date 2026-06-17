@@ -162,4 +162,20 @@ Note: CI currently uses `npm install` instead of `npm ci` until a `package-lock.
 
 Dashboard:
 
-Open `/` on the Railway app to use the redesigned Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, and a manual Amazon price-check trigger.
+Open `/` on the Railway app to use the redesigned Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, API Keys, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, and a manual Amazon price-check trigger.
+
+API Keys & Credentials:
+
+The **API Keys** tab lets operators manage all API keys and config (SerpApi, Keepa, OpenAI, eBay credentials/marketplace/sandbox, and the local-agent secret) without redeploying. Values are encrypted with AES-256-GCM and stored in the `Credential` table (`backend/prisma/migrations/0004_add_credential`); a stored value takes precedence over the matching environment variable. The API never returns full secrets — only a masked preview, the source (`database` / `environment` / `unset`), and whether the key is configured:
+
+```bash
+# Read masked status of all managed keys
+curl http://localhost:3000/api/credentials
+
+# Save / overwrite a key (empty value clears it)
+curl -X PUT http://localhost:3000/api/credentials/SERPAPI_API_KEY \
+  -H 'content-type: application/json' \
+  -d '{"value":"your-serpapi-key"}'
+```
+
+Both routes are gated by `LOCAL_AGENT_SHARED_SECRET` (when set), matching the rest of the protected API. `DATABASE_URL` and `BUYSELL_ENCRYPTION_KEY` are intentionally **not** manageable here — they are required from the environment to reach and decrypt the credential store. Set `BUYSELL_ENCRYPTION_KEY` to a stable 32+ character value in production so stored secrets remain decryptable across deploys.

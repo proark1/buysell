@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
-import { env } from '../config/env.js';
 import { findAmazonMatches } from '../clients/keepaClient.js';
+import { getSecret } from './secrets.js';
 
 const numberValue = (value: unknown): number | undefined => {
   if (typeof value === 'number') return value;
@@ -13,7 +13,8 @@ const numberValue = (value: unknown): number | undefined => {
 };
 
 export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> {
-  if (!env.KEEPA_API_KEY) throw new Error('KEEPA_API_KEY is required for Amazon price monitoring');
+  const keepaApiKey = await getSecret(db, 'KEEPA_API_KEY');
+  if (!keepaApiKey) throw new Error('KEEPA_API_KEY is required for Amazon price monitoring');
 
   const listings = await db.ebayListing.findMany({
     where: { listingStatus: 'ACTIVE' },
@@ -26,7 +27,7 @@ export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> 
     const storedPrice = numberValue(listing.amazonMatch?.buyBoxPrice) ?? numberValue(listing.amazonMatch?.currentPrice);
     if (!storedPrice || !listing.amazonMatch?.asin) continue;
 
-    const matches = await findAmazonMatches({ query: listing.amazonMatch.asin, apiKey: env.KEEPA_API_KEY, limit: 1 });
+    const matches = await findAmazonMatches({ query: listing.amazonMatch.asin, apiKey: keepaApiKey, limit: 1 });
     const latest = matches[0];
     const latestPrice = latest ? latest.buyBoxPrice ?? latest.currentPrice : undefined;
 
