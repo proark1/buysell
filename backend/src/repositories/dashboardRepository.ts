@@ -105,7 +105,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     db.ebayDiscoveryCandidate.findMany({
       select: ebayDiscoveryCandidateSelect,
       orderBy: [{ createdAt: 'desc' }, { ebayScore: 'desc' }],
-      take: 500
+      take: 2000
     }),
     db.automationRun.findMany({
       orderBy: { startedAt: 'desc' },

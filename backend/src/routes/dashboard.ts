@@ -167,7 +167,11 @@ const dashboardHtml = `<!doctype html>
     .compact-title{min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .compact-cell{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .compact-detail{border-top:1px solid var(--border);padding:10px;display:grid;gap:8px}
+    .list-controls{display:grid;grid-template-columns:minmax(220px,1fr) 150px 120px auto;gap:10px;align-items:end;margin-bottom:12px}
+    .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;color:var(--muted);font-size:12px}
+    .pager .btn{min-width:34px;justify-content:center}
     @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}}
+    @media(max-width:760px){.list-controls{grid-template-columns:1fr 1fr}.pager{justify-content:flex-start;flex-wrap:wrap}}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
     .kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
@@ -504,11 +508,30 @@ const dashboardHtml = `<!doctype html>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span></div>
-          <div class="panel-body"><div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div></div>
+          <div class="panel-body">
+            <div class="list-controls">
+              <div class="field"><label>Search</label><input id="ebayCompactSearch" placeholder="title, family, category, source" oninput="updateEbayCompactFilters()"></div>
+              <div class="field"><label>Status</label><select id="ebayCompactStatus" onchange="updateEbayCompactFilters()"><option value="ALL">All</option><option value="NOT_COMPARED">Queued</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
+              <div class="field"><label>Min Score</label><input id="ebayCompactMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompactFilters()"></div>
+              <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompactFilters()">Clear</button></div>
+            </div>
+            <div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div>
+            <div id="ebayCompactPager" class="pager"></div>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span></div>
-          <div class="panel-body"><div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div></div>
+          <div class="panel-body">
+            <div class="list-controls">
+              <div class="field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
+              <div class="field"><label>Status</label><select id="ebayCompareStatus" onchange="updateEbayCompareFilters()"><option value="ALL">All</option><option value="QUEUED">Queued</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
+              <div class="field"><label>Min Score</label><input id="ebayCompareMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompareFilters()"></div>
+              <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompareFilters()">Clear</button></div>
+            </div>
+            <div id="ebayCompareTimerInfo" class="mini-summary"></div>
+            <div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div>
+            <div id="ebayComparePager" class="pager"></div>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Recent eBay Discovery Runs</h2></div>
@@ -574,7 +597,8 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null,ebayCompactPage:1,ebayComparePage:1};
+var pageSize=20;
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
   actions:['Actions','Approve, execute, and protect your listings'],
@@ -1194,17 +1218,76 @@ function compactEbayLines(candidates){
     return ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.createdAt||0)-new Date(a.createdAt||0);
   });
 }
+function inputValue(id){var el=document.getElementById(id);return el?String(el.value||'').trim():''}
+function selectValue(id,fallback){var el=document.getElementById(id);return el?String(el.value||fallback):fallback}
+function normalizedSearchText(value){return String(value||'').toLowerCase()}
+function ebaySearchBlob(c){
+  var family=ebayCandidateFamily(c);
+  var comparison=ebayComparison(c);
+  var best=(comparison&&comparison.best)||{};
+  return [
+    ebayCandidateTitle(c),
+    ebayCandidateItemId(c),
+    ebayCandidateCategory(c),
+    family.key,
+    family.sourceQuery,
+    best.title,
+    best.asin
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+function statusMatches(actual,filter){
+  if(filter==='ALL')return true;
+  if(filter==='QUEUED')return actual==='NOT_COMPARED'||actual==='ERROR';
+  return actual===filter;
+}
+function filterEbayRows(rows,options){
+  var text=normalizedSearchText(options.text);
+  var minScore=Number(options.minScore||0);
+  return rows.filter(function(c){
+    if(options.status&&!statusMatches(ebayCandidateStatus(c),options.status))return false;
+    if(minScore&&ebayCandidateScore(c)<minScore)return false;
+    if(text&&ebaySearchBlob(c).indexOf(text)===-1)return false;
+    return true;
+  });
+}
+function clampPage(page,totalRows){
+  var totalPages=Math.max(1,Math.ceil(totalRows/pageSize));
+  return Math.max(1,Math.min(page,totalPages));
+}
+function renderPager(elId,page,totalRows,setterName){
+  var el=document.getElementById(elId);
+  if(!el)return;
+  var totalPages=Math.max(1,Math.ceil(totalRows/pageSize));
+  if(totalRows<=pageSize){el.innerHTML='';return}
+  el.innerHTML=
+    '<button class="btn sm" '+(page<=1?'disabled':'')+' onclick="'+setterName+'('+(page-1)+')">Prev</button>'+
+    '<span>Page '+page+' of '+totalPages+' · '+totalRows+' rows</span>'+
+    '<button class="btn sm" '+(page>=totalPages?'disabled':'')+' onclick="'+setterName+'('+(page+1)+')">Next</button>';
+}
+function currentAllEbayRows(){
+  var d=state.data||{};
+  return (d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]);
+}
 function renderEbayCompactProducts(candidates){
   var el=document.getElementById('ebayCompactProducts');
   var summary=document.getElementById('ebayCompactSummary');
   if(!el)return;
-  var rows=compactEbayLines(candidates);
-  if(summary)summary.textContent=rows.length+' product lines · one row per family';
+  var allRows=compactEbayLines(candidates);
+  var rows=filterEbayRows(allRows,{
+    text:inputValue('ebayCompactSearch'),
+    status:selectValue('ebayCompactStatus','ALL'),
+    minScore:inputValue('ebayCompactMinScore')
+  });
+  state.ebayCompactPage=clampPage(state.ebayCompactPage,rows.length);
+  var start=(state.ebayCompactPage-1)*pageSize;
+  var pageRows=rows.slice(start,start+pageSize);
+  if(summary)summary.textContent=rows.length+' of '+allRows.length+' product lines · 20 per page';
   if(!rows.length){
     el.innerHTML='<div class="empty">No product lines yet.</div>';
+    renderPager('ebayCompactPager',state.ebayCompactPage,0,'setEbayCompactPage');
     return;
   }
-  el.innerHTML=rows.map(function(c){
+  el.innerHTML=pageRows.map(function(c){
     var score=ebayCandidateScore(c);
     var family=ebayCandidateFamily(c);
     var market=ebayCandidateMarket(c);
@@ -1238,6 +1321,7 @@ function renderEbayCompactProducts(candidates){
       comparison+actions+
       '</div></details>';
   }).join('');
+  renderPager('ebayCompactPager',state.ebayCompactPage,rows.length,'setEbayCompactPage');
 }
 function comparisonSortWeight(c){
   var status=ebayCandidateStatus(c);
@@ -1247,20 +1331,41 @@ function comparisonSortWeight(c){
   if(status==='OPPORTUNITY')return 3;
   return 4;
 }
+function renderEbayCompareTimerInfo(rc){
+  var el=document.getElementById('ebayCompareTimerInfo');
+  if(!el)return;
+  if(rc&&rc.ebayAmazonCompareAutoRunEnabled){
+    el.innerHTML='<span>Amazon timer</span><span class="chip">On</span><span class="chip">Every '+esc(rc.ebayAmazonCompareAutoRunIntervalMinutes||1)+' min</span><span class="chip">'+esc(rc.ebayAmazonCompareAutoRunLimit||1)+' product/run</span><span>Highest score first</span>';
+  }else{
+    el.innerHTML='<span>Amazon timer</span><span class="chip">Off</span><span>Manual compare only</span>';
+  }
+}
 function renderEbayAmazonComparisonRows(candidates){
   var el=document.getElementById('ebayAmazonComparisonRows');
   var summary=document.getElementById('ebayAmazonComparisonSummary');
   if(!el)return;
-  var rows=(candidates||[]).slice().sort(function(a,b){
+  var allRows=(candidates||[]).slice().sort(function(a,b){
     return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
-  }).slice(0,200);
+  });
+  var rows=filterEbayRows(allRows,{
+    text:inputValue('ebayCompareSearch'),
+    status:selectValue('ebayCompareStatus','ALL'),
+    minScore:inputValue('ebayCompareMinScore')
+  });
+  state.ebayComparePage=clampPage(state.ebayComparePage,rows.length);
+  var start=(state.ebayComparePage-1)*pageSize;
+  var pageRows=rows.slice(start,start+pageSize);
   var pending=rows.filter(function(c){var s=ebayCandidateStatus(c);return s==='NOT_COMPARED'||s==='ERROR'}).length;
-  if(summary)summary.textContent=pending+' queued · highest score compares first';
+  var rc=(state.data&&state.data.ruleConfig)||{};
+  renderEbayCompareTimerInfo(rc);
+  var timer=rc.ebayAmazonCompareAutoRunEnabled?'timer on · '+(rc.ebayAmazonCompareAutoRunIntervalMinutes||1)+' min · '+(rc.ebayAmazonCompareAutoRunLimit||1)+'/run':'timer off';
+  if(summary)summary.textContent=pending+' queued · '+rows.length+' of '+allRows.length+' rows · '+timer+' · highest score first';
   if(!rows.length){
     el.innerHTML='<div class="empty">No comparison rows yet.</div>';
+    renderPager('ebayComparePager',state.ebayComparePage,0,'setEbayComparePage');
     return;
   }
-  el.innerHTML=rows.map(function(c){
+  el.innerHTML=pageRows.map(function(c){
     var score=ebayCandidateScore(c);
     var market=ebayCandidateMarket(c);
     var comparison=ebayComparison(c);
@@ -1294,6 +1399,41 @@ function renderEbayAmazonComparisonRows(candidates){
       actions+
       '</div></details>';
   }).join('');
+  renderPager('ebayComparePager',state.ebayComparePage,rows.length,'setEbayComparePage');
+}
+function setEbayCompactPage(page){
+  state.ebayCompactPage=page;
+  renderEbayCompactProducts(currentAllEbayRows());
+}
+function updateEbayCompactFilters(){
+  state.ebayCompactPage=1;
+  renderEbayCompactProducts(currentAllEbayRows());
+}
+function clearEbayCompactFilters(){
+  var search=document.getElementById('ebayCompactSearch');
+  var status=document.getElementById('ebayCompactStatus');
+  var minScore=document.getElementById('ebayCompactMinScore');
+  if(search)search.value='';
+  if(status)status.value='ALL';
+  if(minScore)minScore.value='';
+  updateEbayCompactFilters();
+}
+function setEbayComparePage(page){
+  state.ebayComparePage=page;
+  renderEbayAmazonComparisonRows(currentAllEbayRows());
+}
+function updateEbayCompareFilters(){
+  state.ebayComparePage=1;
+  renderEbayAmazonComparisonRows(currentAllEbayRows());
+}
+function clearEbayCompareFilters(){
+  var search=document.getElementById('ebayCompareSearch');
+  var status=document.getElementById('ebayCompareStatus');
+  var minScore=document.getElementById('ebayCompareMinScore');
+  if(search)search.value='';
+  if(status)status.value='ALL';
+  if(minScore)minScore.value='';
+  updateEbayCompareFilters();
 }
 
 function render(){
