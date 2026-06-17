@@ -82,6 +82,11 @@ export async function runApprovedAction(options: BackendClientOptions, action: A
     }, null, 2));
     return;
   }
-  console.log('MVP safety stop: complete the browser/API action manually, then this scaffold marks the action completed.');
+  if (!options.autoCompleteManualActions) {
+    console.log('Manual action left open. Complete the marketplace step and update the action from the dashboard or API.');
+    return;
+  }
+
+  console.log('Manual action auto-complete is enabled; marking the action completed after operator-side handling.');
   await completeAction(options, action.id);
 }

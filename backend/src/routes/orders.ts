@@ -24,6 +24,8 @@ const amazonPurchaseSchema = z.object({
 
 export async function registerOrderRoutes(app: FastifyInstance): Promise<void> {
   app.post('/orders/ebay/manual', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = ebayOrderSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -34,7 +36,7 @@ export async function registerOrderRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/orders/:id/amazon-purchase', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = orderParamsSchema.safeParse(request.params);
     const body = amazonPurchaseSchema.safeParse(request.body);

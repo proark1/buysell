@@ -1,27 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { prisma } from '../db/prisma.js';
-import { getDashboardData } from '../repositories/dashboardRepository.js';
-import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
-import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
-
-const settingsSchema = z.object({
-  minimumProfitUsd: z.number().positive().optional(),
-  minimumRoiPercent: z.number().positive().optional(),
-  minimumMatchConfidence: z.number().min(0).max(1).optional(),
-  estimatedSalesTaxRate: z.number().min(0).max(1).optional(),
-  returnRiskBuffer: z.number().min(0).optional(),
-  priceChangeBuffer: z.number().min(0).optional(),
-  maxDailyListings: z.number().int().positive().optional(),
-  maxDailyPurchaseAmountUsd: z.number().positive().optional(),
-  safeMode: z.boolean().optional(),
-  maxAmazonCostUsd: z.number().positive().optional(),
-  minimumOpportunityScore: z.number().int().min(0).max(100).optional(),
-  blockedCategories: z.array(z.string()).optional(),
-  blockedKeywords: z.array(z.string()).optional(),
-  allowedCategories: z.array(z.string()).optional(),
-  amazonPriceCheckIntervalMinutes: z.number().int().positive().optional()
-});
 
 const dashboardHtml = `<!doctype html>
 <html lang="en">
@@ -77,6 +54,7 @@ const dashboardHtml = `<!doctype html>
     .spacer{flex:1}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;
       border:1px solid var(--border-strong);background:rgba(17,26,46,.6);font-size:12px;font-weight:600;color:var(--muted)}
+    .mobile-nav{display:none;margin-top:10px}
     .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 0 rgba(52,211,153,.5)}
     .dot.on{background:var(--green);animation:pulse 2s infinite}
     .dot.off{background:var(--red)}
@@ -114,7 +92,11 @@ const dashboardHtml = `<!doctype html>
     .panel-head .hint{color:var(--muted);font-size:12px;font-weight:500}
     .panel-body{padding:16px 18px}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-    @media(max-width:960px){.grid-2{grid-template-columns:1fr}.layout{grid-template-columns:1fr}aside{display:none}}
+    @media(max-width:960px){
+      .grid-2{grid-template-columns:1fr}.layout{grid-template-columns:1fr}aside{display:none}
+      .topbar{flex-wrap:wrap;padding:16px;gap:10px}.topbar>div:first-child{width:100%}.topbar .spacer{display:none}
+      .mobile-nav{display:block}.content{padding:18px 16px}.pill{flex:1;justify-content:center}.topbar .btn{flex:1;justify-content:center}
+    }
     /* Tables */
     .table-wrap{overflow:auto;border-radius:12px;border:1px solid var(--border)}
     table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
@@ -226,6 +208,15 @@ const dashboardHtml = `<!doctype html>
       <div>
         <h1 id="viewTitle">Overview</h1>
         <div class="sub" id="viewSub">Live snapshot of your arbitrage pipeline</div>
+        <select id="mobileNav" class="mobile-nav" aria-label="View">
+          <option value="overview">Overview</option>
+          <option value="actions">Actions</option>
+          <option value="catalog">Listings &amp; Orders</option>
+          <option value="discovery">Discovery</option>
+          <option value="ebayDiscovery">eBay Discovery</option>
+          <option value="keys">API Keys</option>
+          <option value="settings">Settings</option>
+        </select>
       </div>
       <div class="spacer"></div>
       <div class="pill"><span class="dot" id="dbDot"></span><span id="dbLabel">Checking DB…</span></div>
@@ -453,7 +444,7 @@ const dashboardHtml = `<!doctype html>
       <!-- API KEYS -->
       <section class="view" id="view-keys">
         <div class="banner" id="keysLocked" style="display:none;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#fde68a">
-          <span>🔒</span><span>These routes are protected. Set the Local Agent Shared Secret under <b>Settings → Local Agent Connection</b> to save changes.</span>
+          <span>🔒</span><span>These routes are protected. Configure <b>LOCAL_AGENT_SHARED_SECRET</b> on the backend, then save the same value under Settings → Local Agent Connection in this browser.</span>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>API Keys &amp; Credentials</h2><span class="hint">Values are encrypted (AES-256-GCM) and saved in Postgres; they override environment variables.</span></div>
@@ -528,9 +519,12 @@ var BADGE={
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
 
-function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
-function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
-function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));var err=new Error(m);err.payload=j;throw err}return j})})}
+  function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
+  function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
+  function responseJson(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));var err=new Error(m);err.status=r.status;err.payload=j;throw err}return j})}
+  function apiJson(url,options){return apiFetch(url,options).then(responseJson)}
+  function jpost(url,body){var h=Object.assign({'content-type':'application/json'},authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(responseJson)}
+  function confirmAction(title,detail){return window.confirm(title+(detail?'\\n\\n'+detail:''))}
 
 function toast(title,msg,kind){
   var box=document.getElementById('toasts');
@@ -736,11 +730,11 @@ function renderKeepaTokenStatus(status){
   if(refill>0)parts.push('next in '+refill+'s');
   el.textContent=parts.join(' · ');
 }
-function loadKeepaTokenStatus(){
-  return fetch('/amazon-discovery/token-status').then(function(r){return r.json().then(function(j){if(!r.ok)throw j;return j})}).then(function(j){renderKeepaTokenStatus(j)}).catch(function(e){
-    var el=document.getElementById('keepaTokenHint');
-    if(el)el.textContent=(e&&e.error)?e.error:'Keepa tokens unavailable';
-  });
+  function loadKeepaTokenStatus(){
+    return apiJson('/amazon-discovery/token-status').then(function(j){renderKeepaTokenStatus(j)}).catch(function(e){
+      var el=document.getElementById('keepaTokenHint');
+      if(el)el.textContent=(e&&e.error)?e.error:'Keepa tokens unavailable';
+    });
 }
 function renderKeepaTokenFromPayload(payload){
   if(!payload)return;
@@ -1195,12 +1189,13 @@ function render(){
 
 function selectAction(id){document.getElementById('actionId').value=id;document.getElementById('selTag').innerHTML='Selected: <b>'+esc(id)+'</b>';navigate('actions')}
 
-function navigate(view){
-  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===view)});
-  document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+view)});
-  document.getElementById('viewTitle').textContent=META[view][0];
-  document.getElementById('viewSub').textContent=META[view][1];
-  if(view==='keys')loadCredentials();
+  function navigate(view){
+    document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===view)});
+    document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+view)});
+    var mobile=document.getElementById('mobileNav');if(mobile)mobile.value=view;
+    document.getElementById('viewTitle').textContent=META[view][0];
+    document.getElementById('viewSub').textContent=META[view][1];
+    if(view==='keys')loadCredentials();
 }
 
 function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
@@ -1226,18 +1221,20 @@ function renderCredentials(list){
     return '<div class="cred-group"><div class="cred-group-title">'+esc(g)+'</div>'+groups[g].map(credField).join('')+'</div>';
   }).join('');
 }
-function loadCredentials(){
-  apiFetch('/api/credentials').then(function(r){
-    if(r.status===401){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Set the Local Agent Shared Secret in Settings, then reopen this tab.</div>';return null}
-    document.getElementById('keysLocked').style.display='none';return r.json();
-  }).then(function(j){if(j)renderCredentials(j.credentials)}).catch(function(e){document.getElementById('credsContainer').innerHTML='<div class="empty">Could not load credentials: '+esc(e.message)+'</div>'});
-}
-function putCred(key,value,okMsg){
-  return apiFetch('/api/credentials/'+encodeURIComponent(key),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({value:value})}).then(function(r){
-    if(r.status===401){document.getElementById('keysLocked').style.display='flex';throw new Error('Unauthorized — set the Local Agent Shared Secret in Settings')}
-    return r.json();
-  }).then(function(){toast(okMsg,key,'ok');loadCredentials()}).catch(function(e){toast('Save failed',e.message,'err')});
-}
+  function loadCredentials(){
+    apiFetch('/api/credentials').then(function(r){
+      if(r.status===401){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Set the Local Agent Shared Secret in Settings, then reopen this tab.</div>';return null}
+      if(r.status===503){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Protected routes are not configured. Set LOCAL_AGENT_SHARED_SECRET on the backend first.</div>';return null}
+      document.getElementById('keysLocked').style.display='none';return responseJson(r);
+    }).then(function(j){if(j)renderCredentials(j.credentials)}).catch(function(e){document.getElementById('credsContainer').innerHTML='<div class="empty">Could not load credentials: '+esc(e.message)+'</div>'});
+  }
+  function putCred(key,value,okMsg){
+    return apiFetch('/api/credentials/'+encodeURIComponent(key),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({value:value})}).then(function(r){
+      if(r.status===401){document.getElementById('keysLocked').style.display='flex';throw new Error('Unauthorized — set the Local Agent Shared Secret in Settings')}
+      if(r.status===503){document.getElementById('keysLocked').style.display='flex';throw new Error('Protected routes are not configured — set LOCAL_AGENT_SHARED_SECRET on the backend first')}
+      return responseJson(r);
+    }).then(function(){toast(okMsg,key,'ok');loadCredentials()}).catch(function(e){toast('Save failed',e.message,'err')});
+  }
 function saveCred(key){var el=document.getElementById('cred_'+key);putCred(key,el?el.value:'','Credential saved')}
 function clearCred(key){putCred(key,'','Credential cleared')}
 
@@ -1252,21 +1249,22 @@ function checkDb(){
   fetch('/api/health/db').then(function(r){return r.json()}).then(function(j){setDb(!!j.connected,j.error)}).catch(function(){setDb(false)});
 }
 
-function load(){
-  document.getElementById('agentSecret').value=localStorage.getItem('localAgentSecret')||'';
-  checkDb();
-  fetch('/api/dashboard').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(data){
-    state.data=data;document.getElementById('offline').classList.remove('show');render();
-  }).catch(function(e){
-    document.getElementById('offlineMsg').textContent='Could not load dashboard data: '+e.message+'. Check the database connection.';
-    document.getElementById('offline').classList.add('show');
-  });
-}
+  function load(){
+    document.getElementById('agentSecret').value=localStorage.getItem('localAgentSecret')||'';
+    checkDb();
+    apiJson('/api/dashboard').then(function(data){
+      state.data=data;document.getElementById('offline').classList.remove('show');render();
+    }).catch(function(e){
+      var authHint=e.status===401||e.status===503?' Set the Local Agent Shared Secret in Settings and ensure the backend has a configured shared secret.':' Check the database connection.';
+      document.getElementById('offlineMsg').textContent='Could not load dashboard data: '+e.message+'.'+authHint;
+      document.getElementById('offline').classList.add('show');
+    });
+  }
 
-function saveSecret(){localStorage.setItem('localAgentSecret',document.getElementById('agentSecret').value);toast('Secret saved','Stored in this browser.','ok')}
-function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';toast('Secret cleared',null,'ok')}
-function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
-  fetch('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(r){return r.json()}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
+  function saveSecret(){localStorage.setItem('localAgentSecret',document.getElementById('agentSecret').value);toast('Secret saved','Stored in this browser.','ok')}
+  function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';toast('Secret cleared',null,'ok')}
+  function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
+    apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
 function saveSafety(){
   var body={
     safeMode:document.getElementById('settingsSafeMode').checked,
@@ -1276,15 +1274,15 @@ function saveSafety(){
     blockedCategories:lines(document.getElementById('settingsBlockedCategories').value),
     blockedKeywords:lines(document.getElementById('settingsBlockedKeywords').value)
   };
-  fetch('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(){toast('Safety rules saved',null,'ok');load()}).catch(function(e){toast('Save failed',e.message,'err')});
-}
-function runMonitor(){toast('Running price check','Scanning active listings…');
-  jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');load()}).catch(function(e){toast('Price check failed',e.message,'err')})}
-function actId(){var id=document.getElementById('actionId').value.trim();if(!id)toast('No action selected','Click a row or paste an Action ID.','warn');return id}
-function updateAction(status){var id=actId();if(!id)return;apiFetch('/actions/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:status,reviewedBy:'dashboard'})}).then(function(r){return r.json()}).then(function(){toast('Action '+status.toLowerCase(),id,'ok');load()}).catch(function(e){toast('Update failed',e.message,'err')})}
-function approveAction(){updateAction('APPROVED')}
-function rejectAction(){updateAction('REJECTED')}
-function executeAction(){var id=actId();if(!id)return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(function(r){return r.json()}).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
+    apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){toast('Safety rules saved',null,'ok');load()}).catch(function(e){toast('Save failed',e.message,'err')});
+  }
+  function runMonitor(){if(!confirmAction('Run Amazon price check now?','This can pause internal listings and create PAUSE actions when source prices rise.'))return;toast('Running price check','Scanning active listings…');
+    jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');load()}).catch(function(e){toast('Price check failed',e.message,'err')})}
+  function actId(){var id=document.getElementById('actionId').value.trim();if(!id)toast('No action selected','Click a row or paste an Action ID.','warn');return id}
+  function updateAction(status){var id=actId();if(!id)return;if(!confirmAction(status.charAt(0)+status.slice(1).toLowerCase()+' this action?',id))return;apiFetch('/actions/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:status,reviewedBy:'dashboard'})}).then(responseJson).then(function(){toast('Action '+status.toLowerCase(),id,'ok');load()}).catch(function(e){toast('Update failed',e.message,'err')})}
+  function approveAction(){updateAction('APPROVED')}
+  function rejectAction(){updateAction('REJECTED')}
+  function executeAction(){var id=actId();if(!id)return;if(!confirmAction('Execute this approved action?',id))return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(responseJson).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
 function toggleAmazonCandidate(el){
   state.selectedAmazon[el.getAttribute('data-amazon-id')]=el.checked;
   updateAmazonScoutActions();
@@ -1460,10 +1458,11 @@ function searchOpportunities(){
   toast('Scanning',profile+(q?' · '+q:''));
   jpost('/opportunities/scan',body).then(function(res){renderScanResults(res);toast('Scan complete',res.summary,'ok');load()}).catch(function(e){toast('Scan failed',e.message,'err')})
 }
-function createOrder(){jpost('/orders/ebay/manual',{ebayOrderId:document.getElementById('orderEbayOrderId').value,ebayItemId:document.getElementById('orderEbayItemId').value,buyerName:document.getElementById('orderBuyerName').value,buyerShippingAddress:{enteredInDashboard:true},salePrice:Number(document.getElementById('orderSalePrice').value)}).then(function(res){toast('Order created',res,'ok');load()}).catch(function(e){toast('Create failed',e.message,'err')})}
-function recordPurchase(){apiFetch('/orders/'+encodeURIComponent(document.getElementById('purchaseOrderId').value)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(function(r){return r.json()}).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
+  function createOrder(){var orderId=document.getElementById('orderEbayOrderId').value;if(!confirmAction('Create BUY action from this eBay order?',orderId||'New manual order'))return;jpost('/orders/ebay/manual',{ebayOrderId:orderId,ebayItemId:document.getElementById('orderEbayItemId').value,buyerName:document.getElementById('orderBuyerName').value,buyerShippingAddress:{enteredInDashboard:true},salePrice:Number(document.getElementById('orderSalePrice').value)}).then(function(res){toast('Order created',res,'ok');load()}).catch(function(e){toast('Create failed',e.message,'err')})}
+  function recordPurchase(){var orderId=document.getElementById('purchaseOrderId').value;if(!confirmAction('Record this Amazon purchase?',orderId||'Selected internal order'))return;apiFetch('/orders/'+encodeURIComponent(orderId)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(responseJson).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
 
-document.getElementById('nav').addEventListener('click',function(e){var item=e.target.closest('.nav-item');if(item)navigate(item.getAttribute('data-view'))});
+  document.getElementById('nav').addEventListener('click',function(e){var item=e.target.closest('.nav-item');if(item)navigate(item.getAttribute('data-view'))});
+  document.getElementById('mobileNav').addEventListener('change',function(e){navigate(e.target.value)});
 document.getElementById('scanProfile').addEventListener('change',renderProfiles);
 document.getElementById('amazonScoutProfile').addEventListener('change',renderAmazonProfiles);
 document.getElementById('amazonScoutCategory').addEventListener('change',renderAmazonProfiles);
@@ -1504,26 +1503,4 @@ setInterval(loadKeepaTokenStatus,60000);
 export async function registerDashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
   app.get('/favicon.ico', async (_request, reply) => reply.status(204).send(null));
-  app.get('/api/dashboard', async () => getDashboardData(prisma));
-  app.get('/api/health/db', async () => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return { connected: true };
-    } catch (error) {
-      return { connected: false, error: error instanceof Error ? error.message : 'Database unavailable' };
-    }
-  });
-  app.get('/api/settings', async () => getActiveRuleConfig(prisma));
-  app.patch('/api/settings', async (request, reply) => {
-    const parsed = settingsSchema.safeParse(request.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid settings payload', details: parsed.error.flatten() });
-    const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-    const decimalKeys = new Set(['minimumProfitUsd', 'minimumRoiPercent', 'minimumMatchConfidence', 'estimatedSalesTaxRate', 'returnRiskBuffer', 'priceChangeBuffer', 'maxDailyPurchaseAmountUsd', 'maxAmazonCostUsd']);
-    const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value]));
-    const ruleConfig = existing
-      ? await prisma.ruleConfig.update({ where: { id: existing.id }, data })
-      : await prisma.ruleConfig.create({ data: { id: 'default-rule-config', name: 'default', active: true, ...data } });
-    return { ruleConfig };
-  });
-  app.post('/api/monitor/amazon-prices/run', async () => runAmazonPriceMonitor(prisma));
 }

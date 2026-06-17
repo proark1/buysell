@@ -50,14 +50,14 @@ async function statusFor(key: string, storedKeys: Set<string>): Promise<unknown>
 
 export async function registerCredentialRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/credentials', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     const storedKeys = await getStoredCredentialKeys(prisma);
     const credentials = await Promise.all(CREDENTIAL_KEYS.map((def) => statusFor(def.key, storedKeys)));
     return { credentials };
   });
 
   app.put('/api/credentials/:key', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = paramsSchema.safeParse(request.params);
     const body = updateSchema.safeParse(request.body);

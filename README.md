@@ -38,6 +38,12 @@ Health check:
 curl http://localhost:3000/health
 ```
 
+Most operator routes are protected. For local curl examples that search, scan, update settings, change actions, manage credentials, or record orders, include:
+
+```bash
+-H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
+```
+
 Profit calculation:
 
 ```bash
@@ -125,10 +131,11 @@ BACKEND_URL=http://localhost:3000 LOCAL_AGENT_RUN_ONCE=true npm run dev -w local
 ```
 
 The local agent polls approved action-list items and keeps the MVP in manual-confirmation mode before any eBay or Amazon action is completed.
+Manual marketplace actions are left open by default after the agent prints the required operator step. Set `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` only when another trusted process has actually completed those manual actions and you want the scaffold to mark them complete.
 
 Set `COMPUTER_USE_VERIFIER_COMMAND` to connect a real computer-use verifier. The local agent sends the verification job JSON to the command on stdin and expects a verification-result JSON object on stdout; it then posts that result back to `/actions/:id/verification-result`. No Playwright browser automation is used for this gate.
 
-If `LOCAL_AGENT_SHARED_SECRET` is set on the backend, include the same value in the local agent environment so `/actions` polling and updates are accepted.
+Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted.
 
 Execute approved listing draft action:
 

@@ -30,6 +30,7 @@ import {
   type EbayComparisonSettings
 } from '../services/marketplaces.js';
 import { getSecret } from '../services/secrets.js';
+import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import type { ProductOpportunity } from '../domain/products.js';
 
 const opportunityRequestSchema = z.object({
@@ -404,7 +405,9 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     markets: amazonDiscoveryMarkets,
     comparisonPresets: ebayComparisonPresets
   }));
-  app.get('/amazon-discovery/token-status', async (_request, reply) => {
+  app.get('/amazon-discovery/token-status', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
     if (!keepaApiKey) {
       return reply.status(503).send({ error: 'KEEPA_API_KEY is required for Keepa token status' });
@@ -422,6 +425,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/opportunities/search', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = opportunityRequestSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -475,6 +480,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/opportunities/scan', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = scanRequestSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -595,6 +602,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/amazon-discovery/run', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = amazonDiscoveryRunRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid Amazon discovery request', details: parsed.error.flatten() });
@@ -718,6 +727,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/amazon-discovery/select', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = amazonDiscoverySelectRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid Amazon discovery selection request', details: parsed.error.flatten() });
@@ -731,6 +742,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/amazon-discovery/compare', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = amazonDiscoveryCompareRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid Amazon discovery comparison request', details: parsed.error.flatten() });
@@ -769,6 +782,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/amazon-discovery/consider', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = amazonDiscoveryConsiderRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid Amazon discovery review request', details: parsed.error.flatten() });
@@ -785,6 +800,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/ebay-discovery/run', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = ebayDiscoveryRunRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid eBay discovery request', details: parsed.error.flatten() });
@@ -929,6 +946,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/ebay-discovery/select', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = ebayDiscoverySelectRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid eBay discovery selection request', details: parsed.error.flatten() });
@@ -942,6 +961,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/ebay-discovery/compare', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = ebayDiscoveryCompareRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid eBay discovery comparison request', details: parsed.error.flatten() });
@@ -979,6 +1000,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
   });
 
   app.post('/ebay-discovery/consider', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
     const parsed = ebayDiscoveryConsiderRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid eBay discovery review request', details: parsed.error.flatten() });

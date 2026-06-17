@@ -20,7 +20,8 @@ async function pollApprovedActions(): Promise<void> {
   const clientOptions = {
     backendUrl: env.backendUrl,
     sharedSecret: env.sharedSecret,
-    computerUseVerifierCommand: env.computerUseVerifierCommand
+    computerUseVerifierCommand: env.computerUseVerifierCommand,
+    autoCompleteManualActions: env.autoCompleteManualActions
   };
   const actions = await fetchApprovedActions(clientOptions);
 

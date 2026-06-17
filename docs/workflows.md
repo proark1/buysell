@@ -58,11 +58,11 @@ When persisted opportunities produce a `LIST`, `REPRICE`, `PAUSE`, or `MANUAL_RE
 
 ## Local Agent Polling
 
-The local agent polls `GET /actions?status=APPROVED`, describes the approved work for the operator, and then marks the action completed after the manual step. This creates the bridge for PC-side browser automation while preserving the MVP safety stop before Amazon checkout or eBay listing execution.
+The local agent polls `GET /actions?status=APPROVED` and describes the approved work for the operator. It leaves manual marketplace actions open by default so the dashboard or API can record completion after the operator or a trusted executor actually finishes the step. `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` restores the scaffold auto-complete behavior only for controlled environments.
 
 ## Local Agent Authentication
 
-If `LOCAL_AGENT_SHARED_SECRET` is configured on the backend, action-list routes require the local agent to send the same value in the `x-local-agent-secret` header. The local agent already sends this header when `LOCAL_AGENT_SHARED_SECRET` is present in its environment, so approved action polling can be locked down without changing the operator workflow.
+Protected operator routes require a shared secret. Configure `LOCAL_AGENT_SHARED_SECRET` on the backend, then send the same value in the `x-local-agent-secret` header from the local agent or dashboard. A secret stored in the encrypted credentials table can also authorize requests after the backend has been bootstrapped with an existing valid secret.
 
 ## Rule Configuration
 

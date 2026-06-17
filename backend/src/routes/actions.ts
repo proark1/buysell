@@ -38,7 +38,7 @@ const verificationResultBodySchema = z.object({
 
 export async function registerActionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/actions', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const parsed = listActionsQuerySchema.safeParse(request.query ?? {});
 
@@ -52,7 +52,7 @@ export async function registerActionRoutes(app: FastifyInstance): Promise<void> 
 
 
   app.post('/actions/:id/execute', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = updateActionParamsSchema.safeParse(request.params);
     if (!params.success) {
@@ -63,7 +63,7 @@ export async function registerActionRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post('/actions/:id/verification-result', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = updateActionParamsSchema.safeParse(request.params);
     const body = verificationResultBodySchema.safeParse(request.body);
@@ -82,7 +82,7 @@ export async function registerActionRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.patch('/actions/:id', async (request, reply) => {
-    if (!verifyLocalAgentRequest(request, reply)) return;
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = updateActionParamsSchema.safeParse(request.params);
     const body = updateActionBodySchema.safeParse(request.body);

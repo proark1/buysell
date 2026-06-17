@@ -37,6 +37,7 @@ export interface BackendClientOptions {
   backendUrl: string;
   sharedSecret?: string;
   computerUseVerifierCommand?: string;
+  autoCompleteManualActions?: boolean;
 }
 
 const headers = (sharedSecret?: string): Record<string, string> => {
