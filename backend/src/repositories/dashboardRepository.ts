@@ -8,6 +8,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     orders,
     actions,
     purchases,
+    discoveryScanRuns,
     ruleConfig
   ] = await Promise.all([
     db.productCandidate.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -16,6 +17,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     db.order.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
     db.actionItem.findMany({ orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }], take: 50 }),
     db.amazonPurchase.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
+    db.discoveryScanRun.findMany({ orderBy: { startedAt: 'desc' }, take: 10 }),
     db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } })
   ]);
 
@@ -26,7 +28,8 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
       ebayListings: await db.ebayListing.count(),
       orders: await db.order.count(),
       actions: await db.actionItem.count(),
-      purchases: await db.amazonPurchase.count()
+      purchases: await db.amazonPurchase.count(),
+      discoveryScans: await db.discoveryScanRun.count()
     },
     productCandidates,
     amazonMatches,
@@ -34,6 +37,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     orders,
     actions,
     purchases,
+    discoveryScanRuns,
     ruleConfig
   };
 }

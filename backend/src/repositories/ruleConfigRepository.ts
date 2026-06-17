@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { defaultAllowedCategories, defaultBlockedCategories, defaultBlockedKeywords } from '../services/discoveryPolicy.js';
 import type { OpportunityThresholds } from '../services/opportunityDecider.js';
 
 export interface ActiveRuleConfig {
@@ -8,8 +9,13 @@ export interface ActiveRuleConfig {
   priceChangeBuffer: number;
   maxDailyListings: number;
   maxDailyPurchaseAmountUsd: number;
+  safeMode: boolean;
+  maxAmazonCostUsd: number;
+  minimumOpportunityScore: number;
   blockedBrands: string[];
   blockedCategories: string[];
+  blockedKeywords: string[];
+  allowedCategories: string[];
   amazonPriceCheckIntervalMinutes: number;
 }
 
@@ -24,8 +30,13 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   priceChangeBuffer: 2,
   maxDailyListings: 10,
   maxDailyPurchaseAmountUsd: 250,
+  safeMode: true,
+  maxAmazonCostUsd: 150,
+  minimumOpportunityScore: 65,
   blockedBrands: [],
-  blockedCategories: [],
+  blockedCategories: defaultBlockedCategories,
+  blockedKeywords: defaultBlockedKeywords,
+  allowedCategories: defaultAllowedCategories,
   amazonPriceCheckIntervalMinutes: 30
 };
 
@@ -60,8 +71,13 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     priceChangeBuffer: numberValue(config.priceChangeBuffer, defaultRuleConfig.priceChangeBuffer),
     maxDailyListings: numberValue(config.maxDailyListings, defaultRuleConfig.maxDailyListings),
     maxDailyPurchaseAmountUsd: numberValue(config.maxDailyPurchaseAmountUsd, defaultRuleConfig.maxDailyPurchaseAmountUsd),
+    safeMode: typeof config.safeMode === 'boolean' ? config.safeMode : defaultRuleConfig.safeMode,
+    maxAmazonCostUsd: numberValue(config.maxAmazonCostUsd, defaultRuleConfig.maxAmazonCostUsd),
+    minimumOpportunityScore: numberValue(config.minimumOpportunityScore, defaultRuleConfig.minimumOpportunityScore),
     blockedBrands: stringArray(config.blockedBrands),
-    blockedCategories: stringArray(config.blockedCategories),
+    blockedCategories: stringArray(config.blockedCategories).length > 0 ? stringArray(config.blockedCategories) : defaultRuleConfig.blockedCategories,
+    blockedKeywords: stringArray(config.blockedKeywords).length > 0 ? stringArray(config.blockedKeywords) : defaultRuleConfig.blockedKeywords,
+    allowedCategories: stringArray(config.allowedCategories).length > 0 ? stringArray(config.allowedCategories) : defaultRuleConfig.allowedCategories,
     amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes)
   };
 }

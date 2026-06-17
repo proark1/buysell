@@ -4,30 +4,60 @@ import { findAmazonMatches } from '../clients/keepaClient.js';
 import { scoreAmazonMatch } from '../services/matchScorer.js';
 import { calculateProfit } from '../services/profitCalculator.js';
 import { decideOpportunity, type OpportunityThresholds } from '../services/opportunityDecider.js';
+import { evaluateProductSafety, type SafetyPolicy } from '../services/discoveryPolicy.js';
+import { scoreOpportunity } from '../services/opportunityScorer.js';
 
 export interface BuildOpportunitiesOptions {
   query: string;
+  queries?: string[];
   serpApiKey: string;
   keepaApiKey: string;
   limit?: number;
+  discoveryProfile?: string;
+  minimumOpportunityScore?: number;
+  maxAmazonCostUsd?: number;
   thresholds?: OpportunityThresholds;
   estimatedSalesTaxRate?: number;
   returnRiskBuffer?: number;
   priceChangeBuffer?: number;
+  safeMode?: boolean;
   blockedBrands?: string[];
   blockedCategories?: string[];
+  blockedKeywords?: string[];
+  allowedCategories?: string[];
 }
 
 export async function buildOpportunities(options: BuildOpportunitiesOptions): Promise<ProductOpportunity[]> {
-  const ebayCandidates = await searchEbayCandidates({
-    query: options.query,
-    apiKey: options.serpApiKey,
-    limit: options.limit ?? 10
-  });
+  const queryList = (options.queries?.length ? options.queries : [options.query])
+    .map((query) => query.trim())
+    .filter((query, index, values) => query.length > 0 && values.indexOf(query) === index);
+
+  const candidatesByKey = new Map<string, ProductOpportunity['ebay']>();
+  for (const query of queryList) {
+    const ebayCandidates = await searchEbayCandidates({
+      query,
+      apiKey: options.serpApiKey,
+      limit: Math.max(3, Math.ceil((options.limit ?? 10) / queryList.length))
+    });
+
+    for (const candidate of ebayCandidates) {
+      const key = `${candidate.title.toLowerCase()}|${candidate.soldPrice ?? ''}`;
+      if (!candidatesByKey.has(key)) candidatesByKey.set(key, candidate);
+    }
+  }
 
   const opportunities: ProductOpportunity[] = [];
+  const thresholds = options.thresholds ?? { minimumProfitUsd: 10, minimumRoiPercent: 25, minimumMatchConfidence: 0.75 };
+  const policy: SafetyPolicy = {
+    safeMode: options.safeMode ?? true,
+    blockedBrands: options.blockedBrands ?? [],
+    blockedCategories: options.blockedCategories ?? [],
+    blockedKeywords: options.blockedKeywords ?? [],
+    allowedCategories: options.allowedCategories ?? [],
+    maxAmazonCostUsd: options.maxAmazonCostUsd ?? 150
+  };
 
-  for (const ebay of ebayCandidates) {
+  for (const ebay of [...candidatesByKey.values()].slice(0, options.limit ?? 10)) {
     const amazonMatches = await findAmazonMatches({
       query: ebay.title,
       apiKey: options.keepaApiKey,
@@ -41,19 +71,34 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
     const bestMatch = scoredMatches[0];
     if (!bestMatch) continue;
 
-    const blockedBrands = options.blockedBrands ?? [];
-    const blockedCategories = options.blockedCategories ?? [];
-    const isBlockedBrand = bestMatch.brand ? blockedBrands.some((brand) => brand.toLowerCase() === bestMatch.brand?.toLowerCase()) : false;
-    const isBlockedCategory = ebay.category ? blockedCategories.some((category) => category.toLowerCase() === ebay.category?.toLowerCase()) : false;
+    const safety = evaluateProductSafety(ebay, bestMatch, policy);
 
     const amazonCost = bestMatch.buyBoxPrice ?? bestMatch.currentPrice;
     if (!ebay.soldPrice || !amazonCost) {
       const emptyProfit = { estimatedFees: 0, estimatedTax: 0, bufferAmount: 0, expectedProfit: 0, roiPercent: 0, marginPercent: 0 };
-      opportunities.push({
+      const decision = safety.status === 'REJECT'
+        ? {
+          decision: 'REJECT' as const,
+          confidence: 0.95,
+          riskFlags: safety.riskFlags,
+          reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
+        }
+        : decideOpportunity(ebay, bestMatch, emptyProfit, thresholds);
+      const opportunity: ProductOpportunity = {
         ebay,
         amazon: bestMatch,
         profit: emptyProfit,
-        decision: decideOpportunity(ebay, bestMatch, emptyProfit, options.thresholds)
+        decision,
+        safety,
+        discoveryProfile: options.discoveryProfile
+      };
+      opportunity.score = scoreOpportunity(opportunity, {
+        minimumProfitUsd: thresholds.minimumProfitUsd,
+        minimumRoiPercent: thresholds.minimumRoiPercent,
+        minimumOpportunityScore: options.minimumOpportunityScore ?? 65
+      }, [...new Set([...safety.riskFlags, ...decision.riskFlags])]);
+      opportunities.push({
+        ...opportunity
       });
       continue;
     }
@@ -66,20 +111,45 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
       priceChangeBuffer: options.priceChangeBuffer ?? 2
     });
 
-    opportunities.push({
+    const baseDecision = safety.status === 'REJECT'
+      ? {
+        decision: 'REJECT' as const,
+        confidence: 0.95,
+        riskFlags: safety.riskFlags,
+        reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
+      }
+      : decideOpportunity(ebay, bestMatch, profit, thresholds);
+
+    const preliminaryOpportunity: ProductOpportunity = {
       ebay,
       amazon: bestMatch,
       profit,
-      decision: isBlockedBrand || isBlockedCategory
-        ? {
-          decision: 'REJECT',
-          confidence: 0.95,
-          riskFlags: [isBlockedBrand ? 'BLOCKED_BRAND' : undefined, isBlockedCategory ? 'BLOCKED_CATEGORY' : undefined].filter((flag): flag is string => Boolean(flag)),
-          reasoningSummary: 'Rejected by active rule configuration blocklist.'
-        }
-        : decideOpportunity(ebay, bestMatch, profit, options.thresholds)
+      decision: baseDecision,
+      safety,
+      discoveryProfile: options.discoveryProfile
+    };
+    const score = scoreOpportunity(preliminaryOpportunity, {
+      minimumProfitUsd: thresholds.minimumProfitUsd,
+      minimumRoiPercent: thresholds.minimumRoiPercent,
+      minimumOpportunityScore: options.minimumOpportunityScore ?? 65
+    }, [...new Set([...safety.riskFlags, ...baseDecision.riskFlags])]);
+
+    const minimumOpportunityScore = options.minimumOpportunityScore ?? 65;
+    const decision = baseDecision.decision !== 'REJECT' && score.total < minimumOpportunityScore
+      ? {
+        decision: 'REJECT' as const,
+        confidence: 0.8,
+        riskFlags: [...new Set([...baseDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+        reasoningSummary: `Rejected because opportunity score ${score.total} is below ${minimumOpportunityScore}.`
+      }
+      : baseDecision;
+
+    opportunities.push({
+      ...preliminaryOpportunity,
+      decision,
+      score
     });
   }
 
-  return opportunities;
+  return opportunities.sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
 }

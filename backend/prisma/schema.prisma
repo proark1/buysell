@@ -53,6 +53,12 @@ enum ActionStatus {
 
 model ProductCandidate {
   id                String            @id @default(cuid())
+  discoveryRunId    String?
+  discoveryProfile  String?
+  opportunityScore  Int?
+  safetyStatus      String?
+  riskFlags         Json?
+  scoreBreakdown    Json?
   source            String            @default("serpapi")
   ebayTitle         String
   ebayUrl           String?
@@ -68,10 +74,14 @@ model ProductCandidate {
   aiDecisions       AiDecision[]
   ebayListings      EbayListing[]
   actionItems       ActionItem[]
+  discoveryRun      DiscoveryScanRun? @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+
+  @@index([discoveryRunId])
+  @@index([opportunityScore])
 }
 
 model AmazonMatch {
-  id                 String            @id @default(cuid())
+  id                 String           @id @default(cuid())
   productCandidateId String
   asin               String
   amazonTitle        String
@@ -79,17 +89,19 @@ model AmazonMatch {
   brand              String?
   model              String?
   upc                String?
-  currentPrice       Decimal?          @db.Decimal(10, 2)
-  buyBoxPrice        Decimal?          @db.Decimal(10, 2)
+  currentPrice       Decimal?         @db.Decimal(10, 2)
+  buyBoxPrice        Decimal?         @db.Decimal(10, 2)
+  avg90Price         Decimal?         @db.Decimal(10, 2)
+  priceDropPercent   Decimal?         @db.Decimal(7, 3)
   availabilityStatus String?
   salesRank          Int?
-  rating             Decimal?          @db.Decimal(3, 2)
+  rating             Decimal?         @db.Decimal(3, 2)
   reviewCount        Int?
   rawKeepaJson       Json?
-  matchConfidence    Decimal           @default(0) @db.Decimal(4, 3)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  productCandidate   ProductCandidate  @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  matchConfidence    Decimal          @default(0) @db.Decimal(4, 3)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
   profitSnapshots    ProfitSnapshot[]
   aiDecisions        AiDecision[]
   ebayListings       EbayListing[]
@@ -100,40 +112,40 @@ model AmazonMatch {
 }
 
 model ProfitSnapshot {
-  id                    String           @id @default(cuid())
-  productCandidateId    String
-  amazonMatchId         String
+  id                     String           @id @default(cuid())
+  productCandidateId     String
+  amazonMatchId          String
   estimatedEbaySalePrice Decimal          @db.Decimal(10, 2)
-  amazonCost            Decimal          @db.Decimal(10, 2)
-  estimatedFees         Decimal          @db.Decimal(10, 2)
-  estimatedTax          Decimal          @db.Decimal(10, 2)
-  bufferAmount          Decimal          @db.Decimal(10, 2)
-  expectedProfit        Decimal          @db.Decimal(10, 2)
-  roiPercent            Decimal          @db.Decimal(7, 3)
-  marginPercent         Decimal          @db.Decimal(7, 3)
-  calculationVersion    String           @default("v1")
-  createdAt             DateTime         @default(now())
-  productCandidate      ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
-  amazonMatch           AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Cascade)
+  amazonCost             Decimal          @db.Decimal(10, 2)
+  estimatedFees          Decimal          @db.Decimal(10, 2)
+  estimatedTax           Decimal          @db.Decimal(10, 2)
+  bufferAmount           Decimal          @db.Decimal(10, 2)
+  expectedProfit         Decimal          @db.Decimal(10, 2)
+  roiPercent             Decimal          @db.Decimal(7, 3)
+  marginPercent          Decimal          @db.Decimal(7, 3)
+  calculationVersion     String           @default("v1")
+  createdAt              DateTime         @default(now())
+  productCandidate       ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch            AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Cascade)
 
   @@index([productCandidateId])
   @@index([amazonMatchId])
 }
 
 model AiDecision {
-  id                 String           @id @default(cuid())
-  productCandidateId String
-  amazonMatchId      String?
-  decision           AiDecisionType
-  confidence         Decimal          @db.Decimal(4, 3)
-  reasoningSummary   String
-  riskFlags          Json?
-  recommendedEbayTitle String?
+  id                         String           @id @default(cuid())
+  productCandidateId         String
+  amazonMatchId              String?
+  decision                   AiDecisionType
+  confidence                 Decimal          @db.Decimal(4, 3)
+  reasoningSummary           String
+  riskFlags                  Json?
+  recommendedEbayTitle       String?
   recommendedEbayDescription String?
-  recommendedPrice   Decimal?         @db.Decimal(10, 2)
-  createdAt          DateTime         @default(now())
-  productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
-  amazonMatch        AmazonMatch?     @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  recommendedPrice           Decimal?         @db.Decimal(10, 2)
+  createdAt                  DateTime         @default(now())
+  productCandidate           ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch                AmazonMatch?     @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
 
   @@index([productCandidateId])
 }
@@ -203,7 +215,6 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
-
 model ActionItem {
   id                 String            @id @default(cuid())
   productCandidateId String?
@@ -229,22 +240,45 @@ model ActionItem {
 }
 
 model RuleConfig {
-  id                         String   @id @default(cuid())
-  name                       String   @unique
-  active                     Boolean  @default(false)
-  minimumProfitUsd           Decimal  @default(10.00) @db.Decimal(10, 2)
-  minimumRoiPercent          Decimal  @default(25.000) @db.Decimal(7, 3)
-  minimumMatchConfidence     Decimal  @default(0.750) @db.Decimal(4, 3)
-  estimatedSalesTaxRate      Decimal  @default(0.080) @db.Decimal(5, 4)
-  returnRiskBuffer           Decimal  @default(2.00) @db.Decimal(10, 2)
-  priceChangeBuffer          Decimal  @default(2.00) @db.Decimal(10, 2)
-  maxDailyListings           Int      @default(10)
-  maxDailyPurchaseAmountUsd  Decimal  @default(250.00) @db.Decimal(10, 2)
-  blockedBrands              Json?
-  blockedCategories          Json?
-  amazonPriceCheckIntervalMinutes Int @default(30)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                              String   @id @default(cuid())
+  name                            String   @unique
+  active                          Boolean  @default(false)
+  minimumProfitUsd                Decimal  @default(10.00) @db.Decimal(10, 2)
+  minimumRoiPercent               Decimal  @default(25.000) @db.Decimal(7, 3)
+  minimumMatchConfidence          Decimal  @default(0.750) @db.Decimal(4, 3)
+  estimatedSalesTaxRate           Decimal  @default(0.080) @db.Decimal(5, 4)
+  returnRiskBuffer                Decimal  @default(2.00) @db.Decimal(10, 2)
+  priceChangeBuffer               Decimal  @default(2.00) @db.Decimal(10, 2)
+  maxDailyListings                Int      @default(10)
+  maxDailyPurchaseAmountUsd       Decimal  @default(250.00) @db.Decimal(10, 2)
+  safeMode                        Boolean  @default(true)
+  maxAmazonCostUsd                Decimal  @default(150.00) @db.Decimal(10, 2)
+  minimumOpportunityScore         Int      @default(65)
+  blockedBrands                   Json?
+  blockedCategories               Json?
+  blockedKeywords                 Json?
+  allowedCategories               Json?
+  amazonPriceCheckIntervalMinutes Int      @default(30)
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+}
+
+model DiscoveryScanRun {
+  id            String             @id @default(cuid())
+  profileKey    String
+  query         String?
+  status        String             @default("RUNNING")
+  filtersJson   Json?
+  scannedCount  Int                @default(0)
+  acceptedCount Int                @default(0)
+  rejectedCount Int                @default(0)
+  error         String?
+  startedAt     DateTime           @default(now())
+  completedAt   DateTime?
+  candidates    ProductCandidate[]
+
+  @@index([profileKey, startedAt])
+  @@index([status])
 }
 
 model Credential {

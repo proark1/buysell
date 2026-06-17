@@ -54,6 +54,22 @@ curl -X POST http://localhost:3000/opportunities/search \
   -d '{"query":"wireless barcode scanner","limit":5,"persist":false}'
 ```
 
+Guided discovery scan:
+
+```bash
+curl -X POST http://localhost:3000/opportunities/scan \
+  -H 'content-type: application/json' \
+  -d '{"profileKey":"starter-safe","limit":8,"safeMode":true,"minScore":65,"persist":true}'
+```
+
+Discovery profiles:
+
+```bash
+curl http://localhost:3000/opportunities/profiles
+```
+
+Guided discovery uses predefined sourcing profiles, safe-mode category/keyword exclusions, Keepa price-drop signals, eBay sold-price comps, match confidence, and deterministic profit gates to rank results from 0-100. The dashboard shows only accepted opportunities by default, with score reasons and risk flags so the operator can see why a product is worth attention.
+
 Action list:
 
 ```bash
@@ -179,7 +195,18 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs install, typechec
 
 Dashboard:
 
-Open `/` on the Railway app to use the redesigned Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, API Keys, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, and a manual Amazon price-check trigger.
+Open `/` on the Railway app to use the Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, API Keys, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, guided discovery profiles, and a manual Amazon price-check trigger.
+
+Discovery:
+
+The **Discovery** tab is intentionally profile-first instead of a raw product dump:
+
+- Pick a profile such as **Starter Safe Products**, **Electronics Accessories**, **Tools & Office**, or **Home / Small Goods**.
+- Keep **Safe mode** enabled to exclude risky products such as clothing, shoes, food, supplements, cosmetics, medical items, weapons, adult items, and other blocked keywords/categories.
+- Run **Find Opportunities**. Accepted results are ranked by opportunity score, expected profit, ROI, Keepa price signal, demand signal, match confidence, and risk penalties.
+- Review score reasons and risk badges before approving any listing action.
+
+Safety defaults can be edited in **Settings → Discovery Safety**.
 
 API Keys & Credentials:
 

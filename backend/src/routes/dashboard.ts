@@ -14,6 +14,12 @@ const settingsSchema = z.object({
   priceChangeBuffer: z.number().min(0).optional(),
   maxDailyListings: z.number().int().positive().optional(),
   maxDailyPurchaseAmountUsd: z.number().positive().optional(),
+  safeMode: z.boolean().optional(),
+  maxAmazonCostUsd: z.number().positive().optional(),
+  minimumOpportunityScore: z.number().int().min(0).max(100).optional(),
+  blockedCategories: z.array(z.string()).optional(),
+  blockedKeywords: z.array(z.string()).optional(),
+  allowedCategories: z.array(z.string()).optional(),
   amazonPriceCheckIntervalMinutes: z.number().int().positive().optional()
 });
 
@@ -126,9 +132,10 @@ const dashboardHtml = `<!doctype html>
     /* Forms */
     .field{display:flex;flex-direction:column;gap:6px}
     .field label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-    input,select{border-radius:10px;border:1px solid var(--border-strong);padding:10px 12px;background:rgba(2,6,23,.55);
+    input,select,textarea{border-radius:10px;border:1px solid var(--border-strong);padding:10px 12px;background:rgba(2,6,23,.55);
       color:var(--text);font-family:inherit;font-size:13px;outline:none;transition:.15s;width:100%}
-    input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+    textarea{min-height:112px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
     input::placeholder{color:var(--faint)}
     .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;align-items:end}
     .actions-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
@@ -137,6 +144,13 @@ const dashboardHtml = `<!doctype html>
     .check input{width:auto}
     .selected-tag{font-size:12px;color:var(--muted)}
     .selected-tag b{color:var(--accent)}
+    .score{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:10px;font-weight:800;color:#06111f;background:var(--green)}
+    .score.mid{background:var(--amber)}.score.low{background:var(--red);color:#fff}
+    .result-list{display:grid;gap:12px}
+    .result-card{border:1px solid var(--border);border-radius:14px;background:rgba(2,6,23,.28);padding:14px;display:grid;gap:10px}
+    .result-head{display:flex;gap:12px;align-items:flex-start}
+    .result-main{min-width:0;flex:1}.result-title{font-weight:700}.result-meta{color:var(--muted);font-size:12px;margin-top:3px}
+    .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--border-strong);color:var(--muted)}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
     .kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
@@ -283,15 +297,27 @@ const dashboardHtml = `<!doctype html>
       <!-- DISCOVERY -->
       <section class="view" id="view-discovery">
         <div class="panel">
-          <div class="panel-head"><h2>Opportunity Search</h2><span class="hint">Find candidate products</span></div>
+          <div class="panel-head"><h2>Guided Discovery</h2><span class="hint">Rank safe, explainable product opportunities</span></div>
           <div class="panel-body">
             <div class="form-grid">
-              <div class="field" style="grid-column:span 2"><label>Keywords</label><input id="searchQuery" placeholder="wireless barcode scanner"></div>
-              <div class="field"><label>Limit</label><input id="searchLimit" type="number" min="1" max="25" value="5"></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="searchPersist" type="checkbox"> Persist results</label></div>
+              <div class="field"><label>Profile</label><select id="scanProfile"></select></div>
+              <div class="field" style="grid-column:span 2"><label>Optional Keywords</label><input id="searchQuery" placeholder="wireless barcode scanner"></div>
+              <div class="field"><label>Limit</label><input id="searchLimit" type="number" min="1" max="25" value="8"></div>
+              <div class="field"><label>Min Score</label><input id="scanMinScore" type="number" min="0" max="100" value="65"></div>
+              <div class="field"><label>Max Amazon Cost</label><input id="scanMaxCost" type="number" min="1" step="1" value="150"></div>
+              <div class="field"><label>&nbsp;</label><label class="check"><input id="scanSafeMode" type="checkbox" checked> Safe mode</label></div>
+              <div class="field"><label>&nbsp;</label><label class="check"><input id="searchPersist" type="checkbox" checked> Save accepted</label></div>
             </div>
-            <div class="actions-row"><button class="btn primary" onclick="searchOpportunities()">⌕ Search</button></div>
+            <div class="actions-row"><button class="btn primary" onclick="searchOpportunities()">⌕ Find Opportunities</button><span class="hint" id="scanHint"></span></div>
           </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Ranked Results</h2><span class="hint" id="scanSummary">Run a scan to see scored opportunities.</span></div>
+          <div class="panel-body"><div id="scanResults" class="result-list"><div class="empty">No scan results yet.</div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Recent Scans</h2></div>
+          <div class="panel-body"><div class="table-wrap"><div id="scanRunsTable"></div></div></div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Product Candidates</h2></div>
@@ -333,6 +359,20 @@ const dashboardHtml = `<!doctype html>
           </div>
         </div>
         <div class="panel">
+          <div class="panel-head"><h2>Discovery Safety</h2><span class="hint">Default guardrails for new scans</span></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="field"><label>Safe Mode</label><label class="check"><input id="settingsSafeMode" type="checkbox"> Keep risky products out</label></div>
+              <div class="field"><label>Minimum Score</label><input id="settingsMinScore" type="number" min="0" max="100"></div>
+              <div class="field"><label>Max Amazon Cost</label><input id="settingsMaxCost" type="number" min="1" step="1"></div>
+              <div class="field"><label>Allowed Categories</label><textarea id="settingsAllowedCategories" placeholder="One per line"></textarea></div>
+              <div class="field"><label>Blocked Categories</label><textarea id="settingsBlockedCategories" placeholder="One per line"></textarea></div>
+              <div class="field"><label>Blocked Keywords</label><textarea id="settingsBlockedKeywords" placeholder="One per line"></textarea></div>
+            </div>
+            <div class="actions-row"><button class="btn primary" onclick="saveSafety()">Save Safety Rules</button></div>
+          </div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2>Active Rule Config</h2><span class="hint">Profit thresholds and safety gates</span></div>
           <div class="panel-body"><div class="kv" id="settingsKv"></div></div>
         </div>
@@ -343,7 +383,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null};
+var state={data:null,profiles:[]};
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
   actions:['Actions','Approve, execute, and protect your listings'],
@@ -356,13 +396,14 @@ var BADGE={
   PENDING:'amber',APPROVED:'blue',COMPLETED:'green',REJECTED:'slate',CANCELLED:'red',ERROR:'red',
   ACTIVE:'green',PAUSED:'amber',DRAFT:'slate',ENDED:'slate',
   NEW:'blue',VALIDATING:'amber',READY_FOR_PURCHASE:'blue',MANUAL_REVIEW:'amber',PURCHASED:'green',SHIPPED:'teal',
-  LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate'
+  LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
+  PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue'
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
 
 function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
 function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
-function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json()})}
+function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j})})}
 
 function toast(title,msg,kind){
   var box=document.getElementById('toasts');
@@ -377,6 +418,8 @@ function money(v){if(v===null||v===undefined||v==='')return '—';var n=Number(v
 function when(v){if(!v)return '—';var d=new Date(v);return isNaN(d.getTime())?esc(v):d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function badge(v){if(!v)return '—';var c=COLORS[BADGE[v]]||'#94a3b8';return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+esc(v)+'</span>'}
 function txt(v){return (v===null||v===undefined||v==='')?'<span style="color:var(--faint)">—</span>':esc(v)}
+function lines(v){return String(v||'').split(/\\n|,/).map(function(s){return s.trim()}).filter(Boolean)}
+function lineText(v){return Array.isArray(v)?v.join('\\n'):''}
 
 function table(rows,cols,opts){
   opts=opts||{};
@@ -393,10 +436,46 @@ function table(rows,cols,opts){
   return '<table>'+head+body+'</table>';
 }
 
+function renderProfiles(){
+  var sel=document.getElementById('scanProfile');
+  if(!sel||!state.profiles.length)return;
+  var current=sel.value||'starter-safe';
+  sel.innerHTML=state.profiles.map(function(p){return '<option value="'+esc(p.key)+'">'+esc(p.label)+'</option>'}).join('');
+  sel.value=state.profiles.some(function(p){return p.key===current})?current:'starter-safe';
+  var profile=state.profiles.find(function(p){return p.key===sel.value});
+  if(profile)document.getElementById('scanHint').textContent=profile.description;
+}
+function loadProfiles(){
+  fetch('/opportunities/profiles').then(function(r){return r.json()}).then(function(j){state.profiles=j.profiles||[];renderProfiles()}).catch(function(){});
+}
+function scoreClass(score){return score>=75?'score':score>=60?'score mid':'score low'}
+function renderScanResults(res){
+  var summary=res.summary||{};
+  document.getElementById('scanSummary').textContent='Scanned '+(summary.scanned||0)+' · accepted '+(summary.accepted||0)+' · rejected '+(summary.rejected||0)+' · saved '+(summary.persisted||0);
+  var opportunities=res.opportunities||[];
+  if(!opportunities.length){
+    document.getElementById('scanResults').innerHTML='<div class="empty">No accepted opportunities. Try a different profile or lower the minimum score.</div>';
+    return;
+  }
+  document.getElementById('scanResults').innerHTML=opportunities.map(function(o){
+    var score=o.score?o.score.total:0;
+    var reasons=(o.score&&o.score.reasons?o.score.reasons:[]).slice(0,3).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var risks=(o.safety&&o.safety.riskFlags?o.safety.riskFlags:[]).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var priceDrop=o.amazon.priceDropPercent?(' · Amazon down '+Number(o.amazon.priceDropPercent).toFixed(1)+'%'):'';
+    return '<div class="result-card"><div class="result-head"><div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+      '<div class="result-title">'+esc(o.ebay.title)+'</div>'+
+      '<div class="result-meta">eBay '+money(o.ebay.soldPrice)+' · Amazon '+money(o.amazon.buyBoxPrice||o.amazon.currentPrice)+' · Profit '+money(o.profit.expectedProfit)+' · ROI '+Number(o.profit.roiPercent||0).toFixed(1)+'%'+priceDrop+'</div>'+
+      '</div>'+badge(o.decision.decision)+'</div>'+
+      '<div class="chips">'+(reasons||'<span class="chip">No positive signals yet</span>')+'</div>'+
+      (risks?'<div class="chips">'+risks+'</div>':'')+
+      '<div class="result-meta">ASIN <span class="mono">'+esc(o.amazon.asin)+'</span> · Match '+Number((o.amazon.matchConfidence||0)*100).toFixed(0)+'%</div></div>';
+  }).join('');
+}
+
 function render(){
   var d=state.data;if(!d)return;
-  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)']};
-  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases'};
+  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)']};
+  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans'};
   document.getElementById('stats').innerHTML=Object.keys(d.counts).map(function(k){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
@@ -434,16 +513,36 @@ function render(){
   ]);
 
   document.getElementById('productsTable').innerHTML=table(d.productCandidates,[
+    {key:'opportunityScore',label:'Score',fmt:function(v){return v===null||v===undefined?'—':'<b>'+esc(v)+'</b>'}},
     {key:'ebayTitle',label:'Title',fmt:function(v){return '<span class="truncate" title="'+esc(v||'')+'">'+txt(v)+'</span>'}},
     {key:'ebaySoldPrice',label:'eBay Price',fmt:money},
+    {key:'discoveryProfile',label:'Profile'},
+    {key:'safetyStatus',label:'Safety',fmt:badge},
     {key:'ebayCondition',label:'Condition'},
-    {key:'source',label:'Source'},
     {key:'createdAt',label:'Found',fmt:when}
+  ]);
+
+  document.getElementById('scanRunsTable').innerHTML=table(d.discoveryScanRuns,[
+    {key:'profileKey',label:'Profile'},
+    {key:'status',label:'Status',fmt:badge},
+    {key:'scannedCount',label:'Scanned'},
+    {key:'acceptedCount',label:'Accepted'},
+    {key:'rejectedCount',label:'Rejected'},
+    {key:'startedAt',label:'Started',fmt:when}
   ]);
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
-  var prettySet={minimumProfitUsd:'Min Profit (USD)',minimumRoiPercent:'Min ROI %',minimumMatchConfidence:'Min Match Confidence',estimatedSalesTaxRate:'Est. Sales Tax Rate',returnRiskBuffer:'Return Risk Buffer',priceChangeBuffer:'Price Change Buffer',maxDailyListings:'Max Daily Listings',maxDailyPurchaseAmountUsd:'Max Daily Spend (USD)',amazonPriceCheckIntervalMinutes:'Price-Check Interval (min)'};
+  document.getElementById('settingsSafeMode').checked=!!rc.safeMode;
+  if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
+  if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
+  document.getElementById('settingsAllowedCategories').value=lineText(rc.allowedCategories);
+  document.getElementById('settingsBlockedCategories').value=lineText(rc.blockedCategories);
+  document.getElementById('settingsBlockedKeywords').value=lineText(rc.blockedKeywords);
+  if(rc.minimumOpportunityScore!==undefined)document.getElementById('scanMinScore').value=rc.minimumOpportunityScore;
+  if(rc.maxAmazonCostUsd!==undefined)document.getElementById('scanMaxCost').value=rc.maxAmazonCostUsd;
+  document.getElementById('scanSafeMode').checked=!!rc.safeMode;
+  var prettySet={minimumProfitUsd:'Min Profit (USD)',minimumRoiPercent:'Min ROI %',minimumMatchConfidence:'Min Match Confidence',minimumOpportunityScore:'Min Opportunity Score',safeMode:'Safe Mode',maxAmazonCostUsd:'Max Amazon Cost',estimatedSalesTaxRate:'Est. Sales Tax Rate',returnRiskBuffer:'Return Risk Buffer',priceChangeBuffer:'Price Change Buffer',maxDailyListings:'Max Daily Listings',maxDailyPurchaseAmountUsd:'Max Daily Spend (USD)',amazonPriceCheckIntervalMinutes:'Price-Check Interval (min)'};
   document.getElementById('settingsKv').innerHTML=Object.keys(prettySet).filter(function(k){return rc[k]!==undefined&&rc[k]!==null}).map(function(k){
     return '<div class="k">'+prettySet[k]+'</div><div class="v">'+esc(rc[k])+'</div>';
   }).join('')||'<div class="empty" style="grid-column:span 2">No active rule config.</div>';
@@ -526,6 +625,17 @@ function saveSecret(){localStorage.setItem('localAgentSecret',document.getElemen
 function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';toast('Secret cleared',null,'ok')}
 function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
   fetch('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(r){return r.json()}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
+function saveSafety(){
+  var body={
+    safeMode:document.getElementById('settingsSafeMode').checked,
+    minimumOpportunityScore:Number(document.getElementById('settingsMinScore').value||65),
+    maxAmazonCostUsd:Number(document.getElementById('settingsMaxCost').value||150),
+    allowedCategories:lines(document.getElementById('settingsAllowedCategories').value),
+    blockedCategories:lines(document.getElementById('settingsBlockedCategories').value),
+    blockedKeywords:lines(document.getElementById('settingsBlockedKeywords').value)
+  };
+  fetch('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(){toast('Safety rules saved',null,'ok');load()}).catch(function(e){toast('Save failed',e.message,'err')});
+}
 function runMonitor(){toast('Running price check','Scanning active listings…');
   jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');load()}).catch(function(e){toast('Price check failed',e.message,'err')})}
 function actId(){var id=document.getElementById('actionId').value.trim();if(!id)toast('No action selected','Click a row or paste an Action ID.','warn');return id}
@@ -533,12 +643,28 @@ function updateAction(status){var id=actId();if(!id)return;apiFetch('/actions/'+
 function approveAction(){updateAction('APPROVED')}
 function rejectAction(){updateAction('REJECTED')}
 function executeAction(){var id=actId();if(!id)return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(function(r){return r.json()}).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
-function searchOpportunities(){var q=document.getElementById('searchQuery').value;if(!q)return toast('Enter keywords',null,'warn');toast('Searching','"'+q+'"');
-  jpost('/opportunities/search',{query:q,limit:Number(document.getElementById('searchLimit').value||5),persist:document.getElementById('searchPersist').checked}).then(function(res){toast('Search complete',res,'ok');load()}).catch(function(e){toast('Search failed',e.message,'err')})}
+function searchOpportunities(){
+  var q=document.getElementById('searchQuery').value.trim();
+  var profile=document.getElementById('scanProfile').value||'starter-safe';
+  if(profile==='custom'&&!q)return toast('Enter keywords','Custom scans need a keyword.','warn');
+  var body={
+    profileKey:profile,
+    query:q||undefined,
+    limit:Number(document.getElementById('searchLimit').value||8),
+    persist:document.getElementById('searchPersist').checked,
+    safeMode:document.getElementById('scanSafeMode').checked,
+    minScore:Number(document.getElementById('scanMinScore').value||65),
+    maxAmazonCostUsd:Number(document.getElementById('scanMaxCost').value||150)
+  };
+  toast('Scanning',profile+(q?' · '+q:''));
+  jpost('/opportunities/scan',body).then(function(res){renderScanResults(res);toast('Scan complete',res.summary,'ok');load()}).catch(function(e){toast('Scan failed',e.message,'err')})
+}
 function createOrder(){jpost('/orders/ebay/manual',{ebayOrderId:document.getElementById('orderEbayOrderId').value,ebayItemId:document.getElementById('orderEbayItemId').value,buyerName:document.getElementById('orderBuyerName').value,buyerShippingAddress:{enteredInDashboard:true},salePrice:Number(document.getElementById('orderSalePrice').value)}).then(function(res){toast('Order created',res,'ok');load()}).catch(function(e){toast('Create failed',e.message,'err')})}
 function recordPurchase(){apiFetch('/orders/'+encodeURIComponent(document.getElementById('purchaseOrderId').value)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(function(r){return r.json()}).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
 
 document.getElementById('nav').addEventListener('click',function(e){var item=e.target.closest('.nav-item');if(item)navigate(item.getAttribute('data-view'))});
+document.getElementById('scanProfile').addEventListener('change',renderProfiles);
+loadProfiles();
 load();
 setInterval(checkDb,30000);
 </script>
@@ -561,7 +687,7 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
     const parsed = settingsSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid settings payload', details: parsed.error.flatten() });
     const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-    const decimalKeys = new Set(['minimumProfitUsd', 'minimumRoiPercent', 'minimumMatchConfidence', 'estimatedSalesTaxRate', 'returnRiskBuffer', 'priceChangeBuffer', 'maxDailyPurchaseAmountUsd']);
+    const decimalKeys = new Set(['minimumProfitUsd', 'minimumRoiPercent', 'minimumMatchConfidence', 'estimatedSalesTaxRate', 'returnRiskBuffer', 'priceChangeBuffer', 'maxDailyPurchaseAmountUsd', 'maxAmazonCostUsd']);
     const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value]));
     const ruleConfig = existing
       ? await prisma.ruleConfig.update({ where: { id: existing.id }, data })

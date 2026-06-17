@@ -7,11 +7,18 @@ const keepaProductSchema = z.object({
   brand: z.string().optional(),
   model: z.string().optional(),
   upcList: z.array(z.string()).optional(),
+  categoryTree: z.array(z.object({ name: z.string().optional() }).passthrough()).optional(),
+  rootCategory: z.number().optional(),
   salesRankReference: z.number().optional(),
   stats: z.object({
     current: z.array(z.number()).optional(),
-    buyBoxPrice: z.number().optional()
+    buyBoxPrice: z.number().optional(),
+    avg30: z.array(z.number()).optional(),
+    avg90: z.array(z.number()).optional()
   }).optional(),
+  rating: z.number().optional(),
+  reviews: z.number().optional(),
+  reviewCount: z.number().optional(),
   availabilityAmazon: z.number().optional(),
   csv: z.array(z.array(z.number()).nullable()).optional(),
   domainId: z.number().optional()
@@ -31,7 +38,13 @@ interface KeepaProduct {
   stats?: {
     current?: number[];
     buyBoxPrice?: number;
+    avg30?: number[];
+    avg90?: number[];
   };
+  categoryTree?: { name?: string }[];
+  rating?: number;
+  reviews?: number;
+  reviewCount?: number;
   availabilityAmazon?: number;
 }
 
@@ -66,6 +79,12 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
   return (payload.products ?? []).slice(0, options.limit ?? 10).map((product: KeepaProduct) => {
     const currentPrice = keepaCentsToMoney(product.stats?.current?.[1]);
     const buyBoxPrice = keepaCentsToMoney(product.stats?.buyBoxPrice);
+    const avg90Price = keepaCentsToMoney(product.stats?.avg90?.[1]) ?? keepaCentsToMoney(product.stats?.avg30?.[1]);
+    const latestPrice = buyBoxPrice ?? currentPrice;
+    const priceDropPercent = latestPrice && avg90Price && avg90Price > latestPrice
+      ? Math.round(((avg90Price - latestPrice) / avg90Price) * 1000) / 10
+      : undefined;
+    const categoryTree = product.categoryTree?.flatMap((category) => category.name ? [category.name] : []) ?? [];
 
     return {
       asin: product.asin,
@@ -76,8 +95,14 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
       upc: product.upcList?.[0],
       currentPrice,
       buyBoxPrice,
+      avg90Price,
+      priceDropPercent,
       availabilityStatus: product.availabilityAmazon === 0 ? 'IN_STOCK' : 'UNKNOWN',
       salesRank: product.salesRankReference,
+      rating: product.rating,
+      reviewCount: product.reviewCount ?? product.reviews,
+      categoryTree,
+      rootCategory: categoryTree[0],
       matchConfidence: 0,
       raw: product
     };

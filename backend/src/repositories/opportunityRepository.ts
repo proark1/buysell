@@ -9,15 +9,27 @@ export interface PersistedOpportunityIds {
   aiDecisionId: string;
 }
 
+export interface PersistOpportunityContext {
+  discoveryRunId?: string;
+  discoveryProfile?: string;
+}
+
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
 const decimal = (value: number): string => value.toFixed(3);
 
 export async function persistOpportunity(
   db: PrismaClient,
-  opportunity: ProductOpportunity
+  opportunity: ProductOpportunity,
+  context: PersistOpportunityContext = {}
 ): Promise<PersistedOpportunityIds> {
   const productCandidate = await db.productCandidate.create({
     data: {
+      discoveryRunId: context.discoveryRunId,
+      discoveryProfile: context.discoveryProfile ?? opportunity.discoveryProfile,
+      opportunityScore: opportunity.score?.total,
+      safetyStatus: opportunity.safety?.status,
+      riskFlags: opportunity.safety?.riskFlags ?? opportunity.decision.riskFlags,
+      scoreBreakdown: opportunity.score,
       source: 'serpapi',
       ebayTitle: opportunity.ebay.title,
       ebayUrl: opportunity.ebay.url,
@@ -40,6 +52,8 @@ export async function persistOpportunity(
       upc: opportunity.amazon.upc,
       currentPrice: money(opportunity.amazon.currentPrice),
       buyBoxPrice: money(opportunity.amazon.buyBoxPrice),
+      avg90Price: money(opportunity.amazon.avg90Price),
+      priceDropPercent: opportunity.amazon.priceDropPercent === undefined ? undefined : decimal(opportunity.amazon.priceDropPercent),
       availabilityStatus: opportunity.amazon.availabilityStatus,
       salesRank: opportunity.amazon.salesRank,
       rating: opportunity.amazon.rating === undefined ? undefined : decimal(opportunity.amazon.rating),
@@ -114,12 +128,13 @@ export async function persistOpportunity(
 
 export async function persistOpportunities(
   db: PrismaClient,
-  opportunities: ProductOpportunity[]
+  opportunities: ProductOpportunity[],
+  context: PersistOpportunityContext = {}
 ): Promise<PersistedOpportunityIds[]> {
   const persisted: PersistedOpportunityIds[] = [];
 
   for (const opportunity of opportunities) {
-    persisted.push(await persistOpportunity(db, opportunity));
+    persisted.push(await persistOpportunity(db, opportunity, context));
   }
 
   return persisted;
