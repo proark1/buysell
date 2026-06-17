@@ -48,4 +48,25 @@ const strongResult = analyzeAmazonEbayComparison(amazon, strongEbay, defaultRule
 assertEqual(strongResult.report.status, 'OPPORTUNITY', 'comparison profitable eBay match status');
 assertEqual(strongResult.report.best?.soldPrice, 120, 'comparison profitable best sold price');
 
+const eyoyoAmazon: AmazonMatchInput = {
+  ...amazon,
+  asin: 'B000EYOYO',
+  title: 'Eyoyo Mini 1D Bluetooth Barcode Scanner Wireless USB Wired 2.4G',
+  brand: 'Eyoyo',
+  buyBoxPrice: 39.99,
+  currentPrice: 39.99
+};
+const uncertainButProfitable = analyzeAmazonEbayComparison(eyoyoAmazon, [{
+  title: 'Eyoyo 10PCS 1D 2D QR Code Wireless Barcode Scanner Bluetooth USB Bar Code Reader',
+  url: 'https://www.ebay.de/itm/2',
+  soldPrice: 305.99,
+  shippingPrice: 0,
+  condition: 'New'
+}], defaultRuleConfig, 'Eyoyo Mini Bluetooth Barcode Scanner');
+
+assertEqual(uncertainButProfitable.report.status, 'MANUAL_REVIEW', 'comparison high upside uncertain match status');
+if (!uncertainButProfitable.report.reasons.some((reason) => reason.includes('promising'))) {
+  throw new Error(`comparison manual review reason missing: ${uncertainButProfitable.report.reasons.join(' | ')}`);
+}
+
 console.log('amazonDiscoveryComparison unit test passed');

@@ -67,6 +67,7 @@ interface KeepaProduct {
   reviews?: unknown;
   reviewCount?: number | null;
   availabilityAmazon?: number | null;
+  domainId?: number | null;
 }
 
 const KEEPA_SEARCH_PAGE_SIZE = 10;
@@ -78,6 +79,19 @@ const keepaCentsToMoney = (value?: number | null): number | undefined => {
 };
 
 const nullableText = (value?: string | null): string | undefined => value ?? undefined;
+
+const amazonDomainByKeepaId: Record<number, string> = {
+  1: 'amazon.com',
+  2: 'amazon.co.uk',
+  3: 'amazon.de',
+  4: 'amazon.fr',
+  5: 'amazon.co.jp',
+  6: 'amazon.ca',
+  8: 'amazon.it',
+  9: 'amazon.es',
+  10: 'amazon.in',
+  11: 'amazon.com.mx'
+};
 
 const keepaNumericValue = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
@@ -114,7 +128,7 @@ export interface KeepaTokenStatus {
   tokenFlowReduction?: number;
 }
 
-function keepaProductToAmazonMatch(product: KeepaProduct): AmazonMatchInput {
+function keepaProductToAmazonMatch(product: KeepaProduct, fallbackDomainId: number): AmazonMatchInput {
   const currentPrice = keepaCentsToMoney(product.stats?.current?.[1]);
   const buyBoxPrice = keepaCentsToMoney(product.stats?.buyBoxPrice);
   const avg90Price = keepaCentsToMoney(product.stats?.avg90?.[1]) ?? keepaCentsToMoney(product.stats?.avg30?.[1]);
@@ -127,7 +141,7 @@ function keepaProductToAmazonMatch(product: KeepaProduct): AmazonMatchInput {
   return {
     asin: product.asin,
     title: product.title ?? product.asin,
-    url: `https://www.amazon.com/dp/${product.asin}`,
+    url: `https://www.${amazonDomainByKeepaId[product.domainId ?? fallbackDomainId] ?? 'amazon.com'}/dp/${product.asin}`,
     brand: nullableText(product.brand),
     model: nullableText(product.model),
     upc: product.upcList?.[0],
@@ -167,11 +181,12 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
   const limit = Math.min(Math.max(options.limit ?? KEEPA_SEARCH_PAGE_SIZE, 1), KEEPA_PRODUCT_SEARCH_MAX_RESULTS);
   const pageCount = Math.min(Math.ceil(limit / KEEPA_SEARCH_PAGE_SIZE), 10);
   const products: KeepaProduct[] = [];
+  const domain = options.domain ?? 1;
 
   for (let page = 0; page < pageCount && products.length < limit; page += 1) {
     const params = new URLSearchParams({
       key: options.apiKey,
-      domain: String(options.domain ?? 1),
+      domain: String(domain),
       type: 'product',
       term: options.query,
       page: String(page),
@@ -192,5 +207,5 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
     if (pageProducts.length < KEEPA_SEARCH_PAGE_SIZE) break;
   }
 
-  return products.slice(0, limit).map(keepaProductToAmazonMatch);
+  return products.slice(0, limit).map((product) => keepaProductToAmazonMatch(product, domain));
 }

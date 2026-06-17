@@ -7,13 +7,21 @@ import { SerpApiError } from '../clients/serpApiClient.js';
 import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { amazonDiscoveryProfiles, discoveryProfiles, getDiscoveryProfile } from '../services/discoveryPolicy.js';
 import {
   buildAmazonDiscoveryCandidates,
+  considerAmazonDiscoveryCandidate,
   compareAmazonDiscoveryCandidates,
   persistAmazonDiscoveryRun,
   type AmazonDiscoveryCandidateResult
 } from '../services/amazonDiscovery.js';
+import {
+  amazonDiscoveryMarkets,
+  ebayComparisonPresets,
+  resolveEbayComparisonSettings,
+  type EbayComparisonSettings
+} from '../services/marketplaces.js';
 import { getSecret } from '../services/secrets.js';
 import type { ProductOpportunity } from '../domain/products.js';
 
@@ -37,14 +45,31 @@ const scanRequestSchema = z.object({
   maxAmazonCostUsd: z.number().positive().optional()
 });
 
+const ebayComparisonSettingsSchema = z.object({
+  presetKey: z.string().optional(),
+  minProfit: z.number().min(0).optional(),
+  minRoiPercent: z.number().min(0).max(500).optional(),
+  minMatchConfidencePercent: z.number().min(0).max(100).optional(),
+  minOpportunityScore: z.number().int().min(0).max(100).optional(),
+  ebayResultLimit: z.number().int().positive().max(50).optional(),
+  soldOnly: z.boolean().optional(),
+  completedOnly: z.boolean().optional(),
+  buyingFormat: z.enum(['ANY', 'BIN', 'Auction', 'BO']).optional(),
+  itemCondition: z.enum(['ANY', 'NEW', 'USED', 'OPEN_BOX']).optional(),
+  preferredLocation: z.enum(['ANY', 'Domestic', 'Regional', 'Worldwide']).optional(),
+  postalCode: z.string().max(20).optional()
+}).optional();
+
 const amazonDiscoveryRunRequestSchema = z.object({
   profileKey: z.string().default('starter-safe'),
   categoryKey: z.string().optional(),
+  marketKey: z.string().optional(),
   query: z.string().min(2).optional(),
   limit: z.number().int().positive().max(100).optional(),
   mode: z.enum(['MANUAL', 'AUTO']).default('MANUAL'),
   autoCompare: z.boolean().default(false),
   compareLimit: z.number().int().positive().max(50).optional(),
+  ebayComparison: ebayComparisonSettingsSchema,
   safeMode: z.boolean().optional(),
   minAmazonScore: z.number().int().min(0).max(100).optional(),
   maxAmazonCostUsd: z.number().positive().optional(),
@@ -59,10 +84,33 @@ const amazonDiscoverySelectRequestSchema = z.object({
 const amazonDiscoveryCompareRequestSchema = z.object({
   runId: z.string().optional(),
   candidateIds: z.array(z.string()).optional(),
-  limit: z.number().int().positive().max(50).optional()
+  limit: z.number().int().positive().max(50).optional(),
+  marketKey: z.string().optional(),
+  ebayComparison: ebayComparisonSettingsSchema,
+  force: z.boolean().default(false)
 }).refine((value: { runId?: string; candidateIds?: string[] }) => value.runId || (value.candidateIds && value.candidateIds.length > 0), {
   message: 'runId or candidateIds is required'
 });
+
+const amazonDiscoveryConsiderRequestSchema = z.object({
+  candidateId: z.string(),
+  note: z.string().max(500).optional()
+});
+
+type EbayComparisonSettingsBody = {
+  presetKey?: string;
+  minProfit?: number;
+  minRoiPercent?: number;
+  minMatchConfidencePercent?: number;
+  minOpportunityScore?: number;
+  ebayResultLimit?: number;
+  soldOnly?: boolean;
+  completedOnly?: boolean;
+  buyingFormat?: 'ANY' | 'BIN' | 'Auction' | 'BO';
+  itemCondition?: 'ANY' | 'NEW' | 'USED' | 'OPEN_BOX';
+  preferredLocation?: 'ANY' | 'Domestic' | 'Regional' | 'Worldwide';
+  postalCode?: string;
+} | undefined;
 
 function recordValue(value: unknown, key: string): unknown {
   return value && typeof value === 'object' && key in value ? (value as Record<string, unknown>)[key] : undefined;
@@ -196,9 +244,43 @@ function buildAmazonRejectionBreakdown(candidates: AmazonDiscoveryCandidateResul
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
 
+function normalizeEbayComparisonSettings(input: EbayComparisonSettingsBody): EbayComparisonSettings {
+  return resolveEbayComparisonSettings({
+    presetKey: input?.presetKey,
+    minimumProfit: input?.minProfit,
+    minimumRoiPercent: input?.minRoiPercent,
+    minimumMatchConfidence: input?.minMatchConfidencePercent === undefined ? undefined : input.minMatchConfidencePercent / 100,
+    minimumOpportunityScore: input?.minOpportunityScore,
+    ebayResultLimit: input?.ebayResultLimit,
+    soldOnly: input?.soldOnly,
+    completedOnly: input?.completedOnly,
+    buyingFormat: input?.buyingFormat,
+    itemCondition: input?.itemCondition,
+    preferredLocation: input?.preferredLocation,
+    postalCode: input?.postalCode?.trim() || undefined
+  });
+}
+
+function ruleConfigWithEbaySettings(ruleConfig: ActiveRuleConfig, settings: EbayComparisonSettings): ActiveRuleConfig {
+  return {
+    ...ruleConfig,
+    thresholds: {
+      ...ruleConfig.thresholds,
+      minimumProfitUsd: settings.minimumProfit,
+      minimumRoiPercent: settings.minimumRoiPercent,
+      minimumMatchConfidence: settings.minimumMatchConfidence
+    },
+    minimumOpportunityScore: settings.minimumOpportunityScore
+  };
+}
+
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
-  app.get('/amazon-discovery/profiles', async () => ({ profiles: amazonDiscoveryProfiles }));
+  app.get('/amazon-discovery/profiles', async () => ({
+    profiles: amazonDiscoveryProfiles,
+    markets: amazonDiscoveryMarkets,
+    ebayComparisonPresets
+  }));
   app.get('/amazon-discovery/token-status', async (_request, reply) => {
     const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
     if (!keepaApiKey) {
@@ -405,6 +487,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     }
 
     const ruleConfig = await getActiveRuleConfig(prisma);
+    const ebayComparisonSettings = normalizeEbayComparisonSettings(parsed.data.ebayComparison);
+    const comparisonRuleConfig = ruleConfigWithEbaySettings(ruleConfig, ebayComparisonSettings);
     const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
     let result: Awaited<ReturnType<typeof buildAmazonDiscoveryCandidates>>;
     let persistedRun: Awaited<ReturnType<typeof persistAmazonDiscoveryRun>>;
@@ -421,6 +505,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         ruleConfig,
         profileKey: parsed.data.profileKey,
         categoryKey: parsed.data.categoryKey,
+        marketKey: parsed.data.marketKey,
         query: parsed.data.query,
         limit: parsed.data.limit,
         mode: effectiveMode,
@@ -434,6 +519,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         ruleConfig,
         profileKey: parsed.data.profileKey,
         categoryKey: parsed.data.categoryKey,
+        marketKey: parsed.data.marketKey,
         query: parsed.data.query,
         limit: parsed.data.limit,
         mode: effectiveMode,
@@ -462,9 +548,11 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
           comparison = await compareAmazonDiscoveryCandidates({
             db: prisma,
             serpApiKey,
-            ruleConfig,
+            ruleConfig: comparisonRuleConfig,
             runId,
-            limit: parsed.data.compareLimit
+            limit: parsed.data.compareLimit,
+            marketKey: parsed.data.marketKey,
+            comparisonSettings: ebayComparisonSettings
           });
         } catch (error) {
           if (error instanceof SerpApiError) {
@@ -485,7 +573,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         accepted: result.candidates.length,
         rejected: result.rejected.length,
         compared: comparison?.compared ?? 0,
-        opportunities: comparison?.opportunities.length ?? 0
+        opportunities: comparison?.opportunities.length ?? 0,
+        manualReviews: comparison?.manualReviews.length ?? 0
       },
       rejected: result.rejected.map(sanitizeAmazonDiscoveryCandidate),
       rejectedPreview: result.rejected.slice(0, 5).map(sanitizeAmazonDiscoveryCandidate),
@@ -494,6 +583,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         ? {
           ...comparison,
           opportunities: comparison.opportunities.map(sanitizeOpportunity),
+          manualReviews: comparison.manualReviews.map(sanitizeOpportunity),
           rejected: comparison.rejected.map(sanitizeOpportunity)
         }
         : undefined
@@ -525,15 +615,20 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     }
 
     const ruleConfig = await getActiveRuleConfig(prisma);
+    const ebayComparisonSettings = normalizeEbayComparisonSettings(parsed.data.ebayComparison);
+    const comparisonRuleConfig = ruleConfigWithEbaySettings(ruleConfig, ebayComparisonSettings);
     let comparison: Awaited<ReturnType<typeof compareAmazonDiscoveryCandidates>>;
     try {
       comparison = await compareAmazonDiscoveryCandidates({
         db: prisma,
         serpApiKey,
-        ruleConfig,
+        ruleConfig: comparisonRuleConfig,
         runId: parsed.data.runId,
         candidateIds: parsed.data.candidateIds,
-        limit: parsed.data.limit
+        limit: parsed.data.limit,
+        marketKey: parsed.data.marketKey,
+        comparisonSettings: ebayComparisonSettings,
+        force: parsed.data.force
       });
     } catch (error) {
       if (error instanceof SerpApiError) {
@@ -544,5 +639,21 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     }
 
     return comparison;
+  });
+
+  app.post('/amazon-discovery/consider', async (request, reply) => {
+    const parsed = amazonDiscoveryConsiderRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid Amazon discovery review request', details: parsed.error.flatten() });
+    }
+
+    const ruleConfig = await getActiveRuleConfig(prisma);
+    const result = await considerAmazonDiscoveryCandidate({
+      db: prisma,
+      candidateId: parsed.data.candidateId,
+      note: parsed.data.note,
+      ruleConfig
+    });
+    return result;
   });
 }

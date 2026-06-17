@@ -16,6 +16,13 @@ import { scoreAmazonMatch } from './matchScorer.js';
 import { scoreOpportunity } from './opportunityScorer.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
+import { createActionForDecision } from '../repositories/actionRepository.js';
+import {
+  getAmazonDiscoveryMarket,
+  resolveEbayComparisonSettings,
+  type DiscoveryMarket,
+  type EbayComparisonSettings
+} from './marketplaces.js';
 
 export interface AmazonDiscoveryCandidateResult {
   amazon: AmazonMatchInput;
@@ -33,6 +40,7 @@ export interface AmazonDiscoveryRunOptions {
   ruleConfig: ActiveRuleConfig;
   profileKey?: string;
   categoryKey?: string;
+  marketKey?: string;
   query?: string;
   limit?: number;
   mode?: 'MANUAL' | 'AUTO';
@@ -49,15 +57,40 @@ export interface CompareAmazonCandidatesOptions {
   runId?: string;
   candidateIds?: string[];
   limit?: number;
+  marketKey?: string;
+  comparisonSettings?: Partial<EbayComparisonSettings>;
+  force?: boolean;
 }
 
 export interface EbayComparisonReport {
-  status: 'OPPORTUNITY' | 'REJECTED' | 'NO_EBAY_RESULTS' | 'NO_PRICED_EBAY_RESULTS' | 'ERROR';
+  status: 'OPPORTUNITY' | 'MANUAL_REVIEW' | 'REJECTED' | 'NO_EBAY_RESULTS' | 'NO_PRICED_EBAY_RESULTS' | 'ERROR';
   query: string;
   ebayResultCount: number;
   pricedResultCount: number;
   evaluatedCount: number;
   amazonCost?: number;
+  market?: {
+    key: string;
+    label: string;
+    currency: string;
+    currencySymbol: string;
+    amazonDomain: string;
+    ebayDomain: string;
+  };
+  settings?: {
+    presetKey: string;
+    minimumProfit: number;
+    minimumRoiPercent: number;
+    minimumMatchConfidence: number;
+    minimumOpportunityScore: number;
+    ebayResultLimit: number;
+    soldOnly: boolean;
+    completedOnly: boolean;
+    buyingFormat: string;
+    itemCondition: string;
+    preferredLocation: string;
+    postalCode?: string;
+  };
   best?: {
     title: string;
     url?: string;
@@ -93,6 +126,13 @@ export interface EbayComparisonReport {
     minimumOpportunityScore: number;
   };
   comparedAt: string;
+}
+
+export interface ConsiderAmazonCandidateOptions {
+  db: PrismaClient;
+  candidateId: string;
+  ruleConfig: ActiveRuleConfig;
+  note?: string;
 }
 
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
@@ -182,12 +222,14 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
   const query = options.query?.trim();
   const queries = selectAmazonDiscoveryQueries(profile, category, query, limit);
   const policy = safetyPolicy(options.ruleConfig, safeMode, maxAmazonCostUsd);
+  const market = getAmazonDiscoveryMarket(options.marketKey);
 
   const byAsin = new Map<string, AmazonMatchInput>();
   for (const seed of queries) {
     const matches = await findAmazonMatches({
       query: seed,
       apiKey: options.keepaApiKey,
+      domain: market.amazonDomainId,
       limit: Math.max(3, Math.ceil(limit / Math.max(queries.length, 1)))
     });
     for (const match of matches) {
@@ -218,6 +260,8 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
     filters: {
       profileKey: profile.key,
       categoryKey: category.key,
+      marketKey: market.key,
+      market,
       query,
       queries,
       limit,
@@ -317,6 +361,63 @@ function uniqueReasons(reasons: string[]): string[] {
   return [...new Set(reasons.filter(Boolean))];
 }
 
+function reportMarket(market: DiscoveryMarket): NonNullable<EbayComparisonReport['market']> {
+  return {
+    key: market.key,
+    label: market.label,
+    currency: market.currency,
+    currencySymbol: market.currencySymbol,
+    amazonDomain: market.amazonDomain,
+    ebayDomain: market.ebayDomain
+  };
+}
+
+function reportSettings(settings: EbayComparisonSettings): NonNullable<EbayComparisonReport['settings']> {
+  return {
+    presetKey: settings.presetKey,
+    minimumProfit: settings.minimumProfit,
+    minimumRoiPercent: settings.minimumRoiPercent,
+    minimumMatchConfidence: settings.minimumMatchConfidence,
+    minimumOpportunityScore: settings.minimumOpportunityScore,
+    ebayResultLimit: settings.ebayResultLimit,
+    soldOnly: settings.soldOnly,
+    completedOnly: settings.completedOnly,
+    buyingFormat: settings.buyingFormat,
+    itemCondition: settings.itemCondition,
+    preferredLocation: settings.preferredLocation,
+    postalCode: settings.postalCode
+  };
+}
+
+const conditionIdsBySetting: Record<EbayComparisonSettings['itemCondition'], string[]> = {
+  ANY: [],
+  NEW: ['1000'],
+  USED: ['3000'],
+  OPEN_BOX: ['1500']
+};
+
+function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): boolean {
+  const flags = opportunity.decision.riskFlags;
+  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE'].includes(flag))) {
+    return false;
+  }
+
+  const matchConfidence = opportunity.amazon.matchConfidence ?? 0;
+  const minimumMatchFloor = Math.max(0.35, ruleConfig.thresholds.minimumMatchConfidence - 0.2);
+  const minimumProfitFloor = Math.max(1, ruleConfig.thresholds.minimumProfitUsd * 0.8);
+  const minimumRoiFloor = Math.max(5, ruleConfig.thresholds.minimumRoiPercent * 0.6);
+  return matchConfidence >= minimumMatchFloor
+    && opportunity.profit.expectedProfit >= minimumProfitFloor
+    && opportunity.profit.roiPercent >= minimumRoiFloor;
+}
+
+function manualReviewReasons(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): string[] {
+  return uniqueReasons([
+    ...comparisonRejectionReasons(opportunity, ruleConfig),
+    `Profit ${dollars(opportunity.profit.expectedProfit)} and ROI ${percent(opportunity.profit.roiPercent)} are promising, but one or more gates need human verification before listing.`
+  ]);
+}
+
 function comparisonRejectionReasons(
   opportunity: ProductOpportunity,
   ruleConfig: ActiveRuleConfig
@@ -410,7 +511,11 @@ export function analyzeAmazonEbayComparison(
   amazon: AmazonMatchInput,
   ebayCandidates: EbayCandidateInput[],
   ruleConfig: ActiveRuleConfig,
-  query: string
+  query: string,
+  context: {
+    market?: DiscoveryMarket;
+    comparisonSettings?: EbayComparisonSettings;
+  } = {}
 ): {
   best?: ProductOpportunity;
   report: EbayComparisonReport;
@@ -428,6 +533,8 @@ export function analyzeAmazonEbayComparison(
     ebayResultCount: ebayCandidates.length,
     pricedResultCount,
     amazonCost,
+    market: context.market ? reportMarket(context.market) : undefined,
+    settings: context.comparisonSettings ? reportSettings(context.comparisonSettings) : undefined,
     thresholds,
     comparedAt: new Date().toISOString()
   };
@@ -480,14 +587,18 @@ export function analyzeAmazonEbayComparison(
   const accepted = scored.filter((opportunity) => opportunity.decision.decision !== 'REJECT');
   const best = accepted[0] ?? scored[0];
   const topMatches = scored.slice(0, 3).map(comparisonSnapshot);
-  const status = best.decision.decision === 'REJECT' ? 'REJECTED' : 'OPPORTUNITY';
-  const reasons = status === 'REJECTED'
-    ? comparisonRejectionReasons(best, ruleConfig)
-    : uniqueReasons([
+  const status = best.decision.decision === 'REJECT'
+    ? manualReviewCandidate(best, ruleConfig) ? 'MANUAL_REVIEW' : 'REJECTED'
+    : 'OPPORTUNITY';
+  const reasons = status === 'OPPORTUNITY'
+    ? uniqueReasons([
       `Best eBay sold price ${dollars(best.ebay.soldPrice)} leaves ${dollars(best.profit.expectedProfit)} expected profit.`,
       `ROI ${percent(best.profit.roiPercent)} clears the ${percent(ruleConfig.thresholds.minimumRoiPercent)} target.`,
       `Match confidence ${percent((best.amazon.matchConfidence ?? 0) * 100)} clears the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum.`
-    ]);
+    ])
+    : status === 'MANUAL_REVIEW'
+      ? manualReviewReasons(best, ruleConfig)
+      : comparisonRejectionReasons(best, ruleConfig);
 
   return {
     best,
@@ -506,7 +617,22 @@ function scoreBreakdownWithComparison(existing: unknown, report: EbayComparisonR
   const base = existing && typeof existing === 'object' && !Array.isArray(existing)
     ? { ...(existing as Record<string, unknown>) }
     : {};
-  return { ...base, ebayComparison: jsonReady(report) };
+  return jsonReady({ ...base, ebayComparison: report }) as Record<string, unknown>;
+}
+
+function ebayComparisonFromScoreBreakdown(existing: unknown): EbayComparisonReport | undefined {
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) return undefined;
+  const comparison = (existing as Record<string, unknown>).ebayComparison;
+  return comparison && typeof comparison === 'object' && !Array.isArray(comparison)
+    ? comparison as EbayComparisonReport
+    : undefined;
+}
+
+function scoreBreakdownWithManualReview(existing: unknown, review: Record<string, unknown>): Record<string, unknown> {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? { ...(existing as Record<string, unknown>) }
+    : {};
+  return jsonReady({ ...base, manualReview: review }) as Record<string, unknown>;
 }
 
 function jsonReady(value: unknown): unknown {
@@ -519,29 +645,205 @@ function jsonReady(value: unknown): unknown {
   );
 }
 
+export async function considerAmazonDiscoveryCandidate(options: ConsiderAmazonCandidateOptions): Promise<{
+  candidateId: string;
+  productCandidateId: string;
+  amazonMatchId?: string;
+  actionItemId?: string;
+  alreadyConsidered: boolean;
+}> {
+  const candidate = await options.db.amazonDiscoveryCandidate.findUnique({ where: { id: options.candidateId } });
+  if (!candidate) throw new Error('Amazon discovery candidate not found');
+  if (candidate.productCandidateId) {
+    return {
+      candidateId: candidate.id,
+      productCandidateId: candidate.productCandidateId,
+      amazonMatchId: candidate.amazonMatchId ?? undefined,
+      alreadyConsidered: true
+    };
+  }
+
+  const report = ebayComparisonFromScoreBreakdown(candidate.scoreBreakdown);
+  const amazon = amazonFromRecord(candidate as Record<string, unknown>);
+  const best = report?.best;
+  const review = {
+    note: options.note?.trim() || undefined,
+    forcedAt: new Date().toISOString(),
+    originalStatus: candidate.comparisonStatus,
+    reasons: report?.reasons ?? ['User asked to manually review this Amazon candidate.']
+  };
+  const candidateRiskFlags = Array.isArray(candidate.riskFlags)
+    ? (candidate.riskFlags as unknown[]).filter((item): item is string => typeof item === 'string')
+    : [];
+  const riskFlags = uniqueReasons(['USER_OVERRIDE', ...(best?.riskFlags ?? []), ...candidateRiskFlags]);
+  const reasoningSummary = `Manual review requested from Discovery. ${report?.reasons?.[0] ?? 'Verify Amazon and eBay fit before listing.'}`;
+
+  if (best?.title && best.soldPrice !== undefined && (amazon.buyBoxPrice ?? amazon.currentPrice) !== undefined) {
+    const matchedAmazon = { ...amazon, matchConfidence: best.matchConfidence ?? amazon.matchConfidence ?? 0 };
+    const ebay = {
+      title: best.title,
+      url: best.url,
+      soldPrice: best.soldPrice,
+      shippingPrice: best.shippingPrice,
+      condition: best.condition
+    };
+    const profit = calculateProfit({
+      ebaySalePrice: best.soldPrice,
+      amazonItemCost: matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice ?? 0,
+      estimatedSalesTaxRate: options.ruleConfig.estimatedSalesTaxRate,
+      returnRiskBuffer: options.ruleConfig.returnRiskBuffer,
+      priceChangeBuffer: options.ruleConfig.priceChangeBuffer
+    });
+    const opportunity: ProductOpportunity = {
+      ebay,
+      amazon: matchedAmazon,
+      profit,
+      decision: {
+        decision: 'MANUAL_REVIEW',
+        confidence: 0.55,
+        riskFlags,
+        reasoningSummary,
+        recommendedPrice: best.soldPrice,
+        recommendedTitle: best.title.slice(0, 80),
+        recommendedDescription: `Manual review candidate from Amazon Scout ASIN ${amazon.asin}. Confirm the eBay match and marketplace before listing.`
+      },
+      score: {
+        total: best.opportunityScore ?? candidate.amazonScore,
+        profit: 0,
+        roi: 0,
+        demand: 0,
+        priceSignal: 0,
+        match: Math.round((best.matchConfidence ?? 0) * 100),
+        riskPenalty: 0,
+        reasons: report?.reasons ?? []
+      },
+      safety: {
+        status: 'WARN',
+        riskFlags,
+        reasons: report?.reasons ?? []
+      },
+      discoveryProfile: 'amazon-manual-review'
+    };
+
+    const persisted = await persistOpportunity(options.db, opportunity, {
+      discoveryProfile: 'amazon-manual-review',
+      amazonCandidateId: candidate.id
+    });
+    await options.db.productCandidate.update({
+      where: { id: persisted.productCandidateId },
+      data: {
+        source: 'amazon-manual-review',
+        scoreBreakdown: scoreBreakdownWithManualReview(
+          { ...(opportunity.score ?? {}), ebayComparison: report },
+          review
+        )
+      }
+    });
+    await options.db.amazonDiscoveryCandidate.update({
+      where: { id: candidate.id },
+      data: {
+        selected: true,
+        comparisonStatus: 'MANUAL_REVIEW',
+        productCandidateId: persisted.productCandidateId,
+        amazonMatchId: persisted.amazonMatchId,
+        scoreBreakdown: scoreBreakdownWithManualReview(candidate.scoreBreakdown, review)
+      }
+    });
+    return {
+      candidateId: candidate.id,
+      productCandidateId: persisted.productCandidateId,
+      amazonMatchId: persisted.amazonMatchId,
+      alreadyConsidered: false
+    };
+  }
+
+  const productCandidate = await options.db.productCandidate.create({
+    data: {
+      amazonCandidateId: candidate.id,
+      discoveryProfile: 'amazon-manual-review',
+      opportunityScore: candidate.amazonScore,
+      safetyStatus: 'WARN',
+      riskFlags,
+      scoreBreakdown: scoreBreakdownWithManualReview(candidate.scoreBreakdown, review),
+      source: 'amazon-manual-review',
+      ebayTitle: best?.title ?? candidate.title,
+      ebayUrl: best?.url ?? candidate.amazonUrl,
+      ebaySoldPrice: money(best?.soldPrice),
+      ebayShippingPrice: money(best?.shippingPrice),
+      ebayCondition: best?.condition,
+      rawSerpapiJson: report
+    }
+  });
+  const actionItemId = await createActionForDecision(options.db, {
+    productCandidateId: productCandidate.id,
+    decision: {
+      decision: 'MANUAL_REVIEW',
+      confidence: 0.45,
+      riskFlags,
+      reasoningSummary
+    }
+  });
+  await options.db.auditLog.create({
+    data: {
+      entityType: 'AmazonDiscoveryCandidate',
+      entityId: candidate.id,
+      action: 'MANUAL_REVIEW_REQUESTED',
+      actor: 'dashboard',
+      afterJson: {
+        productCandidateId: productCandidate.id,
+        actionItemId,
+        review
+      }
+    }
+  });
+  await options.db.amazonDiscoveryCandidate.update({
+    where: { id: candidate.id },
+    data: {
+      selected: true,
+      comparisonStatus: 'MANUAL_REVIEW',
+      productCandidateId: productCandidate.id,
+      scoreBreakdown: scoreBreakdownWithManualReview(candidate.scoreBreakdown, review)
+    }
+  });
+
+  return {
+    candidateId: candidate.id,
+    productCandidateId: productCandidate.id,
+    actionItemId,
+    alreadyConsidered: false
+  };
+}
+
 export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCandidatesOptions): Promise<{
   compared: number;
   opportunities: ProductOpportunity[];
+  manualReviews: ProductOpportunity[];
   rejected: ProductOpportunity[];
   reports: EbayComparisonReport[];
 }> {
+  const market = getAmazonDiscoveryMarket(options.marketKey);
+  const comparisonSettings = resolveEbayComparisonSettings(options.comparisonSettings);
+  const allowedStatuses = options.force
+    ? ['NOT_COMPARED', 'ERROR', 'REJECTED', 'MANUAL_REVIEW']
+    : ['NOT_COMPARED', 'ERROR'];
   const where = options.candidateIds?.length
     ? { id: { in: options.candidateIds } }
     : {
       runId: options.runId,
       selected: true,
-      comparisonStatus: { in: ['NOT_COMPARED', 'ERROR'] }
+      comparisonStatus: { in: allowedStatuses }
     };
   const candidates = await options.db.amazonDiscoveryCandidate.findMany({
     where: {
       ...where,
-      comparisonStatus: { in: ['NOT_COMPARED', 'ERROR'] }
+      comparisonStatus: { in: allowedStatuses }
     },
     orderBy: { amazonScore: 'desc' },
     take: options.limit ?? 25
   });
 
   const opportunities: ProductOpportunity[] = [];
+  const manualReviews: ProductOpportunity[] = [];
   const rejected: ProductOpportunity[] = [];
   const reports: EbayComparisonReport[] = [];
 
@@ -553,9 +855,19 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
       const ebayCandidates = await searchEbayCandidates({
         query,
         apiKey: options.serpApiKey,
-        limit: 8
+        ebayDomain: market.ebayDomain,
+        soldOnly: comparisonSettings.soldOnly,
+        completedOnly: comparisonSettings.completedOnly,
+        limit: comparisonSettings.ebayResultLimit,
+        buyingFormat: comparisonSettings.buyingFormat === 'ANY' ? undefined : comparisonSettings.buyingFormat,
+        conditionIds: conditionIdsBySetting[comparisonSettings.itemCondition],
+        preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
+        postalCode: comparisonSettings.postalCode
       });
-      const comparison = analyzeAmazonEbayComparison(amazon, ebayCandidates, options.ruleConfig, query);
+      const comparison = analyzeAmazonEbayComparison(amazon, ebayCandidates, options.ruleConfig, query, {
+        market,
+        comparisonSettings
+      });
       reports.push(comparison.report);
       const best = comparison.best;
       if (!best) {
@@ -563,6 +875,17 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
           where: { id: candidate.id },
           data: {
             comparisonStatus: 'REJECTED',
+            scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
+          }
+        });
+        continue;
+      }
+      if (comparison.report.status === 'MANUAL_REVIEW') {
+        manualReviews.push(best);
+        await options.db.amazonDiscoveryCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            comparisonStatus: 'MANUAL_REVIEW',
             scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
           }
         });
@@ -610,6 +933,8 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
           minimumMatchConfidence: options.ruleConfig.thresholds.minimumMatchConfidence,
           minimumOpportunityScore: options.ruleConfig.minimumOpportunityScore
         },
+        market: reportMarket(market),
+        settings: reportSettings(comparisonSettings),
         comparedAt: new Date().toISOString()
       };
       await options.db.amazonDiscoveryCandidate.update({
@@ -633,5 +958,5 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
     });
   }
 
-  return { compared: candidates.length, opportunities, rejected, reports };
+  return { compared: candidates.length, opportunities, manualReviews, rejected, reports };
 }

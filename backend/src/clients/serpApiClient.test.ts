@@ -41,6 +41,11 @@ try {
   const candidates = await searchEbayCandidates({
     query: 'barcode scanner',
     apiKey: 'test-key',
+    ebayDomain: 'ebay.de',
+    buyingFormat: 'BIN',
+    conditionIds: ['1000'],
+    preferredLocation: 'Domestic',
+    postalCode: '10115',
     limit: 10
   });
   const url = new URL(capturedUrl);
@@ -48,7 +53,15 @@ try {
   assertEqual(url.pathname, '/search.json', 'SerpAPI search path');
   assertEqual(url.searchParams.get('engine'), 'ebay', 'SerpAPI eBay engine');
   assertEqual(url.searchParams.get('_nkw'), 'barcode scanner', 'SerpAPI search query');
+  assertEqual(url.searchParams.get('ebay_domain'), 'ebay.de', 'SerpAPI eBay domain');
+  assertEqual(url.searchParams.get('_ipg'), '25', 'SerpAPI eBay page size');
+  assertEqual(url.searchParams.get('show_only'), 'Sold,Complete', 'SerpAPI sold/completed filter');
   assertEqual(url.searchParams.get('LH_Sold'), '1', 'SerpAPI sold filter');
+  assertEqual(url.searchParams.get('LH_Complete'), '1', 'SerpAPI completed filter');
+  assertEqual(url.searchParams.get('buying_format'), 'BIN', 'SerpAPI buying format filter');
+  assertEqual(url.searchParams.get('LH_ItemCondition'), '1000', 'SerpAPI condition filter');
+  assertEqual(url.searchParams.get('LH_PrefLoc'), 'Domestic', 'SerpAPI location filter');
+  assertEqual(url.searchParams.get('_stpos'), '10115', 'SerpAPI postal code filter');
   assertEqual(candidates.length, 3, 'SerpAPI parsed candidates');
   assertEqual(candidates[0]?.soldPrice, 42.5, 'SerpAPI object price');
   assertEqual(candidates[0]?.shippingPrice, 0, 'SerpAPI free shipping');

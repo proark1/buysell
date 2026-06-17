@@ -72,21 +72,50 @@ export interface SerpApiSearchOptions {
   apiKey: string;
   ebayDomain?: string;
   soldOnly?: boolean;
+  completedOnly?: boolean;
+  resultPageSize?: 25 | 50 | 100 | 200;
+  buyingFormat?: 'BIN' | 'Auction' | 'BO';
+  conditionIds?: string[];
+  preferredLocation?: 'Domestic' | 'Regional' | 'Worldwide';
+  postalCode?: string;
+  exactQueryOnly?: boolean;
   limit?: number;
 }
 
+function pageSizeForLimit(limit: number | undefined): 25 | 50 | 100 | 200 {
+  const value = limit ?? 25;
+  if (value <= 25) return 25;
+  if (value <= 50) return 50;
+  if (value <= 100) return 100;
+  return 200;
+}
+
 export async function searchEbayCandidates(options: SerpApiSearchOptions): Promise<EbayCandidateInput[]> {
+  const limit = Math.min(Math.max(options.limit ?? 25, 1), 200);
   const params = new URLSearchParams({
     engine: 'ebay',
     _nkw: options.query,
+    _ipg: String(options.resultPageSize ?? pageSizeForLimit(limit)),
     api_key: options.apiKey
   });
 
   if (options.ebayDomain) params.set('ebay_domain', options.ebayDomain);
+  const showOnly = [
+    (options.soldOnly ?? true) ? 'Sold' : undefined,
+    (options.completedOnly ?? true) ? 'Complete' : undefined
+  ].filter((item): item is string => Boolean(item));
+  if (showOnly.length > 0) params.set('show_only', showOnly.join(','));
   if (options.soldOnly ?? true) {
     params.set('LH_Sold', '1');
+  }
+  if (options.completedOnly ?? true) {
     params.set('LH_Complete', '1');
   }
+  if (options.buyingFormat) params.set('buying_format', options.buyingFormat);
+  if (options.conditionIds?.length) params.set('LH_ItemCondition', options.conditionIds.join('|'));
+  if (options.preferredLocation) params.set('LH_PrefLoc', options.preferredLocation);
+  if (options.postalCode?.trim()) params.set('_stpos', options.postalCode.trim());
+  if (options.exactQueryOnly) params.set('_blrs', 'spell_auto_correct');
 
   const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
   if (!response.ok) {
@@ -101,7 +130,7 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
 
   const results = [...(payload.organic_results ?? []), ...(payload.shopping_results ?? [])];
 
-  return results.slice(0, options.limit ?? 25).flatMap((result) => {
+  return results.slice(0, limit).flatMap((result) => {
     const title = parseText(result.title);
     if (!title) return [];
 
