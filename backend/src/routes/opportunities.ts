@@ -5,6 +5,7 @@ import { prisma } from '../db/prisma.js';
 import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { getSecret } from '../services/secrets.js';
 
 const opportunityRequestSchema = z.object({
   query: z.string().min(2),
@@ -20,7 +21,9 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       return reply.status(400).send({ error: 'Invalid opportunity search request', details: parsed.error.flatten() });
     }
 
-    if (!env.SERPAPI_API_KEY || !env.KEEPA_API_KEY) {
+    const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
+    const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
+    if (!serpApiKey || !keepaApiKey) {
       return reply.status(503).send({ error: 'SERPAPI_API_KEY and KEEPA_API_KEY are required for opportunity search' });
     }
 
@@ -32,8 +35,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     const opportunities = await buildOpportunities({
       query: parsed.data.query,
       limit: parsed.data.limit,
-      serpApiKey: env.SERPAPI_API_KEY,
-      keepaApiKey: env.KEEPA_API_KEY,
+      serpApiKey,
+      keepaApiKey,
       thresholds: ruleConfig.thresholds,
       estimatedSalesTaxRate: ruleConfig.estimatedSalesTaxRate,
       returnRiskBuffer: ruleConfig.returnRiskBuffer,

@@ -22,6 +22,7 @@ declare module 'fastify' {
     get(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
     post(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
     patch(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
+    put(path: string, handler: (request: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>): void;
     listen(options: { port: number; host: string }): Promise<void>;
     log: { info(payload: unknown, message?: string): void; error(payload: unknown, message?: string): void };
   }
@@ -46,6 +47,7 @@ declare module '@prisma/client' {
     ebayListing: any;
     order: any;
     amazonPurchase: any;
+    credential: any;
     $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
     $queryRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
     $connect(): Promise<void>;

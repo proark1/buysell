@@ -155,6 +155,14 @@ const dashboardHtml = `<!doctype html>
       background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#fecaca;font-size:13px;font-weight:500}
     .banner.show{display:flex}
     code{background:rgba(2,6,23,.6);padding:2px 6px;border-radius:6px;font-size:12px;color:var(--accent)}
+    /* Credentials */
+    .cred-group+.cred-group{margin-top:20px;padding-top:18px;border-top:1px solid var(--border)}
+    .cred-group-title{font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+    .cred-row{display:grid;grid-template-columns:1.1fr 1.3fr auto;gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid var(--border)}
+    .cred-row:last-child{border-bottom:none}
+    .cred-label{font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .cred-actions{display:flex;gap:8px}
+    @media(max-width:760px){.cred-row{grid-template-columns:1fr;gap:10px}}
   </style>
 </head>
 <body>
@@ -169,6 +177,7 @@ const dashboardHtml = `<!doctype html>
       <div class="nav-item" data-view="actions"><span class="ic">⚡</span> Actions</div>
       <div class="nav-item" data-view="catalog"><span class="ic">◳</span> Listings &amp; Orders</div>
       <div class="nav-item" data-view="discovery"><span class="ic">⌕</span> Discovery</div>
+      <div class="nav-item" data-view="keys"><span class="ic">🔑</span> API Keys</div>
       <div class="nav-item" data-view="settings"><span class="ic">⚙</span> Settings</div>
     </nav>
     <div class="side-foot">
@@ -290,6 +299,17 @@ const dashboardHtml = `<!doctype html>
         </div>
       </section>
 
+      <!-- API KEYS -->
+      <section class="view" id="view-keys">
+        <div class="banner" id="keysLocked" style="display:none;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#fde68a">
+          <span>🔒</span><span>These routes are protected. Set the Local Agent Shared Secret under <b>Settings → Local Agent Connection</b> to save changes.</span>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>API Keys &amp; Credentials</h2><span class="hint">Values are encrypted (AES-256-GCM) and saved in Postgres; they override environment variables.</span></div>
+          <div class="panel-body"><div id="credsContainer"><div class="empty">Loading…</div></div></div>
+        </div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view" id="view-settings">
         <div class="grid-2">
@@ -329,6 +349,7 @@ var META={
   actions:['Actions','Approve, execute, and protect your listings'],
   catalog:['Listings & Orders','Manage marketplace inventory and fulfillment'],
   discovery:['Discovery','Search and persist product opportunities'],
+  keys:['API Keys & Credentials','Encrypted at rest, stored in your database'],
   settings:['Settings','Thresholds, intervals, and connections']
 };
 var BADGE={
@@ -438,7 +459,46 @@ function navigate(view){
   document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+view)});
   document.getElementById('viewTitle').textContent=META[view][0];
   document.getElementById('viewSub').textContent=META[view][1];
+  if(view==='keys')loadCredentials();
 }
+
+function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
+function credField(c){
+  var input;
+  if(c.type==='toggle'){
+    var on=c.preview==='true';
+    input='<select id="cred_'+c.key+'"><option value="true"'+(on?' selected':'')+'>true</option><option value="false"'+(on?'':' selected')+'>false</option></select>';
+  }else{
+    var ph=c.type==='secret'?(c.preview?'Current: '+c.preview:'Enter '+c.label):(c.preview||'Enter '+c.label);
+    var it=c.type==='secret'?'password':'text';
+    input='<input id="cred_'+c.key+'" type="'+it+'" placeholder="'+esc(ph)+'">';
+  }
+  var help=c.help?'<div class="hint" style="margin-top:4px">'+esc(c.help)+'</div>':'';
+  var clearBtn=c.source==='database'?'<button class="btn ghost sm" onclick="clearCred(\\''+c.key+'\\')">Clear</button>':'';
+  return '<div class="cred-row"><div class="cred-meta"><div class="cred-label">'+esc(c.label)+' '+credBadge(c.source)+'</div>'+help+'</div>'+
+    '<div class="cred-input">'+input+'</div><div class="cred-actions"><button class="btn primary sm" onclick="saveCred(\\''+c.key+'\\')">Save</button>'+clearBtn+'</div></div>';
+}
+function renderCredentials(list){
+  var groups={},order=[];
+  list.forEach(function(c){if(!groups[c.group]){groups[c.group]=[];order.push(c.group)}groups[c.group].push(c)});
+  document.getElementById('credsContainer').innerHTML=order.map(function(g){
+    return '<div class="cred-group"><div class="cred-group-title">'+esc(g)+'</div>'+groups[g].map(credField).join('')+'</div>';
+  }).join('');
+}
+function loadCredentials(){
+  apiFetch('/api/credentials').then(function(r){
+    if(r.status===401){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Set the Local Agent Shared Secret in Settings, then reopen this tab.</div>';return null}
+    document.getElementById('keysLocked').style.display='none';return r.json();
+  }).then(function(j){if(j)renderCredentials(j.credentials)}).catch(function(e){document.getElementById('credsContainer').innerHTML='<div class="empty">Could not load credentials: '+esc(e.message)+'</div>'});
+}
+function putCred(key,value,okMsg){
+  return apiFetch('/api/credentials/'+encodeURIComponent(key),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({value:value})}).then(function(r){
+    if(r.status===401){document.getElementById('keysLocked').style.display='flex';throw new Error('Unauthorized — set the Local Agent Shared Secret in Settings')}
+    return r.json();
+  }).then(function(){toast(okMsg,key,'ok');loadCredentials()}).catch(function(e){toast('Save failed',e.message,'err')});
+}
+function saveCred(key){var el=document.getElementById('cred_'+key);putCred(key,el?el.value:'','Credential saved')}
+function clearCred(key){putCred(key,'','Credential cleared')}
 
 function setDb(connected,msg){
   var dot=document.getElementById('dbDot'),lbl=document.getElementById('dbLabel');
