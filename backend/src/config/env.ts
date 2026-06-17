@@ -1,20 +1,25 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+// Railway and local .env files can define optional values as empty strings.
+// Treat those the same as missing so optional/defaulted schema fields behave.
+const emptyStringToUndefined = (value: unknown): unknown => value === '' ? undefined : value;
+const envValue = (schema: Parameters<typeof z.preprocess>[1]) => z.preprocess(emptyStringToUndefined, schema);
+
 const rawEnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  DATABASE_URL: z.string().min(1).optional(),
-  SERPAPI_API_KEY: z.string().min(1).optional(),
-  KEEPA_API_KEY: z.string().min(1).optional(),
-  EBAY_CLIENT_ID: z.string().min(1).optional(),
-  EBAY_CLIENT_SECRET: z.string().min(1).optional(),
-  EBAY_REFRESH_TOKEN: z.string().min(1).optional(),
-  EBAY_MARKETPLACE_ID: z.string().default('EBAY_US'),
-  EBAY_SANDBOX: z.enum(['true', 'false']).default('false'),
-  OPENAI_API_KEY: z.string().min(1).optional(),
-  LOCAL_AGENT_SHARED_SECRET: z.string().min(1).optional(),
-  BUYSELL_ENCRYPTION_KEY: z.string().min(32).optional(),
-  PORT: z.coerce.number().int().positive().default(3000)
+  NODE_ENV: envValue(z.enum(['development', 'test', 'production']).default('development')),
+  DATABASE_URL: envValue(z.string().min(1).optional()),
+  SERPAPI_API_KEY: envValue(z.string().min(1).optional()),
+  KEEPA_API_KEY: envValue(z.string().min(1).optional()),
+  EBAY_CLIENT_ID: envValue(z.string().min(1).optional()),
+  EBAY_CLIENT_SECRET: envValue(z.string().min(1).optional()),
+  EBAY_REFRESH_TOKEN: envValue(z.string().min(1).optional()),
+  EBAY_MARKETPLACE_ID: envValue(z.string().min(1).default('EBAY_US')),
+  EBAY_SANDBOX: envValue(z.enum(['true', 'false']).default('false')),
+  OPENAI_API_KEY: envValue(z.string().min(1).optional()),
+  LOCAL_AGENT_SHARED_SECRET: envValue(z.string().min(1).optional()),
+  BUYSELL_ENCRYPTION_KEY: envValue(z.string().min(32).optional()),
+  PORT: envValue(z.coerce.number().int().positive().default(3000))
 });
 
 type EnvRefinementValue = {
