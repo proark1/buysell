@@ -46,6 +46,10 @@ declare module '@prisma/client' {
     ebayListing: any;
     order: any;
     amazonPurchase: any;
+    $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+    $queryRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
+    $connect(): Promise<void>;
+    $disconnect(): Promise<void>;
   }
 }
 

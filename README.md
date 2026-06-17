@@ -94,6 +94,27 @@ curl -X POST http://localhost:3000/orders/order_id/amazon-purchase \
   -d '{"asin":"B000000000","amazonOrderId":"AMZ-1","purchasePrice":31.50,"status":"PURCHASED"}'
 ```
 
+## Railway Postgres
+
+The backend connects to Postgres through Prisma using the `DATABASE_URL` environment variable. On Railway:
+
+1. In your Railway project, click **New → Database → Add PostgreSQL**. Railway provisions a Postgres service and exposes `DATABASE_URL`.
+2. Open the **backend service → Variables** and add a reference variable so the API reads the database URL:
+
+   ```
+   DATABASE_URL=${{ Postgres.DATABASE_URL }}
+   ```
+
+   (Use the exact service name shown in your project, e.g. `Postgres`.) Add the other secrets from `.env.example` (`BUYSELL_ENCRYPTION_KEY`, eBay/Keepa/SerpApi keys, etc.) here too.
+3. Deploy. On every deploy the start command runs `prisma migrate deploy` against `DATABASE_URL` before booting the server, so the schema is created/updated automatically — no manual migration step is required.
+4. After the first deploy, optionally seed default rules:
+
+   ```bash
+   railway run npm run prisma:seed -w backend
+   ```
+
+The dashboard shows a live **Postgres connected / DB disconnected** indicator (backed by `GET /api/health/db`) so you can confirm the database is wired up at a glance.
+
 Railway deployment:
 
 ```bash
@@ -101,7 +122,7 @@ npm run railway:build
 npm run railway:start
 ```
 
-The backend starts from `backend/dist/index.js`; `railway.json` points Railway at `/health` for deployment health checks.
+`railway.json` sets the build command to `npm install && npm run build`, the start command to `npm run start:railway -w backend` (which runs `prisma migrate deploy` then starts the API from `backend/dist/index.js`), and points Railway at `/health` for deployment health checks.
 
 Database migrations:
 
@@ -141,4 +162,4 @@ Note: CI currently uses `npm install` instead of `npm ci` until a `package-lock.
 
 Dashboard:
 
-Open `/` on the Railway app to use the Buysell Control Center. It displays products, listings, orders, actions, settings, and includes a manual Amazon price-check trigger.
+Open `/` on the Railway app to use the redesigned Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, and a manual Amazon price-check trigger.

@@ -10,6 +10,8 @@
     "lint": "npm run typecheck",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "start:railway": "prisma migrate deploy && node dist/index.js",
     "test": "npm run build && node dist/services/profitCalculator.test.js && node dist/services/matchScorer.test.js && node dist/services/opportunityDecider.test.js && node dist/clients/ebaySellClient.test.js",
     "start": "node dist/index.js",
     "postinstall": "prisma generate || true",

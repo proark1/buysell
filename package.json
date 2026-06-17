@@ -12,7 +12,7 @@
     "lint": "npm run lint -w backend && npm run lint -w local-agent",
     "start": "npm run start -w backend",
     "railway:build": "npm run build",
-    "railway:start": "npm run start -w backend",
+    "railway:start": "npm run start:railway -w backend",
     "test": "npm run test -w backend && npm run test -w local-agent"
   }
 }
