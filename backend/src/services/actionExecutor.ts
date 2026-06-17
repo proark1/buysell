@@ -80,6 +80,38 @@ export async function executeAction(db: PrismaClient, actionId: string): Promise
     return { listingId: listing?.id, offerId, ebayResult };
   }
 
+  if (action.type === 'REVIEW') {
+    const payload = (action.payloadJson ?? {}) as ActionPayload;
+    const result = {
+      actionId: action.id,
+      actionType: action.type,
+      status: 'COMPLETED',
+      reason: action.reason
+    };
+
+    await db.actionItem.update({
+      where: { id: action.id },
+      data: {
+        status: 'COMPLETED',
+        reviewedBy: 'action-executor',
+        reviewedAt: new Date(),
+        payloadJson: { ...payload, manualReviewCompletedAt: new Date().toISOString() }
+      }
+    });
+
+    await db.auditLog.create({
+      data: {
+        entityType: 'ActionItem',
+        entityId: action.id,
+        action: 'MANUAL_REVIEW_COMPLETED',
+        actor: 'action-executor',
+        afterJson: result
+      }
+    });
+
+    return result;
+  }
+
   if (action.type === 'VERIFY') {
     throw new Error('VERIFY actions must be completed through /actions/:id/verification-result with browser-observed prices and conditions');
   }
