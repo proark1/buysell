@@ -19,7 +19,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
           avg90: [-1, 1999]
         },
         reviews: {
-          ratingCount: 318,
+          ratingCount: [12, 200, 13, 318],
           reviewCount: null
         },
         csv: null,

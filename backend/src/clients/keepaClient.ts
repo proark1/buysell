@@ -4,15 +4,6 @@ import type { AmazonMatchInput } from '../domain/products.js';
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
 const nullableNumberArray = z.array(z.number()).nullable().optional();
-const keepaReviewsSchema = z.union([
-  z.number(),
-  z.object({
-    reviewCount: nullableNumber,
-    ratingCount: nullableNumber,
-    lastUpdate: nullableNumber
-  }).passthrough()
-]).nullable().optional();
-
 const keepaProductSchema = z.object({
   asin: z.string(),
   title: nullableString,
@@ -29,7 +20,7 @@ const keepaProductSchema = z.object({
     avg90: nullableNumberArray
   }).nullable().optional(),
   rating: nullableNumber,
-  reviews: keepaReviewsSchema,
+  reviews: z.unknown().optional(),
   reviewCount: nullableNumber,
   availabilityAmazon: nullableNumber,
   csv: z.array(z.array(z.number()).nullable()).nullable().optional(),
@@ -66,7 +57,7 @@ interface KeepaProduct {
   } | null;
   categoryTree?: { name?: string | null }[] | null;
   rating?: number | null;
-  reviews?: number | { reviewCount?: number | null; ratingCount?: number | null } | null;
+  reviews?: unknown;
   reviewCount?: number | null;
   availabilityAmazon?: number | null;
 }
@@ -78,11 +69,22 @@ const keepaCentsToMoney = (value?: number | null): number | undefined => {
 
 const nullableText = (value?: string | null): string | undefined => value ?? undefined;
 
+const keepaNumericValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
+  if (Array.isArray(value)) {
+    return [...value].reverse().find((item): item is number => typeof item === 'number' && Number.isFinite(item) && item >= 0);
+  }
+  return undefined;
+};
+
 const keepaReviewCount = (product: KeepaProduct): number | undefined => {
-  if (typeof product.reviewCount === 'number') return product.reviewCount;
-  if (typeof product.reviews === 'number') return product.reviews;
+  const directCount = keepaNumericValue(product.reviewCount);
+  if (directCount !== undefined) return directCount;
+  const directReviews = keepaNumericValue(product.reviews);
+  if (directReviews !== undefined) return directReviews;
   if (product.reviews && typeof product.reviews === 'object') {
-    return product.reviews.reviewCount ?? product.reviews.ratingCount ?? undefined;
+    const reviewStats = product.reviews as Record<string, unknown>;
+    return keepaNumericValue(reviewStats.reviewCount) ?? keepaNumericValue(reviewStats.ratingCount);
   }
   return undefined;
 };
