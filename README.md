@@ -156,7 +156,15 @@ npm run railway:build
 npm run railway:start
 ```
 
-`railway.json` sets the build command to `npm ci && npm run build`, the start command to `npm run start:railway -w backend` (which runs `prisma migrate deploy` then starts the API from `backend/dist/index.js`), and points Railway at `/health` for deployment health checks.
+`railway.json` sets the build command to `npm run build`, the start command to `npm run start:railway -w backend` (which runs `prisma migrate deploy` then starts the API from `backend/dist/index.js`), and points Railway at `/health` for deployment health checks. Nixpacks handles dependency installation with `npm ci`; the app build command should not run a second install.
+
+Check Railway deployment health:
+
+```bash
+npm run railway:check
+```
+
+The check reads the latest production deployment, prints recent Railway build/deploy logs if it failed, and verifies the deployed `/health` and `/api/health/db` endpoints when the latest deployment is successful.
 
 Database migrations:
 

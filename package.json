@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x",
+    "npm": "10.x"
+  },
   "workspaces": [
     "backend",
     "local-agent"
@@ -16,6 +20,7 @@
     "prisma:deploy": "npm run prisma:deploy -w backend",
     "prisma:seed": "npm run prisma:seed -w backend",
     "railway:build": "npm run build",
+    "railway:check": "node scripts/check-railway-deployment.mjs",
     "railway:start": "npm run start:railway -w backend",
     "test": "npm run test -w backend && npm run test -w local-agent"
   },
