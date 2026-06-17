@@ -9,6 +9,12 @@ const profitRequestSchema = z.object({
   ebayPaymentFeeRate: z.number().min(0).optional(),
   promotedListingFeeRate: z.number().min(0).optional(),
   amazonShippingCost: z.number().min(0).optional(),
+  sourceShippingCost: z.number().min(0).optional(),
+  packagingCost: z.number().min(0).optional(),
+  paymentFixedFee: z.number().min(0).optional(),
+  returnReserveRate: z.number().min(0).optional(),
+  cancellationReserveRate: z.number().min(0).optional(),
+  marketplaceRiskBuffer: z.number().min(0).optional(),
   estimatedSalesTaxRate: z.number().min(0).optional(),
   returnRiskBuffer: z.number().min(0).optional(),
   priceChangeBuffer: z.number().min(0).optional()

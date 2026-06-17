@@ -26,7 +26,7 @@ When an eBay order arrives, the backend must recheck Keepa price and availabilit
 
 ## Opportunity Search API
 
-`POST /opportunities/search` is the first end-to-end API shape for Weg 2. It requires `SERPAPI_API_KEY` and `KEEPA_API_KEY`, searches sold eBay candidates through SerpApi, asks Keepa for Amazon matches, scores the best match, calculates profit, and returns a deterministic `LIST`, `REJECT`, or `MANUAL_REVIEW` decision.
+`POST /opportunities/search` is the first end-to-end API shape for Weg 2. It requires `SERPAPI_API_KEY` and `KEEPA_API_KEY`, searches sold eBay candidates through SerpApi, asks Keepa for Amazon matches, scores the best match, calculates landed-cost profit, attaches evidence and market metrics, and returns a deterministic `LIST`, `REJECT`, or `MANUAL_REVIEW` decision.
 
 Example request:
 
@@ -46,6 +46,8 @@ The route currently returns opportunities to the caller and does not create eBay
 `POST /ebay-discovery/compare` checks selected eBay candidates against Amazon source prices, applies the same match, safety, profit, ROI, and opportunity-score gates as the rest of the pipeline, and persists accepted matches through `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `ActionItem`. Borderline or user-overridden products can be routed to manual review with `POST /ebay-discovery/consider`.
 
 Both eBay-first and Amazon-first comparison now require product identity evidence before an automatic opportunity can be created. Shared UPC/EAN/MPN/model evidence or exact brand-plus-model evidence can pass; brand, model, pack-count, or variant conflicts are rejected; brand-only or title-only similarity is routed to manual review instead of listing.
+
+Both flows also persist an evidence ledger and market-quality metrics. The scorer uses sold-comps sample size, price spread, sell-through/competition metrics when available, landed-cost economics, identity confidence, and safety flags before an automatic listing can be queued.
 
 ## Persisting Opportunities
 
@@ -83,9 +85,11 @@ Protected operator routes require a shared secret. Configure `LOCAL_AGENT_SHARED
 
 `RuleConfig` stores adjustable safety thresholds such as minimum profit, ROI, match confidence, tax/buffer assumptions, daily limits, and brand/category blocklists. Opportunity search loads the active rule config before scoring, so filters can change without code edits.
 
-## Listing Draft Execution
+## Listing Execution
 
-Approved `LIST` actions can be sent to `POST /actions/:id/execute`. The current executor prepares and audits an eBay listing draft payload without publishing to eBay, preserving the manual approval boundary while creating the future integration point for the eBay Sell API.
+Approved `LIST` actions can be sent to `POST /actions/:id/execute`. The default executor mode is `PREPARE`, which prepares and audits a local eBay draft payload without publishing to eBay. Passing `result.ebayPublishMode="DRAFT"` creates or replaces the eBay inventory item and creates an unpublished Sell Inventory offer. Passing `result.ebayPublishMode="PUBLISH"` also publishes the offer. eBay API modes require credentials and explicit category, location, fulfillment, payment, and return policy IDs.
+
+Approved `REPRICE` actions update the internal listing and attempt an eBay Sell Inventory price/quantity update when an offer ID and credentials are available.
 
 ## eBay Order Intake
 

@@ -7,6 +7,15 @@ export interface ActiveRuleConfig {
   estimatedSalesTaxRate: number;
   returnRiskBuffer: number;
   priceChangeBuffer: number;
+  sourceShippingCost: number;
+  packagingCost: number;
+  paymentFixedFee: number;
+  defaultPromotedListingFeeRate: number;
+  returnReserveRate: number;
+  cancellationReserveRate: number;
+  marketplaceRiskBuffer: number;
+  minimumSellThroughRate: number;
+  maximumCompetitionRatio: number;
   maxDailyListings: number;
   maxDailyPurchaseAmountUsd: number;
   safeMode: boolean;
@@ -28,6 +37,15 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   estimatedSalesTaxRate: 0.08,
   returnRiskBuffer: 2,
   priceChangeBuffer: 2,
+  sourceShippingCost: 0,
+  packagingCost: 0,
+  paymentFixedFee: 0,
+  defaultPromotedListingFeeRate: 0,
+  returnReserveRate: 0,
+  cancellationReserveRate: 0,
+  marketplaceRiskBuffer: 0,
+  minimumSellThroughRate: 0.05,
+  maximumCompetitionRatio: 12,
   maxDailyListings: 10,
   maxDailyPurchaseAmountUsd: 250,
   safeMode: true,
@@ -69,6 +87,15 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     estimatedSalesTaxRate: numberValue(config.estimatedSalesTaxRate, defaultRuleConfig.estimatedSalesTaxRate),
     returnRiskBuffer: numberValue(config.returnRiskBuffer, defaultRuleConfig.returnRiskBuffer),
     priceChangeBuffer: numberValue(config.priceChangeBuffer, defaultRuleConfig.priceChangeBuffer),
+    sourceShippingCost: numberValue(config.sourceShippingCost, defaultRuleConfig.sourceShippingCost),
+    packagingCost: numberValue(config.packagingCost, defaultRuleConfig.packagingCost),
+    paymentFixedFee: numberValue(config.paymentFixedFee, defaultRuleConfig.paymentFixedFee),
+    defaultPromotedListingFeeRate: numberValue(config.defaultPromotedListingFeeRate, defaultRuleConfig.defaultPromotedListingFeeRate),
+    returnReserveRate: numberValue(config.returnReserveRate, defaultRuleConfig.returnReserveRate),
+    cancellationReserveRate: numberValue(config.cancellationReserveRate, defaultRuleConfig.cancellationReserveRate),
+    marketplaceRiskBuffer: numberValue(config.marketplaceRiskBuffer, defaultRuleConfig.marketplaceRiskBuffer),
+    minimumSellThroughRate: numberValue(config.minimumSellThroughRate, defaultRuleConfig.minimumSellThroughRate),
+    maximumCompetitionRatio: numberValue(config.maximumCompetitionRatio, defaultRuleConfig.maximumCompetitionRatio),
     maxDailyListings: numberValue(config.maxDailyListings, defaultRuleConfig.maxDailyListings),
     maxDailyPurchaseAmountUsd: numberValue(config.maxDailyPurchaseAmountUsd, defaultRuleConfig.maxDailyPurchaseAmountUsd),
     safeMode: typeof config.safeMode === 'boolean' ? config.safeMode : defaultRuleConfig.safeMode,

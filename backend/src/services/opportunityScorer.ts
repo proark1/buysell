@@ -12,6 +12,7 @@ export interface OpportunityScore {
   roi: number;
   demand: number;
   priceSignal: number;
+  market: number;
   match: number;
   riskPenalty: number;
   reasons: string[];
@@ -55,6 +56,11 @@ function riskPenalty(riskFlags: string[]): number {
     if (flag === 'LOW_MATCH_CONFIDENCE') return penalty + 18;
     if (flag === 'LOW_PROFIT' || flag === 'LOW_ROI') return penalty + 16;
     if (flag === 'AMAZON_STOCK_UNKNOWN') return penalty + 8;
+    if (flag === 'LOW_SELL_THROUGH') return penalty + 14;
+    if (flag === 'HIGH_COMPETITION') return penalty + 12;
+    if (flag === 'HIGH_SOLD_PRICE_SPREAD') return penalty + 8;
+    if (flag === 'TARGET_PRICE_ABOVE_MARKET') return penalty + 8;
+    if (flag === 'NO_SOLD_MARKET_SAMPLE') return penalty + 10;
     if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 6;
     return penalty + 4;
   }, 0);
@@ -65,17 +71,21 @@ export function scoreOpportunity(opportunity: ProductOpportunity, thresholds: Sc
   const roi = clamp((opportunity.profit.roiPercent / thresholds.minimumRoiPercent) * 16, 0, 18);
   const demand = demandScore(opportunity.amazon.salesRank, opportunity.amazon.reviewCount, opportunity.amazon.rating);
   const priceSignal = priceSignalScore(opportunity.amazon.priceDropPercent, Boolean(opportunity.amazon.buyBoxPrice ?? opportunity.amazon.currentPrice));
+  const market = opportunity.marketMetrics ? clamp((opportunity.marketMetrics.demandScore / 100) * 12, 0, 12) : 0;
   const match = clamp((opportunity.amazon.matchConfidence ?? 0) * 23, 0, 23);
-  const risk = riskPenalty(riskFlags);
-  const total = round(clamp(profit + roi + demand + priceSignal + match - risk, 0, 100));
+  const combinedRiskFlags = [...new Set([...riskFlags, ...(opportunity.marketMetrics?.riskFlags ?? [])])];
+  const risk = riskPenalty(combinedRiskFlags);
+  const total = round(clamp(profit + roi + demand + priceSignal + market + match - risk, 0, 100));
 
   const reasons: string[] = [];
   if (opportunity.profit.expectedProfit >= thresholds.minimumProfitUsd) reasons.push(`Profit ${opportunity.profit.expectedProfit.toFixed(2)} clears minimum.`);
   if (opportunity.profit.roiPercent >= thresholds.minimumRoiPercent) reasons.push(`ROI ${opportunity.profit.roiPercent.toFixed(1)}% clears target.`);
   if ((opportunity.amazon.matchConfidence ?? 0) >= 0.75) reasons.push('Strong Amazon/eBay match.');
+  if (opportunity.marketMetrics?.soldSampleSize) reasons.push(`${opportunity.marketMetrics.soldSampleSize} sold comps support market confidence.`);
+  if (opportunity.marketMetrics?.sellThroughRate !== undefined) reasons.push(`Estimated sell-through ${(opportunity.marketMetrics.sellThroughRate * 100).toFixed(1)}%.`);
   if (opportunity.amazon.priceDropPercent && opportunity.amazon.priceDropPercent >= 8) reasons.push(`Amazon price is down ${opportunity.amazon.priceDropPercent.toFixed(1)}% versus recent history.`);
   if (opportunity.amazon.salesRank) reasons.push(`Keepa sales rank signal: ${opportunity.amazon.salesRank}.`);
-  if (risk > 0) reasons.push(`Risk penalty applied for ${riskFlags.join(', ')}.`);
+  if (risk > 0) reasons.push(`Risk penalty applied for ${combinedRiskFlags.join(', ')}.`);
 
   return {
     total,
@@ -83,6 +93,7 @@ export function scoreOpportunity(opportunity: ProductOpportunity, thresholds: Sc
     roi: round(roi),
     demand: round(demand),
     priceSignal: round(priceSignal),
+    market: round(market),
     match: round(match),
     riskPenalty: risk,
     reasons

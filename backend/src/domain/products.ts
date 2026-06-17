@@ -38,11 +38,21 @@ export interface ProductOpportunity {
     estimatedFees: number;
     estimatedTax: number;
     bufferAmount: number;
+    sourceShippingCost?: number;
+    packagingCost?: number;
+    paymentFixedFee?: number;
+    returnReserve?: number;
+    cancellationReserve?: number;
+    marketplaceRiskBuffer?: number;
+    totalSourceCost?: number;
+    totalLandedCost?: number;
     expectedProfit: number;
     roiPercent: number;
     marginPercent: number;
   };
   identityMatch?: ProductIdentityMatch;
+  evidence?: OpportunityEvidence;
+  marketMetrics?: OpportunityMarketMetrics;
   decision: OpportunityDecision;
   score?: {
     total: number;
@@ -50,6 +60,7 @@ export interface ProductOpportunity {
     roi: number;
     demand: number;
     priceSignal: number;
+    market?: number;
     match: number;
     riskPenalty: number;
     reasons: string[];
@@ -76,6 +87,37 @@ export interface ProductIdentityMatch {
     ebayIdentifiers: string[];
     amazonIdentifiers: string[];
   };
+}
+
+export interface OpportunityEvidenceItem {
+  type: string;
+  source: 'AMAZON' | 'EBAY' | 'SYSTEM' | 'VERIFIER';
+  value: string;
+  confidence: number;
+  capturedAt: string;
+}
+
+export interface OpportunityEvidence {
+  productIdentity: OpportunityEvidenceItem[];
+  economics: OpportunityEvidenceItem[];
+  market: OpportunityEvidenceItem[];
+  safety: OpportunityEvidenceItem[];
+}
+
+export interface OpportunityMarketMetrics {
+  soldSampleSize: number;
+  activeSampleSize?: number;
+  medianSoldPrice?: number;
+  averageSoldPrice?: number;
+  lowSoldPrice?: number;
+  highSoldPrice?: number;
+  priceSpreadPercent?: number;
+  targetPricePercentile?: number;
+  sellThroughRate?: number;
+  competitionRatio?: number;
+  demandScore: number;
+  riskFlags: string[];
+  reasons: string[];
 }
 
 export interface OpportunityDecision {

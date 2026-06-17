@@ -62,6 +62,8 @@ model ProductCandidate {
   safetyStatus       String?
   riskFlags          Json?
   scoreBreakdown     Json?
+  evidenceJson       Json?
+  marketMetricsJson  Json?
   source             String                    @default("serpapi")
   ebayTitle          String
   ebayUrl            String?
@@ -106,6 +108,7 @@ model AmazonMatch {
   rating             Decimal?            @db.Decimal(3, 2)
   reviewCount        Int?
   rawKeepaJson       Json?
+  evidenceJson       Json?
   matchConfidence    Decimal             @default(0) @db.Decimal(4, 3)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -129,6 +132,13 @@ model ProfitSnapshot {
   estimatedFees          Decimal          @db.Decimal(10, 2)
   estimatedTax           Decimal          @db.Decimal(10, 2)
   bufferAmount           Decimal          @db.Decimal(10, 2)
+  sourceShippingCost     Decimal          @default(0.00) @db.Decimal(10, 2)
+  packagingCost          Decimal          @default(0.00) @db.Decimal(10, 2)
+  paymentFixedFee        Decimal          @default(0.00) @db.Decimal(10, 2)
+  returnReserve          Decimal          @default(0.00) @db.Decimal(10, 2)
+  cancellationReserve    Decimal          @default(0.00) @db.Decimal(10, 2)
+  marketplaceRiskBuffer  Decimal          @default(0.00) @db.Decimal(10, 2)
+  totalLandedCost        Decimal          @default(0.00) @db.Decimal(10, 2)
   expectedProfit         Decimal          @db.Decimal(10, 2)
   roiPercent             Decimal          @db.Decimal(7, 3)
   marginPercent          Decimal          @db.Decimal(7, 3)
@@ -330,6 +340,15 @@ model RuleConfig {
   estimatedSalesTaxRate           Decimal  @default(0.080) @db.Decimal(5, 4)
   returnRiskBuffer                Decimal  @default(2.00) @db.Decimal(10, 2)
   priceChangeBuffer               Decimal  @default(2.00) @db.Decimal(10, 2)
+  sourceShippingCost              Decimal  @default(0.00) @db.Decimal(10, 2)
+  packagingCost                   Decimal  @default(0.00) @db.Decimal(10, 2)
+  paymentFixedFee                 Decimal  @default(0.00) @db.Decimal(10, 2)
+  defaultPromotedListingFeeRate   Decimal  @default(0.0000) @db.Decimal(5, 4)
+  returnReserveRate               Decimal  @default(0.0000) @db.Decimal(5, 4)
+  cancellationReserveRate         Decimal  @default(0.0000) @db.Decimal(5, 4)
+  marketplaceRiskBuffer           Decimal  @default(0.00) @db.Decimal(10, 2)
+  minimumSellThroughRate          Decimal  @default(0.0500) @db.Decimal(7, 4)
+  maximumCompetitionRatio         Decimal  @default(12.000) @db.Decimal(7, 3)
   maxDailyListings                Int      @default(10)
   maxDailyPurchaseAmountUsd       Decimal  @default(250.00) @db.Decimal(10, 2)
   safeMode                        Boolean  @default(true)

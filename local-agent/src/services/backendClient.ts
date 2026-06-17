@@ -1,3 +1,5 @@
+import { createHash, createHmac } from 'node:crypto';
+
 export interface ActionItemDto {
   id: string;
   type: 'VERIFY' | 'LIST' | 'REPRICE' | 'PAUSE' | 'BUY' | 'REVIEW';
@@ -60,15 +62,34 @@ export interface BackendClientOptions {
   autoCompleteManualActions?: boolean;
 }
 
-const headers = (sharedSecret?: string): Record<string, string> => {
+const bodyHash = (body?: string): string => createHash('sha256').update(body ?? '').digest('hex');
+
+const headers = (input: {
+  sharedSecret?: string;
+  method: string;
+  path: string;
+  body?: string;
+}): Record<string, string> => {
   const base: Record<string, string> = { 'content-type': 'application/json' };
-  if (sharedSecret) base['x-local-agent-secret'] = sharedSecret;
+  if (input.sharedSecret) {
+    const timestamp = String(Date.now());
+    const message = [
+      timestamp,
+      input.method.toUpperCase(),
+      input.path,
+      bodyHash(input.body)
+    ].join('\n');
+    base['x-local-agent-timestamp'] = timestamp;
+    base['x-local-agent-signature'] = createHmac('sha256', input.sharedSecret).update(message).digest('hex');
+    base['x-local-agent-secret'] = input.sharedSecret;
+  }
   return base;
 };
 
 export async function fetchApprovedActions(options: BackendClientOptions): Promise<ActionItemDto[]> {
-  const response = await fetch(`${options.backendUrl}/actions?status=APPROVED`, {
-    headers: headers(options.sharedSecret)
+  const path = '/actions?status=APPROVED';
+  const response = await fetch(`${options.backendUrl}${path}`, {
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'GET', path })
   });
 
   if (!response.ok) {
@@ -80,10 +101,12 @@ export async function fetchApprovedActions(options: BackendClientOptions): Promi
 }
 
 export async function completeAction(options: BackendClientOptions, actionId: string): Promise<void> {
-  const response = await fetch(`${options.backendUrl}/actions/${actionId}`, {
+  const path = `/actions/${actionId}`;
+  const body = JSON.stringify({ status: 'COMPLETED', reviewedBy: 'local-agent' });
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'PATCH',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify({ status: 'COMPLETED', reviewedBy: 'local-agent' })
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'PATCH', path, body }),
+    body
   });
 
   if (!response.ok) {
@@ -96,10 +119,12 @@ export async function executeAction(
   actionId: string,
   result?: Record<string, unknown>
 ): Promise<void> {
-  const response = await fetch(`${options.backendUrl}/actions/${actionId}/execute`, {
+  const path = `/actions/${actionId}/execute`;
+  const body = JSON.stringify({ actor: 'local-agent', result });
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'POST',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify({ actor: 'local-agent', result })
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'POST', path, body }),
+    body
   });
 
   if (!response.ok) {
@@ -118,10 +143,12 @@ export async function startAutomationRun(
     metadata?: Record<string, unknown>;
   }
 ): Promise<AutomationRunDto> {
-  const response = await fetch(`${options.backendUrl}/actions/${actionId}/automation-runs`, {
+  const path = `/actions/${actionId}/automation-runs`;
+  const body = JSON.stringify(input);
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'POST',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify(input)
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'POST', path, body }),
+    body
   });
 
   if (!response.ok) {
@@ -142,10 +169,12 @@ export async function addAutomationEvent(
     data?: Record<string, unknown>;
   }
 ): Promise<void> {
-  const response = await fetch(`${options.backendUrl}/automation-runs/${runId}/events`, {
+  const path = `/automation-runs/${runId}/events`;
+  const body = JSON.stringify(input);
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'POST',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify(input)
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'POST', path, body }),
+    body
   });
 
   if (!response.ok) {
@@ -165,10 +194,12 @@ export async function finishAutomationRun(
     message?: string;
   }
 ): Promise<void> {
-  const response = await fetch(`${options.backendUrl}/automation-runs/${runId}`, {
+  const path = `/automation-runs/${runId}`;
+  const body = JSON.stringify(input);
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'PATCH',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify(input)
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'PATCH', path, body }),
+    body
   });
 
   if (!response.ok) {
@@ -177,10 +208,12 @@ export async function finishAutomationRun(
 }
 
 export async function submitVerificationResult(options: BackendClientOptions, actionId: string, result: VerificationResultDto): Promise<void> {
-  const response = await fetch(`${options.backendUrl}/actions/${actionId}/verification-result`, {
+  const path = `/actions/${actionId}/verification-result`;
+  const body = JSON.stringify(result);
+  const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'POST',
-    headers: headers(options.sharedSecret),
-    body: JSON.stringify(result)
+    headers: headers({ sharedSecret: options.sharedSecret, method: 'POST', path, body }),
+    body
   });
 
   if (!response.ok) {

@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createHash, createHmac } from 'node:crypto';
 import { env } from '../config/env.js';
 import { verifyLocalAgentRequest } from './localAgentAuth.js';
 
@@ -10,6 +11,25 @@ type ReplyState = {
 const requestWithSecret = (secret?: string): FastifyRequest => ({
   headers: secret ? { 'x-local-agent-secret': secret } : {}
 }) as FastifyRequest;
+
+const requestWithSignature = (secret: string, input: { method: string; url: string; body?: unknown; timestamp?: string }): FastifyRequest => {
+  const timestamp = input.timestamp ?? String(Date.now());
+  const bodyHash = createHash('sha256')
+    .update(input.body === undefined ? '' : JSON.stringify(input.body))
+    .digest('hex');
+  const signature = createHmac('sha256', secret)
+    .update([timestamp, input.method.toUpperCase(), input.url, bodyHash].join('\n'))
+    .digest('hex');
+  return {
+    method: input.method,
+    url: input.url,
+    body: input.body,
+    headers: {
+      'x-local-agent-timestamp': timestamp,
+      'x-local-agent-signature': signature
+    }
+  } as FastifyRequest;
+};
 
 const replyState = (): { reply: FastifyReply; state: ReplyState } => {
   const state: ReplyState = {};
@@ -47,6 +67,17 @@ try {
     const ok = await verifyLocalAgentRequest(plainDbWithSecret() as never, requestWithSecret('env-secret'), reply);
     if (!ok) throw new Error('env secret should authorize request');
     if (state.statusCode !== undefined) throw new Error('authorized request should not set status');
+  }
+
+  {
+    const { reply, state } = replyState();
+    const ok = await verifyLocalAgentRequest(
+      plainDbWithSecret() as never,
+      requestWithSignature('env-secret', { method: 'POST', url: '/actions/action-1/execute', body: { actor: 'local-agent' } }),
+      reply
+    );
+    if (!ok) throw new Error('signed request should authorize request');
+    if (state.statusCode !== undefined) throw new Error('authorized signed request should not set status');
   }
 
   {

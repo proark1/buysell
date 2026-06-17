@@ -13,6 +13,15 @@ const settingsSchema = z.object({
   estimatedSalesTaxRate: z.number().min(0).max(1).optional(),
   returnRiskBuffer: z.number().min(0).optional(),
   priceChangeBuffer: z.number().min(0).optional(),
+  sourceShippingCost: z.number().min(0).optional(),
+  packagingCost: z.number().min(0).optional(),
+  paymentFixedFee: z.number().min(0).optional(),
+  defaultPromotedListingFeeRate: z.number().min(0).max(1).optional(),
+  returnReserveRate: z.number().min(0).max(1).optional(),
+  cancellationReserveRate: z.number().min(0).max(1).optional(),
+  marketplaceRiskBuffer: z.number().min(0).optional(),
+  minimumSellThroughRate: z.number().min(0).max(1).optional(),
+  maximumCompetitionRatio: z.number().positive().optional(),
   maxDailyListings: z.number().int().positive().optional(),
   maxDailyPurchaseAmountUsd: z.number().positive().optional(),
   safeMode: z.boolean().optional(),
@@ -50,7 +59,25 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     const parsed = settingsSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid settings payload', details: parsed.error.flatten() });
     const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-    const decimalKeys = new Set(['minimumProfitUsd', 'minimumRoiPercent', 'minimumMatchConfidence', 'estimatedSalesTaxRate', 'returnRiskBuffer', 'priceChangeBuffer', 'maxDailyPurchaseAmountUsd', 'maxAmazonCostUsd']);
+    const decimalKeys = new Set([
+      'minimumProfitUsd',
+      'minimumRoiPercent',
+      'minimumMatchConfidence',
+      'estimatedSalesTaxRate',
+      'returnRiskBuffer',
+      'priceChangeBuffer',
+      'sourceShippingCost',
+      'packagingCost',
+      'paymentFixedFee',
+      'defaultPromotedListingFeeRate',
+      'returnReserveRate',
+      'cancellationReserveRate',
+      'marketplaceRiskBuffer',
+      'minimumSellThroughRate',
+      'maximumCompetitionRatio',
+      'maxDailyPurchaseAmountUsd',
+      'maxAmazonCostUsd'
+    ]);
     const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value]));
     const ruleConfig = existing
       ? await prisma.ruleConfig.update({ where: { id: existing.id }, data })

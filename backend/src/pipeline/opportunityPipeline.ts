@@ -7,6 +7,8 @@ import { decideOpportunity, type OpportunityThresholds } from '../services/oppor
 import { evaluateProductSafety, type SafetyPolicy } from '../services/discoveryPolicy.js';
 import { scoreOpportunity } from '../services/opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity } from '../services/productIdentityMatcher.js';
+import { buildOpportunityEvidence } from '../services/opportunityEvidence.js';
+import { calculateEbayMarketMetrics } from '../services/marketMetrics.js';
 
 export interface BuildOpportunitiesOptions {
   query: string;
@@ -21,6 +23,15 @@ export interface BuildOpportunitiesOptions {
   estimatedSalesTaxRate?: number;
   returnRiskBuffer?: number;
   priceChangeBuffer?: number;
+  sourceShippingCost?: number;
+  packagingCost?: number;
+  paymentFixedFee?: number;
+  promotedListingFeeRate?: number;
+  returnReserveRate?: number;
+  cancellationReserveRate?: number;
+  marketplaceRiskBuffer?: number;
+  minimumSellThroughRate?: number;
+  maximumCompetitionRatio?: number;
   safeMode?: boolean;
   blockedBrands?: string[];
   blockedCategories?: string[];
@@ -57,6 +68,11 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
     allowedCategories: options.allowedCategories ?? [],
     maxAmazonCostUsd: options.maxAmazonCostUsd ?? 150
   };
+  const marketMetrics = calculateEbayMarketMetrics({
+    soldCandidates: [...candidatesByKey.values()],
+    minimumSellThroughRate: options.minimumSellThroughRate,
+    maximumCompetitionRatio: options.maximumCompetitionRatio
+  });
 
   for (const ebay of [...candidatesByKey.values()].slice(0, options.limit ?? 10)) {
     const amazonMatches = await findAmazonMatches({
@@ -94,13 +110,15 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
         identityMatch,
         decision,
         safety,
+        marketMetrics,
         discoveryProfile: options.discoveryProfile
       };
       opportunity.score = scoreOpportunity(opportunity, {
         minimumProfitUsd: thresholds.minimumProfitUsd,
         minimumRoiPercent: thresholds.minimumRoiPercent,
         minimumOpportunityScore: options.minimumOpportunityScore ?? 65
-      }, [...new Set([...safety.riskFlags, ...decision.riskFlags])]);
+      }, [...new Set([...safety.riskFlags, ...decision.riskFlags, ...marketMetrics.riskFlags])]);
+      opportunity.evidence = buildOpportunityEvidence(opportunity);
       opportunities.push({
         ...opportunity
       });
@@ -112,7 +130,14 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
       amazonItemCost: amazonCost,
       estimatedSalesTaxRate: options.estimatedSalesTaxRate ?? 0.08,
       returnRiskBuffer: options.returnRiskBuffer ?? 2,
-      priceChangeBuffer: options.priceChangeBuffer ?? 2
+      priceChangeBuffer: options.priceChangeBuffer ?? 2,
+      sourceShippingCost: options.sourceShippingCost ?? 0,
+      packagingCost: options.packagingCost ?? 0,
+      paymentFixedFee: options.paymentFixedFee ?? 0,
+      promotedListingFeeRate: options.promotedListingFeeRate ?? 0,
+      returnReserveRate: options.returnReserveRate ?? 0,
+      cancellationReserveRate: options.cancellationReserveRate ?? 0,
+      marketplaceRiskBuffer: options.marketplaceRiskBuffer ?? 0
     });
 
     const baseDecision = safety.status === 'REJECT'
@@ -132,29 +157,32 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
       identityMatch,
       decision: identityDecision,
       safety,
+      marketMetrics,
       discoveryProfile: options.discoveryProfile
     };
     const score = scoreOpportunity(preliminaryOpportunity, {
       minimumProfitUsd: thresholds.minimumProfitUsd,
       minimumRoiPercent: thresholds.minimumRoiPercent,
       minimumOpportunityScore: options.minimumOpportunityScore ?? 65
-    }, [...new Set([...safety.riskFlags, ...identityDecision.riskFlags])]);
+    }, [...new Set([...safety.riskFlags, ...identityDecision.riskFlags, ...marketMetrics.riskFlags])]);
 
     const minimumOpportunityScore = options.minimumOpportunityScore ?? 65;
     const decision = identityDecision.decision !== 'REJECT' && identityMatch.status !== 'REVIEW' && score.total < minimumOpportunityScore
       ? {
         decision: 'REJECT' as const,
         confidence: 0.8,
-        riskFlags: [...new Set([...identityDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+        riskFlags: [...new Set([...identityDecision.riskFlags, ...marketMetrics.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
         reasoningSummary: `Rejected because opportunity score ${score.total} is below ${minimumOpportunityScore}.`
       }
       : identityDecision;
 
-    opportunities.push({
+    const opportunity: ProductOpportunity = {
       ...preliminaryOpportunity,
       decision,
       score
-    });
+    };
+    opportunity.evidence = buildOpportunityEvidence(opportunity);
+    opportunities.push(opportunity);
   }
 
   return opportunities.sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));

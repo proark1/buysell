@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { calculateProfit } from './profitCalculator.js';
 import { conflict, notFound } from '../security/httpErrors.js';
+import { profitInputsFromRuleConfig } from './profitInputs.js';
 
 export interface VerificationObservation {
   observedPrice?: number;
@@ -174,9 +175,7 @@ export async function submitPriceVerificationResult(
     observedProfit = calculateProfit({
       ebaySalePrice: observedEbayPrice,
       amazonItemCost: observedAmazonPrice,
-      estimatedSalesTaxRate: ruleConfig.estimatedSalesTaxRate,
-      returnRiskBuffer: ruleConfig.returnRiskBuffer,
-      priceChangeBuffer: ruleConfig.priceChangeBuffer
+      ...profitInputsFromRuleConfig(ruleConfig)
     });
     if (observedProfit.expectedProfit < ruleConfig.thresholds.minimumProfitUsd) {
       failureReasons.push(`Browser-verified profit ${observedProfit.expectedProfit.toFixed(2)} is below minimum ${ruleConfig.thresholds.minimumProfitUsd.toFixed(2)}.`);

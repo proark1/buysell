@@ -20,6 +20,15 @@ export interface PersistOpportunityContext {
 
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
 const decimal = (value: number): string => value.toFixed(3);
+const jsonReady = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(jsonReady);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, jsonReady(item)])
+  );
+};
 
 async function existingPersistedOpportunity(
   db: PrismaClient,
@@ -76,6 +85,8 @@ async function persistOpportunityRows(
           identityMatch: opportunity.identityMatch
         }
         : opportunity.score,
+      evidenceJson: opportunity.evidence ? jsonReady(opportunity.evidence) : undefined,
+      marketMetricsJson: opportunity.marketMetrics ? jsonReady(opportunity.marketMetrics) : undefined,
       source: context.source ?? 'serpapi',
       ebayTitle: opportunity.ebay.title,
       ebayUrl: opportunity.ebay.url,
@@ -105,6 +116,7 @@ async function persistOpportunityRows(
       rating: opportunity.amazon.rating === undefined ? undefined : decimal(opportunity.amazon.rating),
       reviewCount: postgresInt(opportunity.amazon.reviewCount),
       rawKeepaJson: opportunity.amazon.raw,
+      evidenceJson: opportunity.evidence ? jsonReady({ productIdentity: opportunity.evidence.productIdentity }) : undefined,
       matchConfidence: decimal(opportunity.amazon.matchConfidence)
     }
   });
@@ -121,6 +133,13 @@ async function persistOpportunityRows(
       estimatedFees: money(opportunity.profit.estimatedFees) ?? '0.00',
       estimatedTax: money(opportunity.profit.estimatedTax) ?? '0.00',
       bufferAmount: money(opportunity.profit.bufferAmount) ?? '0.00',
+      sourceShippingCost: money(opportunity.profit.sourceShippingCost) ?? '0.00',
+      packagingCost: money(opportunity.profit.packagingCost) ?? '0.00',
+      paymentFixedFee: money(opportunity.profit.paymentFixedFee) ?? '0.00',
+      returnReserve: money(opportunity.profit.returnReserve) ?? '0.00',
+      cancellationReserve: money(opportunity.profit.cancellationReserve) ?? '0.00',
+      marketplaceRiskBuffer: money(opportunity.profit.marketplaceRiskBuffer) ?? '0.00',
+      totalLandedCost: money(opportunity.profit.totalLandedCost) ?? '0.00',
       expectedProfit: money(opportunity.profit.expectedProfit) ?? '0.00',
       roiPercent: decimal(opportunity.profit.roiPercent),
       marginPercent: decimal(opportunity.profit.marginPercent)

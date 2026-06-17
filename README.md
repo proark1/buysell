@@ -76,7 +76,7 @@ Discovery profiles:
 curl http://localhost:3000/opportunities/profiles
 ```
 
-Guided discovery uses predefined sourcing profiles, safe-mode category/keyword exclusions, Keepa price-drop signals, eBay sold-price comps, match confidence, and deterministic profit gates to rank results from 0-100. The dashboard shows only accepted opportunities by default, with score reasons and risk flags so the operator can see why a product is worth attention.
+Guided discovery uses predefined sourcing profiles, safe-mode category/keyword exclusions, Keepa price-drop signals, eBay sold-price comps, market-quality metrics, match confidence, landed-cost assumptions, and deterministic profit gates to rank results from 0-100. The dashboard shows only accepted opportunities by default, with score reasons, evidence, and risk flags so the operator can see why a product is worth attention.
 
 Amazon-first scout:
 
@@ -118,6 +118,8 @@ Automatic opportunities require exact-product evidence. Shared UPC/EAN/MPN/model
 
 Listing opportunities are not queued directly as `LIST` actions. A profitable `LIST` decision first creates a `VERIFY` action and `PriceVerification` record. The verifier must open the Amazon and eBay product links on a real browser, confirm current price, new condition, fixed-price eBay format, and brand, then submit the observed values. Only a passed verification creates the actual `LIST` action.
 
+Every persisted opportunity stores an evidence ledger and market metrics. Evidence records product-identity signals, economics, market reasons, and safety flags. Market metrics track sold sample size, median sold price, price spread, estimated sell-through when active samples are available, competition ratio, and market-specific risk flags. These metrics participate in opportunity scoring, so a product with attractive raw margin can still be rejected when the market evidence is weak.
+
 Action list:
 
 ```bash
@@ -152,7 +154,7 @@ Manual marketplace actions are left open by default after the agent prepares the
 
 Set `COMPUTER_USE_VERIFIER_COMMAND`, `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, `COMPUTER_USE_AUTOPILOT_COMMAND`, or fallback `COMPUTER_USE_OPERATOR_COMMAND` to connect Codex Computer Use or another real computer-use provider. The command is parsed into an executable plus arguments, not run through a shell, so use direct commands such as `node ./operator.js` instead of shell pipelines. The local agent sends a job JSON object on stdin and expects validated structured JSON on stdout. No Playwright browser automation is used for marketplace account flows.
 
-Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted.
+Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted. The local agent also sends timestamped HMAC request signatures derived from that secret; the legacy `x-local-agent-secret` header remains accepted for dashboard compatibility.
 
 Execute approved listing draft action:
 
@@ -161,6 +163,14 @@ curl -X POST http://localhost:3000/actions/action_id/execute \
   -H 'content-type: application/json' \
   -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
 ```
+
+Approved `LIST` execution supports three eBay modes:
+
+- `PREPARE` (default): produce and audit a local eBay draft payload only.
+- `DRAFT`: create or replace the eBay inventory item and create an unpublished eBay offer through the Sell Inventory API.
+- `PUBLISH`: create the inventory item, create the offer, and publish it through the Sell Inventory API.
+
+Use `{"result":{"ebayPublishMode":"DRAFT"}}` or `{"result":{"ebayPublishMode":"PUBLISH"}}` on `/actions/:id/execute`. `DRAFT` and `PUBLISH` require eBay OAuth credentials plus `categoryId`, `merchantLocationKey`, `fulfillmentPolicyId`, `paymentPolicyId`, and `returnPolicyId` in the action payload or execution result. Reprice actions update the internal listing and attempt an eBay Sell Inventory price/quantity update when an `ebayOfferId` and credentials are present.
 
 Manual eBay order intake:
 

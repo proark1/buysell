@@ -1,5 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
-import { getEbayAccessToken, prepareEbayListingDraft, withdrawEbayOffer } from '../clients/ebaySellClient.js';
+import {
+  createEbayOffer,
+  createOrReplaceEbayInventoryItem,
+  getEbayAccessToken,
+  prepareEbayListingDraft,
+  publishEbayOffer,
+  updateEbayOfferPriceQuantity,
+  withdrawEbayOffer
+} from '../clients/ebaySellClient.js';
 import { getSecret } from './secrets.js';
 import { badRequest, conflict, notFound } from '../security/httpErrors.js';
 import { recordAmazonPurchase } from '../repositories/orderRepository.js';
@@ -13,6 +21,16 @@ interface ActionPayload {
   recommendedTitle?: string;
   recommendedDescription?: string;
   asin?: string;
+  ebayPublishMode?: 'PREPARE' | 'DRAFT' | 'PUBLISH';
+  categoryId?: string;
+  merchantLocationKey?: string;
+  fulfillmentPolicyId?: string;
+  paymentPolicyId?: string;
+  returnPolicyId?: string;
+  condition?: string;
+  brand?: string;
+  imageUrls?: string[];
+  aspects?: Record<string, string[]>;
 }
 
 export interface ExecuteActionInput {
@@ -38,6 +56,67 @@ const numberValue = (value: unknown): number | undefined => {
 const actionPayload = (value: unknown): ActionPayload => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as ActionPayload : {}
 );
+
+const listingMode = (payload: ActionPayload, result: Record<string, unknown> | undefined): 'PREPARE' | 'DRAFT' | 'PUBLISH' => {
+  const raw = stringValue(result?.ebayPublishMode) ?? stringValue(result?.listingMode) ?? payload.ebayPublishMode;
+  if (raw === 'DRAFT' || raw === 'PUBLISH') return raw;
+  if (result?.publishToEbay === true) return 'PUBLISH';
+  if (result?.createEbayOffer === true) return 'DRAFT';
+  return 'PREPARE';
+};
+
+async function ebayInventoryCredentials(db: PrismaClient): Promise<{
+  accessToken?: string;
+  sandbox: boolean;
+  marketplaceId: string;
+}> {
+  const marketplaceId = (await getSecret(db, 'EBAY_MARKETPLACE_ID')) ?? 'EBAY_US';
+  const clientId = await getSecret(db, 'EBAY_CLIENT_ID');
+  const clientSecret = await getSecret(db, 'EBAY_CLIENT_SECRET');
+  const refreshToken = await getSecret(db, 'EBAY_REFRESH_TOKEN');
+  const sandbox = (await getSecret(db, 'EBAY_SANDBOX')) === 'true';
+
+  if (!clientId || !clientSecret || !refreshToken) return { sandbox, marketplaceId };
+  return {
+    accessToken: await getEbayAccessToken({ clientId, clientSecret, refreshToken, sandbox }),
+    sandbox,
+    marketplaceId
+  };
+}
+
+const payloadString = (payload: ActionPayload, result: Record<string, unknown> | undefined, key: keyof ActionPayload): string | undefined => (
+  stringValue(result?.[key]) ?? (typeof payload[key] === 'string' ? payload[key] as string : undefined)
+);
+
+function requiredEbayListingFields(payload: ActionPayload, result: Record<string, unknown> | undefined): {
+  categoryId: string;
+  merchantLocationKey: string;
+  fulfillmentPolicyId: string;
+  paymentPolicyId: string;
+  returnPolicyId: string;
+} {
+  const categoryId = payloadString(payload, result, 'categoryId');
+  const merchantLocationKey = payloadString(payload, result, 'merchantLocationKey');
+  const fulfillmentPolicyId = payloadString(payload, result, 'fulfillmentPolicyId');
+  const paymentPolicyId = payloadString(payload, result, 'paymentPolicyId');
+  const returnPolicyId = payloadString(payload, result, 'returnPolicyId');
+
+  const missing = [
+    categoryId ? undefined : 'categoryId',
+    merchantLocationKey ? undefined : 'merchantLocationKey',
+    fulfillmentPolicyId ? undefined : 'fulfillmentPolicyId',
+    paymentPolicyId ? undefined : 'paymentPolicyId',
+    returnPolicyId ? undefined : 'returnPolicyId'
+  ].filter((item): item is string => Boolean(item));
+  if (missing.length) {
+    throw badRequest(`eBay DRAFT/PUBLISH requires ${missing.join(', ')}`, 'EBAY_LISTING_FIELDS_REQUIRED');
+  }
+  if (!categoryId || !merchantLocationKey || !fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
+    throw badRequest('eBay DRAFT/PUBLISH has missing required fields', 'EBAY_LISTING_FIELDS_REQUIRED');
+  }
+
+  return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
+}
 
 const startOfUtcDay = (): Date => {
   const now = new Date();
@@ -86,23 +165,90 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
   if (action.type === 'LIST') {
     await enforceDailyListingLimit(db);
     const payload = actionPayload(action.payloadJson);
+    const mode = listingMode(payload, input.result);
+    const marketplaceId = (await getSecret(db, 'EBAY_MARKETPLACE_ID')) ?? 'EBAY_US';
     const draft = prepareEbayListingDraft({
       sku: action.productCandidateId ?? action.id,
       title: payload.recommendedTitle ?? `Pending listing ${action.id}`,
       description: payload.recommendedDescription ?? action.reason,
       price: payload.recommendedPrice ?? 0,
       quantity: 1,
-      marketplaceId: (await getSecret(db, 'EBAY_MARKETPLACE_ID')) ?? 'EBAY_US'
+      marketplaceId
     });
+    let ebayResult: unknown = { mode, skipped: true, reason: 'Mode PREPARE only creates a local draft payload.' };
+    let ebayOfferId: string | undefined;
+    let ebayItemId: string | undefined;
+
+    if (mode !== 'PREPARE') {
+      if (draft.price <= 0) throw badRequest('eBay DRAFT/PUBLISH requires a positive recommendedPrice', 'EBAY_LISTING_PRICE_REQUIRED');
+      const { accessToken, sandbox } = await ebayInventoryCredentials(db);
+      if (!accessToken) {
+        throw badRequest('eBay credentials are required for DRAFT or PUBLISH listing execution', 'EBAY_CREDENTIALS_REQUIRED');
+      }
+      const required = requiredEbayListingFields(payload, input.result);
+      await createOrReplaceEbayInventoryItem({
+        sku: draft.sku,
+        accessToken,
+        sandbox,
+        title: draft.title,
+        description: payload.recommendedDescription ?? action.reason,
+        quantity: draft.quantity,
+        condition: payload.condition,
+        brand: payload.brand,
+        imageUrls: payload.imageUrls,
+        aspects: payload.aspects
+      });
+      const offer = await createEbayOffer({
+        sku: draft.sku,
+        accessToken,
+        sandbox,
+        marketplaceId: draft.marketplaceId,
+        price: draft.price,
+        quantity: draft.quantity,
+        categoryId: required.categoryId,
+        merchantLocationKey: required.merchantLocationKey,
+        fulfillmentPolicyId: required.fulfillmentPolicyId,
+        paymentPolicyId: required.paymentPolicyId,
+        returnPolicyId: required.returnPolicyId,
+        listingDescription: payload.recommendedDescription ?? action.reason
+      });
+      ebayOfferId = offer.offerId;
+      ebayResult = { mode, offerId: ebayOfferId, offer: offer.raw };
+      if (mode === 'PUBLISH') {
+        const publishResult = await publishEbayOffer({ offerId: ebayOfferId, accessToken, sandbox }) as Record<string, unknown>;
+        ebayItemId = typeof publishResult.listingId === 'string' ? publishResult.listingId : undefined;
+        ebayResult = { mode, offerId: ebayOfferId, listingId: ebayItemId, publishResult };
+      }
+    }
 
     await db.$transaction(async (tx) => {
+      let listingId: string | undefined;
+      if (action.productCandidateId && action.amazonMatchId && (mode !== 'PREPARE' || ebayItemId || ebayOfferId)) {
+        const listing = await tx.ebayListing.create({
+          data: {
+            productCandidateId: action.productCandidateId,
+            amazonMatchId: action.amazonMatchId,
+            ebayItemId,
+            ebayOfferId,
+            listingStatus: mode === 'PUBLISH' ? 'ACTIVE' : 'DRAFT',
+            listedPrice: draft.price.toFixed(2),
+            quantity: draft.quantity,
+            title: draft.title,
+            description: payload.recommendedDescription ?? action.reason,
+            shippingPolicyId: payload.fulfillmentPolicyId,
+            returnPolicyId: payload.returnPolicyId,
+            paymentPolicyId: payload.paymentPolicyId
+          }
+        });
+        listingId = listing.id;
+      }
       await tx.actionItem.update({
         where: { id: action.id },
         data: {
           status: 'COMPLETED',
           reviewedBy: actor,
           reviewedAt: new Date(),
-          payloadJson: { ...payload, ebayDraft: draft, executionResult: input.result }
+          payloadJson: { ...payload, ebayDraft: draft, ebayResult, ebayListingId: listingId, executionResult: input.result }
         }
       });
 
@@ -110,14 +256,14 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
         data: {
           entityType: 'ActionItem',
           entityId: action.id,
-          action: 'LISTING_DRAFT_PREPARED',
+          action: mode === 'PUBLISH' ? 'EBAY_LISTING_PUBLISHED' : mode === 'DRAFT' ? 'EBAY_OFFER_CREATED' : 'LISTING_DRAFT_PREPARED',
           actor,
-          afterJson: { draft, executionResult: input.result }
+          afterJson: { draft, ebayResult, listingId, executionResult: input.result }
         }
       });
     });
 
-    return draft;
+    return { draft, ebayResult };
   }
 
   if (action.type === 'PAUSE') {
@@ -161,6 +307,18 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
 
     const listing = await db.ebayListing.findUnique({ where: { id: listingId } });
     if (!listing) throw notFound('eBay listing not found', 'EBAY_LISTING_NOT_FOUND');
+    let ebayResult: unknown = { skipped: true, reason: 'Missing eBay offer ID or credentials' };
+    const { accessToken, sandbox, marketplaceId } = await ebayInventoryCredentials(db);
+    if (listing.ebayOfferId && accessToken) {
+      ebayResult = await updateEbayOfferPriceQuantity({
+        sku: listing.productCandidateId,
+        accessToken,
+        sandbox,
+        marketplaceId,
+        price: recommendedPrice,
+        quantity: listing.quantity
+      });
+    }
 
     await db.$transaction(async (tx) => {
       await tx.ebayListing.update({ where: { id: listing.id }, data: { listedPrice: recommendedPrice.toFixed(2) } });
@@ -170,7 +328,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
           status: 'COMPLETED',
           reviewedBy: actor,
           reviewedAt: new Date(),
-          payloadJson: { ...payload, previousPrice: listing.listedPrice, appliedPrice: recommendedPrice, executionResult: input.result }
+          payloadJson: { ...payload, previousPrice: listing.listedPrice, appliedPrice: recommendedPrice, ebayResult, executionResult: input.result }
         }
       });
       await tx.auditLog.create({
@@ -180,12 +338,12 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
           action: 'LISTING_REPRICED',
           actor,
           beforeJson: { listedPrice: listing.listedPrice },
-          afterJson: { listedPrice: recommendedPrice, actionItemId: action.id, executionResult: input.result }
+          afterJson: { listedPrice: recommendedPrice, actionItemId: action.id, ebayResult, executionResult: input.result }
         }
       });
     });
 
-    return { listingId: listing.id, listedPrice: recommendedPrice };
+    return { listingId: listing.id, listedPrice: recommendedPrice, ebayResult };
   }
 
   if (action.type === 'BUY') {

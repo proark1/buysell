@@ -19,6 +19,9 @@ import { getEbayDiscoveryMarket, type DiscoveryMarket } from './marketplaces.js'
 import { scoreOpportunity } from './opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity } from './productIdentityMatcher.js';
 import { notFound } from '../security/httpErrors.js';
+import { profitInputsFromRuleConfig } from './profitInputs.js';
+import { buildOpportunityEvidence } from './opportunityEvidence.js';
+import { calculateEbayMarketMetrics } from './marketMetrics.js';
 
 export interface EbayDiscoveryScore {
   total: number;
@@ -109,6 +112,7 @@ export interface AmazonComparisonReport {
     riskFlags?: string[];
     reasoningSummary?: string;
     identityMatch?: ProductOpportunity['identityMatch'];
+    marketMetrics?: ProductOpportunity['marketMetrics'];
   };
   topMatches: Array<{
     asin: string;
@@ -124,6 +128,7 @@ export interface AmazonComparisonReport {
     decision?: string;
     riskFlags?: string[];
     identityMatch?: ProductOpportunity['identityMatch'];
+    marketMetrics?: ProductOpportunity['marketMetrics'];
   }>;
   reasons: string[];
   thresholds: {
@@ -543,7 +548,8 @@ function comparisonSnapshot(opportunity: ProductOpportunity): NonNullable<Amazon
     decision: opportunity.decision.decision,
     riskFlags: opportunity.decision.riskFlags,
     reasoningSummary: opportunity.decision.reasoningSummary,
-    identityMatch: opportunity.identityMatch
+    identityMatch: opportunity.identityMatch,
+    marketMetrics: opportunity.marketMetrics
   };
 }
 
@@ -618,9 +624,7 @@ function scoreAmazonCandidateForEbay(
     ? calculateProfit({
       ebaySalePrice: ebay.soldPrice,
       amazonItemCost: amazonCost,
-      estimatedSalesTaxRate: ruleConfig.estimatedSalesTaxRate,
-      returnRiskBuffer: ruleConfig.returnRiskBuffer,
-      priceChangeBuffer: ruleConfig.priceChangeBuffer
+      ...profitInputsFromRuleConfig(ruleConfig)
     })
     : emptyProfit;
   const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
@@ -706,6 +710,36 @@ export function analyzeEbayAmazonComparison(
     .map((amazon) => scoreAmazonCandidateForEbay(ebay, amazon, ruleConfig))
     .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
 
+  const marketMetrics = calculateEbayMarketMetrics({
+    soldCandidates: [ebay],
+    targetPrice: ebay.soldPrice,
+    minimumSellThroughRate: ruleConfig.minimumSellThroughRate,
+    maximumCompetitionRatio: ruleConfig.maximumCompetitionRatio
+  });
+  for (const opportunity of scored) {
+    opportunity.marketMetrics = marketMetrics;
+    opportunity.evidence = buildOpportunityEvidence(opportunity);
+    opportunity.score = scoreOpportunity(opportunity, {
+      minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
+      minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
+      minimumOpportunityScore: ruleConfig.minimumOpportunityScore
+    }, [...new Set([
+      ...(opportunity.safety?.riskFlags ?? []),
+      ...opportunity.decision.riskFlags,
+      ...marketMetrics.riskFlags
+    ])]);
+    if (opportunity.decision.decision !== 'REJECT' && opportunity.identityMatch?.status !== 'REVIEW' && opportunity.score.total < ruleConfig.minimumOpportunityScore) {
+      opportunity.decision = {
+        decision: 'REJECT',
+        confidence: 0.8,
+        riskFlags: [...new Set([...opportunity.decision.riskFlags, ...marketMetrics.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+        reasoningSummary: `Rejected because opportunity score ${opportunity.score.total} is below ${ruleConfig.minimumOpportunityScore}.`
+      };
+      opportunity.evidence = buildOpportunityEvidence(opportunity);
+    }
+  }
+  scored.sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
+
   if (scored.length === 0) {
     return {
       report: {
@@ -731,6 +765,7 @@ export function analyzeEbayAmazonComparison(
       `Best Amazon source price ${dollars(best.amazon.buyBoxPrice ?? best.amazon.currentPrice)} leaves ${dollars(best.profit.expectedProfit)} expected profit.`,
       `ROI ${percent(best.profit.roiPercent)} clears the ${percent(ruleConfig.thresholds.minimumRoiPercent)} target.`,
       `Match confidence ${percent((best.amazon.matchConfidence ?? 0) * 100)} clears the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum.`,
+      ...(best.marketMetrics?.reasons ?? []),
       ...(best.identityMatch?.evidence ?? [])
     ])
     : status === 'MANUAL_REVIEW'
@@ -959,9 +994,7 @@ export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandid
     const profit = calculateProfit({
       ebaySalePrice: ebay.soldPrice,
       amazonItemCost: amazon.buyBoxPrice ?? amazon.currentPrice ?? 0,
-      estimatedSalesTaxRate: options.ruleConfig.estimatedSalesTaxRate,
-      returnRiskBuffer: options.ruleConfig.returnRiskBuffer,
-      priceChangeBuffer: options.ruleConfig.priceChangeBuffer
+      ...profitInputsFromRuleConfig(options.ruleConfig)
     });
     const opportunity: ProductOpportunity = {
       ebay,
@@ -991,8 +1024,10 @@ export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandid
         riskFlags,
         reasons: report?.reasons ?? []
       },
+      marketMetrics: best.marketMetrics,
       discoveryProfile: 'ebay-manual-review'
     };
+    opportunity.evidence = buildOpportunityEvidence(opportunity);
 
     const persisted = await persistOpportunity(options.db, opportunity, {
       discoveryProfile: 'ebay-manual-review',
@@ -1035,6 +1070,11 @@ export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandid
       safetyStatus: 'WARN',
       riskFlags,
       scoreBreakdown: scoreBreakdownWithManualReview(candidate.scoreBreakdown, review),
+      evidenceJson: best ? jsonReady({
+        productIdentity: best.identityMatch?.evidence ?? [],
+        safety: riskFlags
+      }) : undefined,
+      marketMetricsJson: best?.marketMetrics ? jsonReady(best.marketMetrics) : undefined,
       source: 'ebay-manual-review',
       ebayTitle: ebay.title,
       ebayUrl: ebay.url,
