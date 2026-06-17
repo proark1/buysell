@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db/prisma.js';
+import { getKeepaTokenStatus, KeepaApiError } from '../clients/keepaClient.js';
 import { ebayDiscoveryProfiles } from './discoveryPolicy.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { getSecret } from './secrets.js';
@@ -12,6 +13,7 @@ import {
 
 const minutesToMs = (minutes: number): number => Math.max(1, minutes) * 60_000;
 const schedulerRetryMinutes = 1;
+const amazonMatchLimit = 3;
 
 interface EbayDiscoverySchedulerTarget {
   profileKey: string;
@@ -44,6 +46,12 @@ export async function runScheduledEbayDiscovery(): Promise<{
   skippedExisting?: number;
   compared?: number;
   opportunities?: number;
+  comparisonSkippedReason?: string;
+  keepa?: {
+    tokensLeft?: number;
+    retryAfterSeconds?: number;
+    requestedTokens?: number;
+  };
   target?: EbayDiscoverySchedulerTarget;
   reason?: string;
 }> {
@@ -93,20 +101,58 @@ export async function runScheduledEbayDiscovery(): Promise<{
 
   let compared = 0;
   let opportunities = 0;
+  let comparisonSkippedReason: string | undefined;
+  let keepaSummary: { tokensLeft?: number; retryAfterSeconds?: number; requestedTokens?: number } | undefined;
   const runId = typeof persistedRun === 'object' && persistedRun && 'id' in persistedRun ? String(persistedRun.id) : undefined;
   const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
-  if (runId && keepaApiKey && result.candidates.length > 0) {
-    const comparison = await compareEbayDiscoveryCandidates({
-      db: prisma,
-      keepaApiKey,
-      serpApiKey,
-      ruleConfig,
-      runId,
-      limit: ruleConfig.ebayDiscoveryAutoRunLimit,
-      amazonMatchLimit: 3
-    });
-    compared = comparison.compared;
-    opportunities = comparison.opportunities.length;
+  if (!keepaApiKey) {
+    comparisonSkippedReason = 'KEEPA_API_KEY is not configured; eBay products were saved without Amazon comparison.';
+  } else if (runId && result.candidates.length > 0) {
+    const requestedTokens = result.candidates.length * amazonMatchLimit;
+    try {
+      const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+      keepaSummary = {
+        tokensLeft: tokenStatus.tokensLeft,
+        retryAfterSeconds: tokenStatus.retryAfterSeconds,
+        requestedTokens
+      };
+      const affordableCompareLimit = Math.min(result.candidates.length, Math.floor(Math.max(tokenStatus.tokensLeft, 0) / amazonMatchLimit));
+      if (affordableCompareLimit <= 0) {
+        comparisonSkippedReason = tokenStatus.retryAfterSeconds
+          ? `Keepa has ${tokenStatus.tokensLeft} tokens; retry after about ${tokenStatus.retryAfterSeconds} seconds.`
+          : `Keepa has ${tokenStatus.tokensLeft} tokens; Amazon comparison was skipped.`;
+      } else {
+        const comparison = await compareEbayDiscoveryCandidates({
+          db: prisma,
+          keepaApiKey,
+          serpApiKey,
+          ruleConfig,
+          runId,
+          limit: affordableCompareLimit,
+          amazonMatchLimit
+        });
+        compared = comparison.compared;
+        opportunities = comparison.opportunities.length;
+        if (affordableCompareLimit < result.candidates.length) {
+          comparisonSkippedReason = `Compared ${affordableCompareLimit} products now; ${result.candidates.length - affordableCompareLimit} remain un-compared until Keepa tokens refill.`;
+        }
+      }
+    } catch (error) {
+      if (!(error instanceof KeepaApiError)) throw error;
+      let retryAfterSeconds: number | undefined;
+      let tokensLeft: number | undefined;
+      try {
+        const payload = JSON.parse(error.body) as Record<string, unknown>;
+        tokensLeft = typeof payload.tokensLeft === 'number' ? payload.tokensLeft : undefined;
+        retryAfterSeconds = typeof payload.refillIn === 'number' && payload.refillIn > 0 ? Math.ceil(payload.refillIn / 1000) : undefined;
+      } catch {
+        // Keepa sometimes returns text bodies; keep the generic message below.
+      }
+      keepaSummary = { tokensLeft, retryAfterSeconds, requestedTokens };
+      comparisonSkippedReason = retryAfterSeconds
+        ? `Keepa rate limit reached; eBay products were saved and Amazon comparison can retry in about ${retryAfterSeconds} seconds.`
+        : 'Keepa rate limit reached; eBay products were saved without Amazon comparison.';
+    }
   }
 
   return {
@@ -117,7 +163,9 @@ export async function runScheduledEbayDiscovery(): Promise<{
     rejected: result.rejected.length,
     skippedExisting: result.skippedExisting,
     compared,
-    opportunities
+    opportunities,
+    comparisonSkippedReason,
+    keepa: keepaSummary
   };
 }
 
