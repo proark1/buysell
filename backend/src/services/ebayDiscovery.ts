@@ -8,6 +8,7 @@ import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { calculateProfit } from './profitCalculator.js';
 import { decideOpportunity } from './opportunityDecider.js';
 import {
+  ebayFixedNewListingRisks,
   evaluateProductSafety,
   getEbayDiscoveryCategory,
   getEbayDiscoveryProfile,
@@ -226,6 +227,9 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
   const reasons: string[] = [];
   const titleText = ebay.title;
   const categoryText = ebay.category;
+  const listingRisks = ebayFixedNewListingRisks(ebay);
+  riskFlags.push(...listingRisks.riskFlags);
+  reasons.push(...listingRisks.reasons);
 
   const blockedCategory = normalizedIncludes(categoryText, policy.blockedCategories);
   if (blockedCategory) {
@@ -252,7 +256,7 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
     reasons.push('Missing eBay sold price.');
   }
 
-  const status = riskFlags.some((flag) => ['BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'MISSING_EBAY_PRICE'].includes(flag))
+  const status = riskFlags.some((flag) => ['BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'MISSING_EBAY_PRICE', 'EBAY_NOT_NEW', 'EBAY_AUCTION_FORMAT'].includes(flag))
     ? 'REJECT'
     : riskFlags.length > 0 ? 'WARN' : 'PASS';
   return { status, riskFlags, reasons };
@@ -368,10 +372,12 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const query = options.query?.trim();
   const queries = selectEbayDiscoveryQueries(profile, category, query, limit);
   const policy = safetyPolicy(options.ruleConfig, safeMode, options.ruleConfig.maxAmazonCostUsd);
-  const itemCondition = options.itemCondition ?? 'ANY';
-  const buyingFormat = options.buyingFormat ?? 'ANY';
+  const itemCondition = 'NEW';
+  const buyingFormat = 'BIN';
   const preferredLocation = options.preferredLocation ?? 'Domestic';
   const categoryId = options.categoryId?.trim() || category.categoryId;
+  const soldOnly = true;
+  const completedOnly = true;
 
   const byKey = new Map<string, EbayCandidateInput>();
   for (const seed of queries) {
@@ -379,9 +385,9 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       query: seed,
       apiKey: options.serpApiKey,
       ebayDomain: market.ebayDomain,
-      soldOnly: options.soldOnly ?? true,
-      completedOnly: options.completedOnly ?? true,
-      buyingFormat: buyingFormat === 'ANY' ? undefined : buyingFormat,
+      soldOnly,
+      completedOnly,
+      buyingFormat,
       conditionIds: conditionIdsBySetting[itemCondition],
       preferredLocation: preferredLocation === 'ANY' ? undefined : preferredLocation,
       postalCode: options.postalCode?.trim() || market.defaultPostalCode,
@@ -426,8 +432,8 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       minimumEbayScore,
       minSoldPrice,
       maxSoldPrice,
-      soldOnly: options.soldOnly ?? true,
-      completedOnly: options.completedOnly ?? true,
+      soldOnly,
+      completedOnly,
       buyingFormat,
       itemCondition,
       preferredLocation,

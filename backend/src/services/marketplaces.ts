@@ -128,8 +128,8 @@ export const ebayComparisonPresets: EbayComparisonPreset[] = [
     ebayResultLimit: 10,
     soldOnly: true,
     completedOnly: true,
-    buyingFormat: 'ANY',
-    itemCondition: 'ANY',
+    buyingFormat: 'BIN',
+    itemCondition: 'NEW',
     preferredLocation: 'Domestic'
   },
   {
@@ -158,8 +158,8 @@ export const ebayComparisonPresets: EbayComparisonPreset[] = [
     ebayResultLimit: 15,
     soldOnly: true,
     completedOnly: true,
-    buyingFormat: 'ANY',
-    itemCondition: 'ANY',
+    buyingFormat: 'BIN',
+    itemCondition: 'NEW',
     preferredLocation: 'ANY'
   }
 ];
@@ -185,10 +185,10 @@ export function resolveEbayComparisonSettings(input: Partial<EbayComparisonSetti
     minimumMatchConfidence: input.minimumMatchConfidence ?? preset.minimumMatchConfidence,
     minimumOpportunityScore: input.minimumOpportunityScore ?? preset.minimumOpportunityScore,
     ebayResultLimit: input.ebayResultLimit ?? preset.ebayResultLimit,
-    soldOnly: input.soldOnly ?? preset.soldOnly,
-    completedOnly: input.completedOnly ?? preset.completedOnly,
-    buyingFormat: input.buyingFormat ?? preset.buyingFormat,
-    itemCondition: input.itemCondition ?? preset.itemCondition,
+    soldOnly: true,
+    completedOnly: true,
+    buyingFormat: 'BIN',
+    itemCondition: 'NEW',
     preferredLocation: input.preferredLocation ?? preset.preferredLocation,
     postalCode: input.postalCode
   };

@@ -21,6 +21,20 @@ const listDescription = describeAction({
 
 assertIncludes(listDescription, 'eBay listing review', 'LIST action description');
 
+const verifyDescription = describeAction({
+  id: 'action-verify',
+  type: 'VERIFY',
+  status: 'APPROVED',
+  reason: 'Live check required.',
+  payloadJson: {
+    expectedAmazonUrl: 'https://www.amazon.de/dp/B000SCAN',
+    expectedEbayUrl: 'https://www.ebay.de/itm/123'
+  }
+});
+
+assertIncludes(verifyDescription, 'live browser verification', 'VERIFY action description');
+assertIncludes(verifyDescription, 'https://www.amazon.de/dp/B000SCAN', 'VERIFY action Amazon URL');
+
 const reviewDescription = describeAction({
   id: 'action-3',
   type: 'REVIEW',

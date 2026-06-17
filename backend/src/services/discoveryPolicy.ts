@@ -413,6 +413,70 @@ const normalizedKeywordIncludes = (value: string | undefined, patterns: string[]
   });
 };
 
+const rawText = (value: unknown): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value).slice(0, 4000);
+  } catch {
+    return '';
+  }
+};
+
+const listingEvidenceText = (ebay: EbayCandidateInput): string => [
+  ebay.title,
+  ebay.condition,
+  ebay.category,
+  rawText(ebay.raw)
+].filter(Boolean).join(' ').toLowerCase();
+
+export function ebayFixedNewListingRisks(ebay: EbayCandidateInput): { riskFlags: string[]; reasons: string[] } {
+  const text = listingEvidenceText(ebay);
+  const condition = ebay.condition?.toLowerCase() ?? '';
+  const riskFlags: string[] = [];
+  const reasons: string[] = [];
+  const notNewPatterns = [
+    /\bused\b/,
+    /\bpre[- ]?owned\b/,
+    /\bopen[- ]?box\b/,
+    /\bnew other\b/,
+    /\blike new\b/,
+    /\brefurbished\b/,
+    /\brenewed\b/,
+    /\bfor parts\b/,
+    /\bnot working\b/,
+    /\bgebraucht\b/,
+    /\bneuwertig\b/,
+    /\bgeneral[üu ]?berholt\b/,
+    /\bdefekt\b/,
+    /\bersatzteile\b/
+  ];
+  const auctionPatterns = [
+    /\bauction\b/,
+    /\bbid\b/,
+    /\bbids\b/,
+    /\bcurrent bid\b/,
+    /\bauktion\b/,
+    /\bgebot\b/,
+    /\bgebote\b/
+  ];
+
+  if (condition && notNewPatterns.some((pattern) => pattern.test(condition))) {
+    riskFlags.push('EBAY_NOT_NEW');
+    reasons.push('eBay listing condition is not new.');
+  } else if (!condition && notNewPatterns.some((pattern) => pattern.test(text))) {
+    riskFlags.push('EBAY_NOT_NEW');
+    reasons.push('eBay listing text indicates used, open-box, refurbished, or parts condition.');
+  }
+
+  if (auctionPatterns.some((pattern) => pattern.test(text))) {
+    riskFlags.push('EBAY_AUCTION_FORMAT');
+    reasons.push('eBay listing appears to be an auction or bidding listing.');
+  }
+
+  return { riskFlags, reasons };
+}
+
 export function evaluateProductSafety(
   ebay: EbayCandidateInput,
   amazon: AmazonMatchInput,
@@ -470,7 +534,11 @@ export function evaluateProductSafety(
     reasons.push('Amazon stock is unknown.');
   }
 
-  const hardReject = riskFlags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH'].includes(flag));
+  const ebayListingRisks = ebayFixedNewListingRisks(ebay);
+  riskFlags.push(...ebayListingRisks.riskFlags);
+  reasons.push(...ebayListingRisks.reasons);
+
+  const hardReject = riskFlags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'EBAY_NOT_NEW', 'EBAY_AUCTION_FORMAT'].includes(flag));
   const status = hardReject ? 'REJECT' : riskFlags.length > 0 ? 'WARN' : 'PASS';
 
   return { status, riskFlags, reasons };

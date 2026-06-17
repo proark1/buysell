@@ -54,4 +54,22 @@ const expensive = evaluateProductSafety(
 assertEqual(expensive.status, 'REJECT', 'expensive product status');
 assertIncludes(expensive.riskFlags, 'AMAZON_COST_TOO_HIGH', 'expensive product flags');
 
+const usedEbay = evaluateProductSafety(
+  { title: 'Wireless barcode scanner', soldPrice: 79.99, condition: 'Used', category: 'Office Products' },
+  { asin: 'B000USED', title: 'Wireless barcode scanner', currentPrice: 35, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  basePolicy
+);
+
+assertEqual(usedEbay.status, 'REJECT', 'used eBay listing status');
+assertIncludes(usedEbay.riskFlags, 'EBAY_NOT_NEW', 'used eBay listing flag');
+
+const auctionEbay = evaluateProductSafety(
+  { title: 'Wireless barcode scanner', soldPrice: 79.99, condition: 'New', category: 'Office Products', raw: { bids: '3 bids' } },
+  { asin: 'B000BID', title: 'Wireless barcode scanner', currentPrice: 35, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  basePolicy
+);
+
+assertEqual(auctionEbay.status, 'REJECT', 'auction eBay listing status');
+assertIncludes(auctionEbay.riskFlags, 'EBAY_AUCTION_FORMAT', 'auction eBay listing flag');
+
 console.log('discoveryPolicy unit test passed');

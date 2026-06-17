@@ -344,8 +344,8 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Min ROI %</label><input id="amazonScoutMinRoi" type="number" min="0" max="500" step="1" value="20"></div>
               <div class="field"><label>Min Match %</label><input id="amazonScoutMinMatch" type="number" min="0" max="100" step="1" value="60"></div>
               <div class="field"><label>Min Compare Score</label><input id="amazonScoutMinCompareScore" type="number" min="0" max="100" step="1" value="55"></div>
-              <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="ANY">Any</option><option value="BIN">Buy It Now</option><option value="Auction">Auction</option><option value="BO">Best Offer</option></select></div>
-              <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="ANY">Any</option><option value="NEW">New</option><option value="OPEN_BOX">Open box</option><option value="USED">Used</option></select></div>
+              <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+              <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="NEW" selected>New</option></select></div>
               <div class="field"><label>eBay Location</label><select id="amazonScoutLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
               <div class="field"><label>Postal Code</label><input id="amazonScoutPostalCode" placeholder="10115"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSoldOnly" type="checkbox" checked> Sold</label></div>
@@ -414,8 +414,8 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Min eBay Score</label><input id="ebayDiscoveryMinScore" type="number" min="0" max="100" value="50"></div>
               <div class="field"><label>Min Sold Price</label><input id="ebayDiscoveryMinSold" type="number" min="0" step="1" value="25"></div>
               <div class="field"><label>Max Sold Price</label><input id="ebayDiscoveryMaxSold" type="number" min="0" step="1" value="250"></div>
-              <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="ANY">Any</option><option value="BIN">Buy It Now</option><option value="Auction">Auction</option><option value="BO">Best Offer</option></select></div>
-              <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="ANY">Any</option><option value="NEW">New</option><option value="OPEN_BOX">Open box</option><option value="USED">Used</option></select></div>
+              <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+              <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
               <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
               <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold</label></div>
@@ -522,7 +522,7 @@ var BADGE={
   PENDING:'amber',APPROVED:'blue',COMPLETED:'green',REJECTED:'slate',CANCELLED:'red',ERROR:'red',
   ACTIVE:'green',PAUSED:'amber',DRAFT:'slate',ENDED:'slate',
   NEW:'blue',VALIDATING:'amber',READY_FOR_PURCHASE:'blue',MANUAL_REVIEW:'amber',PURCHASED:'green',SHIPPED:'teal',
-  LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
+  VERIFY:'amber',LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
   PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
   ,NO_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red'
 };
@@ -650,8 +650,8 @@ function amazonComparisonPayload(){
     ebayResultLimit:Number(document.getElementById('amazonScoutEbayResults').value||10),
     soldOnly:document.getElementById('amazonScoutSoldOnly').checked,
     completedOnly:document.getElementById('amazonScoutCompletedOnly').checked,
-    buyingFormat:document.getElementById('amazonScoutBuyingFormat').value||'ANY',
-    itemCondition:document.getElementById('amazonScoutCondition').value||'ANY',
+    buyingFormat:document.getElementById('amazonScoutBuyingFormat').value||'BIN',
+    itemCondition:document.getElementById('amazonScoutCondition').value||'NEW',
     preferredLocation:document.getElementById('amazonScoutLocation').value||'ANY',
     postalCode:document.getElementById('amazonScoutPostalCode').value.trim()||undefined
   };
@@ -1399,8 +1399,8 @@ function runEbayDiscovery(){
     maxSoldPrice:Number(document.getElementById('ebayDiscoveryMaxSold').value||250),
     soldOnly:document.getElementById('ebayDiscoverySoldOnly').checked,
     completedOnly:document.getElementById('ebayDiscoveryCompletedOnly').checked,
-    buyingFormat:document.getElementById('ebayDiscoveryBuyingFormat').value||'ANY',
-    itemCondition:document.getElementById('ebayDiscoveryCondition').value||'ANY',
+    buyingFormat:document.getElementById('ebayDiscoveryBuyingFormat').value||'BIN',
+    itemCondition:document.getElementById('ebayDiscoveryCondition').value||'NEW',
     preferredLocation:document.getElementById('ebayDiscoveryLocation').value||'Domestic',
     postalCode:document.getElementById('ebayDiscoveryPostalCode').value.trim()||undefined
   };

@@ -876,11 +876,11 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         query,
         apiKey: options.serpApiKey,
         ebayDomain: market.ebayDomain,
-        soldOnly: comparisonSettings.soldOnly,
-        completedOnly: comparisonSettings.completedOnly,
+        soldOnly: true,
+        completedOnly: true,
         limit: comparisonSettings.ebayResultLimit,
-        buyingFormat: comparisonSettings.buyingFormat === 'ANY' ? undefined : comparisonSettings.buyingFormat,
-        conditionIds: conditionIdsBySetting[comparisonSettings.itemCondition],
+        buyingFormat: 'BIN',
+        conditionIds: conditionIdsBySetting.NEW,
         preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
         postalCode: comparisonSettings.postalCode
       });

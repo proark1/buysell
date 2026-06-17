@@ -129,8 +129,8 @@ const ebayDiscoveryRunRequestSchema = z.object({
   maxSoldPrice: z.number().min(0).optional(),
   soldOnly: z.boolean().default(true),
   completedOnly: z.boolean().default(true),
-  buyingFormat: z.enum(['ANY', 'BIN', 'Auction', 'BO']).default('ANY'),
-  itemCondition: z.enum(['ANY', 'NEW', 'USED', 'OPEN_BOX']).default('ANY'),
+  buyingFormat: z.enum(['ANY', 'BIN', 'Auction', 'BO']).default('BIN'),
+  itemCondition: z.enum(['ANY', 'NEW', 'USED', 'OPEN_BOX']).default('NEW'),
   preferredLocation: z.enum(['ANY', 'Domestic', 'Regional', 'Worldwide']).default('Domestic'),
   postalCode: z.string().max(20).optional()
 });

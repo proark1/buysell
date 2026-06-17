@@ -80,5 +80,9 @@ export async function executeAction(db: PrismaClient, actionId: string): Promise
     return { listingId: listing?.id, offerId, ebayResult };
   }
 
+  if (action.type === 'VERIFY') {
+    throw new Error('VERIFY actions must be completed through /actions/:id/verification-result with browser-observed prices and conditions');
+  }
+
   throw new Error(`Execution is not implemented for action type ${action.type}`);
 }

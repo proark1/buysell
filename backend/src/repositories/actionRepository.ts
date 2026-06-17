@@ -7,19 +7,113 @@ export interface CreateActionInput {
   decision: OpportunityDecision;
 }
 
-const actionTypeForDecision = (decision: OpportunityDecision['decision']): 'LIST' | 'REPRICE' | 'PAUSE' | 'REVIEW' | undefined => {
-  if (decision === 'LIST') return 'LIST';
+type QueueActionType = 'VERIFY' | 'LIST' | 'REPRICE' | 'PAUSE' | 'REVIEW';
+
+const numberValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (value && typeof value === 'object' && 'toNumber' in value && typeof value.toNumber === 'function') {
+    const parsed = value.toNumber();
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
+const money = (value: unknown): string | undefined => {
+  const parsed = numberValue(value);
+  return parsed === undefined ? undefined : parsed.toFixed(2);
+};
+
+const actionTypeForDecision = (decision: OpportunityDecision['decision']): QueueActionType | undefined => {
+  if (decision === 'LIST') return 'VERIFY';
   if (decision === 'REPRICE') return 'REPRICE';
   if (decision === 'PAUSE') return 'PAUSE';
   if (decision === 'MANUAL_REVIEW') return 'REVIEW';
   return undefined;
 };
 
+const decisionPayload = (decision: OpportunityDecision): Record<string, unknown> => ({
+  decision: decision.decision,
+  confidence: decision.confidence,
+  riskFlags: decision.riskFlags,
+  recommendedPrice: decision.recommendedPrice,
+  recommendedTitle: decision.recommendedTitle,
+  recommendedDescription: decision.recommendedDescription
+});
+
 export async function createActionForDecision(db: PrismaClient, input: CreateActionInput): Promise<string | undefined> {
   const type = actionTypeForDecision(input.decision.decision);
   if (!type) return undefined;
 
-  const priority = type === 'LIST' ? 20 : 50;
+  if (type === 'VERIFY') {
+    if (!input.productCandidateId) throw new Error('Product candidate is required for live listing verification');
+
+    const transactionalDb = db as unknown as {
+      $transaction<T>(fn: (tx: PrismaClient) => Promise<T>): Promise<T>;
+    };
+
+    return transactionalDb.$transaction(async (tx) => {
+      const [productCandidate, amazonMatch] = await Promise.all([
+        tx.productCandidate.findUnique({ where: { id: input.productCandidateId } }),
+        input.amazonMatchId ? tx.amazonMatch.findUnique({ where: { id: input.amazonMatchId } }) : Promise.resolve(undefined)
+      ]);
+
+      const expectedAmazonPrice = money(amazonMatch?.buyBoxPrice ?? amazonMatch?.currentPrice);
+      const expectedEbayPrice = money(productCandidate?.ebaySoldPrice);
+      const expectedBrand = typeof amazonMatch?.brand === 'string' ? amazonMatch.brand : undefined;
+      const amazonUrl = typeof amazonMatch?.amazonUrl === 'string' ? amazonMatch.amazonUrl : undefined;
+      const ebayUrl = typeof productCandidate?.ebayUrl === 'string' ? productCandidate.ebayUrl : undefined;
+      const action = await tx.actionItem.create({
+        data: {
+          productCandidateId: input.productCandidateId,
+          amazonMatchId: input.amazonMatchId,
+          type,
+          priority: 15,
+          reason: `Live browser price and condition verification required before listing. ${input.decision.reasoningSummary}`,
+          payloadJson: {
+            ...decisionPayload(input.decision),
+            verificationRequired: true,
+            pendingActionType: 'LIST',
+            expectedAmazonUrl: amazonUrl,
+            expectedEbayUrl: ebayUrl,
+            expectedAmazonPrice: numberValue(expectedAmazonPrice),
+            expectedEbayPrice: numberValue(expectedEbayPrice),
+            expectedBrand,
+            expectedCondition: 'NEW',
+            expectedBuyingFormat: 'BIN',
+            verificationInstructions: [
+              'Open the Amazon product link in the real browser and read the current product price, brand, and condition.',
+              'Open the eBay sold-item link in the real browser and confirm sold price, fixed-price format, and new condition.',
+              'Submit the observed values to the verification-result endpoint before any listing action is created.'
+            ]
+          }
+        }
+      });
+
+      await tx.priceVerification.create({
+        data: {
+          productCandidateId: input.productCandidateId,
+          amazonMatchId: input.amazonMatchId,
+          actionItemId: action.id,
+          status: 'PENDING',
+          amazonUrl,
+          ebayUrl,
+          expectedAmazonPrice,
+          expectedEbayPrice,
+          expectedBrand,
+          expectedCondition: 'NEW',
+          expectedBuyingFormat: 'BIN'
+        }
+      });
+
+      return action.id;
+    });
+  }
+
+  const priority = 50;
   const action = await db.actionItem.create({
     data: {
       productCandidateId: input.productCandidateId,
@@ -27,14 +121,7 @@ export async function createActionForDecision(db: PrismaClient, input: CreateAct
       type,
       priority,
       reason: input.decision.reasoningSummary,
-      payloadJson: {
-        decision: input.decision.decision,
-        confidence: input.decision.confidence,
-        riskFlags: input.decision.riskFlags,
-        recommendedPrice: input.decision.recommendedPrice,
-        recommendedTitle: input.decision.recommendedTitle,
-        recommendedDescription: input.decision.recommendedDescription
-      }
+      payloadJson: decisionPayload(input.decision)
     }
   });
 

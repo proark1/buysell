@@ -1,15 +1,42 @@
 export interface ActionItemDto {
   id: string;
-  type: 'LIST' | 'REPRICE' | 'PAUSE' | 'BUY' | 'REVIEW';
+  type: 'VERIFY' | 'LIST' | 'REPRICE' | 'PAUSE' | 'BUY' | 'REVIEW';
   status: 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'ERROR';
   reason: string;
   orderId?: string;
   payloadJson?: unknown;
 }
 
+export interface VerificationResultDto {
+  status?: 'PASSED' | 'FAILED' | 'MANUAL_REVIEW';
+  amazon?: {
+    observedPrice?: number;
+    brand?: string;
+    title?: string;
+    condition?: string;
+    url?: string;
+    screenshotPath?: string;
+    notes?: string;
+  };
+  ebay?: {
+    observedPrice?: number;
+    brand?: string;
+    title?: string;
+    condition?: string;
+    buyingFormat?: string;
+    url?: string;
+    screenshotPath?: string;
+    notes?: string;
+  };
+  evidence?: Record<string, unknown>;
+  failureReasons?: string[];
+  checkedBy?: string;
+}
+
 export interface BackendClientOptions {
   backendUrl: string;
   sharedSecret?: string;
+  computerUseVerifierCommand?: string;
 }
 
 const headers = (sharedSecret?: string): Record<string, string> => {
@@ -40,5 +67,17 @@ export async function completeAction(options: BackendClientOptions, actionId: st
 
   if (!response.ok) {
     throw new Error(`Backend action update failed with status ${response.status}`);
+  }
+}
+
+export async function submitVerificationResult(options: BackendClientOptions, actionId: string, result: VerificationResultDto): Promise<void> {
+  const response = await fetch(`${options.backendUrl}/actions/${actionId}/verification-result`, {
+    method: 'POST',
+    headers: headers(options.sharedSecret),
+    body: JSON.stringify(result)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend verification result update failed with status ${response.status}`);
   }
 }

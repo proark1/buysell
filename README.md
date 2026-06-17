@@ -104,6 +104,8 @@ eBay Discovery is the reverse of Amazon Scout. It starts with sold/completed eBa
 
 Automatic opportunities require exact-product evidence. Shared UPC/EAN/MPN/model data or exact brand-plus-model agreement can pass; brand, model, pack-count, or variant conflicts are rejected; brand-only or title-only similarity stays in manual review.
 
+Listing opportunities are not queued directly as `LIST` actions. A profitable `LIST` decision first creates a `VERIFY` action and `PriceVerification` record. The verifier must open the Amazon and eBay product links on a real browser, confirm current price, new condition, fixed-price eBay format, and brand, then submit the observed values. Only a passed verification creates the actual `LIST` action.
+
 Action list:
 
 ```bash
@@ -111,6 +113,9 @@ curl http://localhost:3000/actions
 curl -X PATCH http://localhost:3000/actions/action_id \
   -H 'content-type: application/json' \
   -d '{"status":"APPROVED","reviewedBy":"operator"}'
+curl -X POST http://localhost:3000/actions/action_id/verification-result \
+  -H 'content-type: application/json' \
+  -d '{"status":"PASSED","amazon":{"observedPrice":49.99,"brand":"Acme","condition":"New"},"ebay":{"observedPrice":99.99,"brand":"Acme","condition":"New","buyingFormat":"Buy It Now"}}'
 ```
 
 Local agent:
@@ -120,6 +125,8 @@ BACKEND_URL=http://localhost:3000 LOCAL_AGENT_RUN_ONCE=true npm run dev -w local
 ```
 
 The local agent polls approved action-list items and keeps the MVP in manual-confirmation mode before any eBay or Amazon action is completed.
+
+Set `COMPUTER_USE_VERIFIER_COMMAND` to connect a real computer-use verifier. The local agent sends the verification job JSON to the command on stdin and expects a verification-result JSON object on stdout; it then posts that result back to `/actions/:id/verification-result`. No Playwright browser automation is used for this gate.
 
 If `LOCAL_AGENT_SHARED_SECRET` is set on the backend, include the same value in the local agent environment so `/actions` polling and updates are accepted.
 

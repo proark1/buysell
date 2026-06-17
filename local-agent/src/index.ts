@@ -17,7 +17,11 @@ export function describePurchaseTask(task: PurchaseTask): string {
 }
 
 async function pollApprovedActions(): Promise<void> {
-  const clientOptions = { backendUrl: env.backendUrl, sharedSecret: env.sharedSecret };
+  const clientOptions = {
+    backendUrl: env.backendUrl,
+    sharedSecret: env.sharedSecret,
+    computerUseVerifierCommand: env.computerUseVerifierCommand
+  };
   const actions = await fetchApprovedActions(clientOptions);
 
   for (const action of actions) {

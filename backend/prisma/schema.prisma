@@ -40,6 +40,7 @@ enum ActionType {
   PAUSE
   BUY
   REVIEW
+  VERIFY
 }
 
 enum ActionStatus {
@@ -52,33 +53,34 @@ enum ActionStatus {
 }
 
 model ProductCandidate {
-  id                String                    @id @default(cuid())
-  discoveryRunId    String?
-  amazonCandidateId String?
-  ebayCandidateId   String?
-  discoveryProfile  String?
-  opportunityScore  Int?
-  safetyStatus      String?
-  riskFlags         Json?
-  scoreBreakdown    Json?
-  source            String                    @default("serpapi")
-  ebayTitle         String
-  ebayUrl           String?
-  ebaySoldPrice     Decimal?                  @db.Decimal(10, 2)
-  ebayShippingPrice Decimal?                  @db.Decimal(10, 2)
-  ebayCondition     String?
-  ebayCategory      String?
-  rawSerpapiJson    Json?
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  amazonMatches     AmazonMatch[]
-  profitSnapshots   ProfitSnapshot[]
-  aiDecisions       AiDecision[]
-  ebayListings      EbayListing[]
-  actionItems       ActionItem[]
-  discoveryRun      DiscoveryScanRun?         @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
-  amazonCandidate   AmazonDiscoveryCandidate? @relation(fields: [amazonCandidateId], references: [id], onDelete: SetNull)
-  ebayCandidate     EbayDiscoveryCandidate?   @relation(fields: [ebayCandidateId], references: [id], onDelete: SetNull)
+  id                 String                    @id @default(cuid())
+  discoveryRunId     String?
+  amazonCandidateId  String?
+  ebayCandidateId    String?
+  discoveryProfile   String?
+  opportunityScore   Int?
+  safetyStatus       String?
+  riskFlags          Json?
+  scoreBreakdown     Json?
+  source             String                    @default("serpapi")
+  ebayTitle          String
+  ebayUrl            String?
+  ebaySoldPrice      Decimal?                  @db.Decimal(10, 2)
+  ebayShippingPrice  Decimal?                  @db.Decimal(10, 2)
+  ebayCondition      String?
+  ebayCategory       String?
+  rawSerpapiJson     Json?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  amazonMatches      AmazonMatch[]
+  profitSnapshots    ProfitSnapshot[]
+  aiDecisions        AiDecision[]
+  ebayListings       EbayListing[]
+  actionItems        ActionItem[]
+  priceVerifications PriceVerification[]
+  discoveryRun       DiscoveryScanRun?         @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  amazonCandidate    AmazonDiscoveryCandidate? @relation(fields: [amazonCandidateId], references: [id], onDelete: SetNull)
+  ebayCandidate      EbayDiscoveryCandidate?   @relation(fields: [ebayCandidateId], references: [id], onDelete: SetNull)
 
   @@index([discoveryRunId])
   @@index([amazonCandidateId])
@@ -87,7 +89,7 @@ model ProductCandidate {
 }
 
 model AmazonMatch {
-  id                 String           @id @default(cuid())
+  id                 String              @id @default(cuid())
   productCandidateId String
   asin               String
   amazonTitle        String
@@ -95,23 +97,24 @@ model AmazonMatch {
   brand              String?
   model              String?
   upc                String?
-  currentPrice       Decimal?         @db.Decimal(10, 2)
-  buyBoxPrice        Decimal?         @db.Decimal(10, 2)
-  avg90Price         Decimal?         @db.Decimal(10, 2)
-  priceDropPercent   Decimal?         @db.Decimal(7, 3)
+  currentPrice       Decimal?            @db.Decimal(10, 2)
+  buyBoxPrice        Decimal?            @db.Decimal(10, 2)
+  avg90Price         Decimal?            @db.Decimal(10, 2)
+  priceDropPercent   Decimal?            @db.Decimal(7, 3)
   availabilityStatus String?
   salesRank          Int?
-  rating             Decimal?         @db.Decimal(3, 2)
+  rating             Decimal?            @db.Decimal(3, 2)
   reviewCount        Int?
   rawKeepaJson       Json?
-  matchConfidence    Decimal          @default(0) @db.Decimal(4, 3)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  matchConfidence    Decimal             @default(0) @db.Decimal(4, 3)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  productCandidate   ProductCandidate    @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
   profitSnapshots    ProfitSnapshot[]
   aiDecisions        AiDecision[]
   ebayListings       EbayListing[]
   actionItems        ActionItem[]
+  priceVerifications PriceVerification[]
 
   @@index([asin])
   @@index([productCandidateId])
@@ -222,27 +225,64 @@ model AuditLog {
 }
 
 model ActionItem {
-  id                 String            @id @default(cuid())
+  id                 String             @id @default(cuid())
   productCandidateId String?
   amazonMatchId      String?
   orderId            String?
   type               ActionType
-  status             ActionStatus      @default(PENDING)
-  priority           Int               @default(100)
+  status             ActionStatus       @default(PENDING)
+  priority           Int                @default(100)
   reason             String
   payloadJson        Json?
-  createdBy          String            @default("system")
+  createdBy          String             @default("system")
   reviewedBy         String?
   reviewedAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: SetNull)
-  amazonMatch        AmazonMatch?      @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
-  order              Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  productCandidate   ProductCandidate?  @relation(fields: [productCandidateId], references: [id], onDelete: SetNull)
+  amazonMatch        AmazonMatch?       @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  order              Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  priceVerification  PriceVerification?
 
   @@index([status, type])
   @@index([productCandidateId])
   @@index([orderId])
+}
+
+model PriceVerification {
+  id                      String           @id @default(cuid())
+  productCandidateId      String
+  amazonMatchId           String?
+  actionItemId            String?          @unique
+  listingActionItemId     String?
+  status                  String           @default("PENDING")
+  amazonUrl               String?
+  ebayUrl                 String?
+  expectedAmazonPrice     Decimal?         @db.Decimal(10, 2)
+  observedAmazonPrice     Decimal?         @db.Decimal(10, 2)
+  expectedEbayPrice       Decimal?         @db.Decimal(10, 2)
+  observedEbayPrice       Decimal?         @db.Decimal(10, 2)
+  expectedBrand           String?
+  observedAmazonBrand     String?
+  observedEbayBrand       String?
+  expectedCondition       String           @default("NEW")
+  observedAmazonCondition String?
+  observedEbayCondition   String?
+  expectedBuyingFormat    String           @default("BIN")
+  observedBuyingFormat    String?
+  evidenceJson            Json?
+  failureReasons          Json?
+  checkedAt               DateTime?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  productCandidate        ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch             AmazonMatch?     @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  actionItem              ActionItem?      @relation(fields: [actionItemId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId])
+  @@index([amazonMatchId])
+  @@index([status])
+  @@index([listingActionItemId])
 }
 
 model RuleConfig {
@@ -369,28 +409,28 @@ model EbayDiscoveryRun {
 }
 
 model EbayDiscoveryCandidate {
-  id                 String              @id @default(cuid())
+  id                 String             @id @default(cuid())
   runId              String
   ebayItemId         String?
   title              String
   ebayUrl            String?
-  soldPrice          Decimal?            @db.Decimal(10, 2)
-  shippingPrice      Decimal?            @db.Decimal(10, 2)
+  soldPrice          Decimal?           @db.Decimal(10, 2)
+  shippingPrice      Decimal?           @db.Decimal(10, 2)
   condition          String?
   category           String?
   categoryId         String?
-  ebayScore          Int                 @default(0)
+  ebayScore          Int                @default(0)
   safetyStatus       String?
   riskFlags          Json?
   scoreBreakdown     Json?
-  selected           Boolean             @default(false)
-  comparisonStatus   String              @default("NOT_COMPARED")
+  selected           Boolean            @default(false)
+  comparisonStatus   String             @default("NOT_COMPARED")
   productCandidateId String?
   amazonMatchId      String?
   rawSerpapiJson     Json?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  run                EbayDiscoveryRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  run                EbayDiscoveryRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
   productCandidates  ProductCandidate[]
 
   @@index([runId, ebayScore])
