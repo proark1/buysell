@@ -292,19 +292,31 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
         key: 'office-electronics',
         label: 'Office Electronics',
         description: 'Sold scanners, label printers, remotes, small office devices, and accessories.',
-        seedQueries: ['wireless barcode scanner', 'thermal label printer', 'laminator machine', 'replacement remote control']
+        seedQueries: ['wireless barcode scanner', 'thermal label printer', 'label printer accessory', 'laminator machine', 'replacement remote control', 'document scanner', 'receipt printer', 'etikettendrucker']
       },
       {
         key: 'small-tools',
         label: 'Small Tools',
         description: 'Sold chargers, measuring tools, adapters, and compact shop equipment.',
-        seedQueries: ['cordless tool charger', 'digital caliper', 'laser distance measure', 'multimeter leads']
+        seedQueries: ['cordless tool charger', 'digital caliper', 'laser distance measure', 'multimeter leads', 'stud finder', 'laser level', 'battery adapter tool', 'messgeraet']
       },
       {
         key: 'home-parts',
         label: 'Home Parts',
         description: 'Sold replacement filters, vacuum parts, remotes, and small household components.',
-        seedQueries: ['air purifier filter', 'vacuum replacement part', 'garage remote control', 'appliance replacement knob']
+        seedQueries: ['air purifier filter', 'vacuum replacement part', 'garage remote control', 'appliance replacement knob', 'coffee machine part', 'dishwasher basket', 'remote control garage', 'ersatzteil fernbedienung']
+      },
+      {
+        key: 'networking-smart-home',
+        label: 'Networking & Smart Home',
+        description: 'Sold routers, mesh nodes, hubs, sensors, smart plugs, and network accessories.',
+        seedQueries: ['mesh wifi router', 'smart home hub', 'zigbee sensor', 'smart plug pack', 'network switch 8 port', 'wifi range extender', 'router mesh wlan', 'smarthome sensor']
+      },
+      {
+        key: 'auto-electronics',
+        label: 'Auto Electronics',
+        description: 'Sold diagnostic tools, adapters, chargers, dash accessories, and compact vehicle electronics.',
+        seedQueries: ['obd2 scanner', 'car battery charger', 'dash cam mount', 'tpms tool', 'bluetooth obd adapter', 'diagnosegeraet auto', 'batterieladegeraet auto']
       }
     ]
   },
@@ -322,13 +334,25 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
         key: 'adapters-cables',
         label: 'Adapters & Cables',
         description: 'Sold docking stations, splitters, adapters, hubs, and cable tools.',
-        seedQueries: ['usb c docking station', 'hdmi splitter', 'displayport adapter', 'ethernet adapter', 'usb hub powered']
+        seedQueries: ['usb c docking station', 'hdmi splitter', 'displayport adapter', 'ethernet adapter', 'usb hub powered', 'thunderbolt dock', 'kvm switch', 'usb c hub', 'dockingstation']
       },
       {
         key: 'camera-accessories',
         label: 'Camera Accessories',
         description: 'Sold chargers, mounts, lights, and compact camera accessories.',
-        seedQueries: ['camera battery charger', 'led video light', 'tripod quick release plate', 'camera remote shutter']
+        seedQueries: ['camera battery charger', 'led video light', 'tripod quick release plate', 'camera remote shutter', 'camera cage accessory', 'gimbal battery charger', 'action camera mount', 'kamera akku ladegeraet']
+      },
+      {
+        key: 'gaming-accessories',
+        label: 'Gaming Accessories',
+        description: 'Sold controllers, docks, adapters, chargers, and console accessories with clear model signals.',
+        seedQueries: ['controller charging dock', 'console power supply', 'game controller adapter', 'switch dock replacement', 'gaming headset stand', 'controller ladestation', 'netzteil konsole']
+      },
+      {
+        key: 'audio-accessories',
+        label: 'Audio Accessories',
+        description: 'Sold microphones, interfaces, small mixers, receivers, and replacement audio parts.',
+        seedQueries: ['usb audio interface', 'wireless microphone receiver', 'podcast microphone arm', 'headphone amplifier', 'bluetooth audio transmitter', 'audio interface usb', 'mikrofon empfaenger']
       }
     ]
   },
@@ -346,13 +370,25 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
         key: 'office-equipment',
         label: 'Office Equipment',
         description: 'Sold printers, scanners, label tools, laminators, and office hardware.',
-        seedQueries: ['thermal label printer', 'document scanner', 'barcode scanner', 'paper cutter heavy duty']
+        seedQueries: ['thermal label printer', 'document scanner', 'barcode scanner', 'paper cutter heavy duty', 'receipt printer', 'label rewinder', 'time clock machine', 'aktenvernichter']
       },
       {
         key: 'tool-accessories',
         label: 'Tool Accessories',
         description: 'Sold chargers, adapters, meters, and compact hardware.',
-        seedQueries: ['cordless tool charger', 'battery adapter tool', 'stud finder', 'digital multimeter']
+        seedQueries: ['cordless tool charger', 'battery adapter tool', 'stud finder', 'digital multimeter', 'laser level', 'torque adapter', 'inspection camera', 'akku adapter werkzeug']
+      },
+      {
+        key: 'maker-electronics',
+        label: 'Maker Electronics',
+        description: 'Sold soldering, testing, 3D-printer, and small workshop electronics.',
+        seedQueries: ['soldering station accessory', 'bench power supply', '3d printer hotend', 'filament dryer', 'oscilloscope probe', 'loetstation', 'netzteil labor']
+      },
+      {
+        key: 'shipping-supplies',
+        label: 'Shipping Tools',
+        description: 'Sold label scales, thermal printers, tape dispensers, and warehouse accessories.',
+        seedQueries: ['shipping label scale', 'thermal shipping printer', 'barcode label scanner', 'packing tape dispenser', 'postal scale digital', 'paketwaage', 'versandetiketten drucker']
       }
     ]
   },

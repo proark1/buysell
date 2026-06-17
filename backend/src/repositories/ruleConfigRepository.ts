@@ -26,6 +26,9 @@ export interface ActiveRuleConfig {
   blockedKeywords: string[];
   allowedCategories: string[];
   amazonPriceCheckIntervalMinutes: number;
+  ebayDiscoveryAutoRunEnabled: boolean;
+  ebayDiscoveryAutoRunIntervalMinutes: number;
+  ebayDiscoveryAutoRunLimit: number;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -55,7 +58,10 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   blockedCategories: defaultBlockedCategories,
   blockedKeywords: defaultBlockedKeywords,
   allowedCategories: defaultAllowedCategories,
-  amazonPriceCheckIntervalMinutes: 30
+  amazonPriceCheckIntervalMinutes: 30,
+  ebayDiscoveryAutoRunEnabled: false,
+  ebayDiscoveryAutoRunIntervalMinutes: 1,
+  ebayDiscoveryAutoRunLimit: 5
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -105,6 +111,9 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     blockedCategories: stringArray(config.blockedCategories).length > 0 ? stringArray(config.blockedCategories) : defaultRuleConfig.blockedCategories,
     blockedKeywords: stringArray(config.blockedKeywords).length > 0 ? stringArray(config.blockedKeywords) : defaultRuleConfig.blockedKeywords,
     allowedCategories: stringArray(config.allowedCategories).length > 0 ? stringArray(config.allowedCategories) : defaultRuleConfig.allowedCategories,
-    amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes)
+    amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes),
+    ebayDiscoveryAutoRunEnabled: typeof config.ebayDiscoveryAutoRunEnabled === 'boolean' ? config.ebayDiscoveryAutoRunEnabled : defaultRuleConfig.ebayDiscoveryAutoRunEnabled,
+    ebayDiscoveryAutoRunIntervalMinutes: numberValue(config.ebayDiscoveryAutoRunIntervalMinutes, defaultRuleConfig.ebayDiscoveryAutoRunIntervalMinutes),
+    ebayDiscoveryAutoRunLimit: numberValue(config.ebayDiscoveryAutoRunLimit, defaultRuleConfig.ebayDiscoveryAutoRunLimit)
   };
 }

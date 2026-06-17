@@ -29,12 +29,24 @@ export interface EbayDiscoveryScore {
   condition: number;
   metadata: number;
   category: number;
+  diversity: number;
   riskPenalty: number;
   reasons: string[];
 }
 
+export interface EbayDiscoveryFamilySummary {
+  key: string;
+  sourceQuery?: string;
+  soldCount: number;
+  minSoldPrice?: number;
+  medianSoldPrice?: number;
+  maxSoldPrice?: number;
+  duplicateItemCount: number;
+}
+
 export interface EbayDiscoveryCandidateResult {
   ebay: EbayCandidateInput;
+  family: EbayDiscoveryFamilySummary;
   score: EbayDiscoveryScore;
   safety: {
     status: 'PASS' | 'WARN' | 'REJECT';
@@ -43,6 +55,8 @@ export interface EbayDiscoveryCandidateResult {
   };
   rejectionReasons: string[];
 }
+
+export type EbayDiscoveryQueryBreadth = 'FOCUSED' | 'BALANCED' | 'WIDE';
 
 export interface EbayDiscoveryRunOptions {
   serpApiKey: string;
@@ -64,6 +78,11 @@ export interface EbayDiscoveryRunOptions {
   preferredLocation?: 'ANY' | 'Domestic' | 'Regional' | 'Worldwide';
   postalCode?: string;
   categoryId?: string;
+  queryBreadth?: EbayDiscoveryQueryBreadth;
+  queryOffset?: number;
+  skipExistingProducts?: boolean;
+  existingProductFamilyKeys?: Iterable<string>;
+  existingEbayItemIds?: Iterable<string>;
 }
 
 export interface CompareEbayCandidatesOptions {
@@ -185,6 +204,77 @@ const normalizedKeywordIncludes = (value: string | undefined, patterns: string[]
   });
 };
 
+const productFamilyStopWords = new Set([
+  'new',
+  'neu',
+  'sealed',
+  'genuine',
+  'original',
+  'used',
+  'gebraucht',
+  'open',
+  'box',
+  'refurbished',
+  'renewed',
+  'parts',
+  'defect',
+  'defekt',
+  'with',
+  'without',
+  'for',
+  'and',
+  'the',
+  'free',
+  'shipping',
+  'versand',
+  'inkl',
+  'incl',
+  'lot',
+  'pack',
+  'pcs',
+  'piece',
+  'pieces',
+  'set',
+  'kit',
+  'black',
+  'white',
+  'red',
+  'blue',
+  'green',
+  'silver',
+  'grey',
+  'gray'
+]);
+
+const normalizeFamilyText = (value: string): string[] => value
+  .toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .split(/\s+/)
+  .map((token) => token.trim())
+  .filter((token) => token.length >= 2 && !productFamilyStopWords.has(token));
+
+export function productFamilyKeyForEbayCandidate(ebay: EbayCandidateInput): string {
+  const tokens = normalizeFamilyText(ebay.title);
+  const modelTokens = tokens.filter((token) => /\d/.test(token) && /[a-z]/i.test(token) && token.length >= 3);
+  if (modelTokens.length > 0) {
+    const firstModelIndex = tokens.findIndex((token) => token === modelTokens[0]);
+    const brandCandidate = firstModelIndex > 0 ? tokens[firstModelIndex - 1] : tokens[0];
+    return [brandCandidate, ...modelTokens.slice(0, 3)].filter(Boolean).join(':').slice(0, 120);
+  }
+  return tokens.slice(0, 7).join(':').slice(0, 120) || ebay.title.toLowerCase().slice(0, 120);
+}
+
+const median = (values: number[]): number | undefined => {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return undefined;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
+
+const asSet = (values: Iterable<string> | undefined): Set<string> => new Set(
+  [...(values ?? [])].map((value) => value.trim()).filter(Boolean)
+);
+
 const conditionIdsBySetting: Record<NonNullable<EbayDiscoveryRunOptions['itemCondition']>, string[]> = {
   ANY: [],
   NEW: ['1000'],
@@ -274,6 +364,7 @@ function scoreEbayDiscoveryCandidate(
   options: {
     minSoldPrice: number;
     maxSoldPrice: number;
+    family?: EbayDiscoveryFamilySummary;
   },
   riskFlags: string[]
 ): EbayDiscoveryScore {
@@ -313,6 +404,24 @@ function scoreEbayDiscoveryCandidate(
   const category = ebay.category ? 12 : 3;
   if (ebay.category) reasons.push(`eBay category: ${ebay.category}.`);
 
+  const family = options.family;
+  const soldCount = family?.soldCount ?? 1;
+  const diversity = soldCount >= 5
+    ? 10
+    : soldCount >= 3
+      ? 8
+      : soldCount >= 2
+        ? 5
+        : 0;
+  if (soldCount > 1) reasons.push(`${soldCount} sold comps were grouped into one product family.`);
+  if (family?.medianSoldPrice !== undefined && family.minSoldPrice !== undefined && family.maxSoldPrice !== undefined) {
+    const spread = family.maxSoldPrice - family.minSoldPrice;
+    const spreadPercent = family.medianSoldPrice > 0 ? spread / family.medianSoldPrice : 0;
+    if (spreadPercent <= 0.25 && soldCount >= 2) {
+      reasons.push('Sold prices are reasonably consistent across this product family.');
+    }
+  }
+
   const riskPenalty = localRiskFlags.reduce((penalty, flag) => {
     if (['BLOCKED_CATEGORY', 'BLOCKED_KEYWORD'].includes(flag)) return penalty + 100;
     if (flag === 'MISSING_EBAY_PRICE') return penalty + 50;
@@ -324,11 +433,12 @@ function scoreEbayDiscoveryCandidate(
   }, 0);
 
   return {
-    total: round(clamp(price + condition + metadata + category - riskPenalty, 0, 100)),
+    total: round(clamp(price + condition + metadata + category + diversity - riskPenalty, 0, 100)),
     price: round(price),
     condition: round(condition),
     metadata: round(metadata),
     category: round(category),
+    diversity: round(diversity),
     riskPenalty,
     reasons
   };
@@ -350,14 +460,66 @@ export function selectEbayDiscoveryQueries(
   profile: ReturnType<typeof getEbayDiscoveryProfile>,
   category: ReturnType<typeof getEbayDiscoveryCategory>,
   query: string | undefined,
-  limit: number
+  limit: number,
+  breadth: EbayDiscoveryQueryBreadth = 'BALANCED',
+  offset = 0
 ): string[] {
   const trimmed = query?.trim();
-  if (trimmed) return [trimmed];
+  if (trimmed) {
+    const manualQueries = trimmed
+      .split(/[\n,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return manualQueries.length > 0 ? manualQueries : [trimmed];
+  }
 
   const seeds = category.seedQueries.length > 0 ? category.seedQueries : [profile.label];
-  const queryCount = Math.min(seeds.length, Math.max(1, Math.ceil(limit / 10)));
-  return seeds.slice(0, queryCount);
+  const queryCount = breadth === 'WIDE'
+    ? Math.min(seeds.length, Math.max(2, Math.ceil(limit / 5)))
+    : breadth === 'FOCUSED'
+      ? 1
+      : Math.min(seeds.length, Math.max(1, Math.ceil(limit / 10)));
+  const normalizedOffset = seeds.length > 0 ? Math.abs(offset) % seeds.length : 0;
+  const rotated = [...seeds.slice(normalizedOffset), ...seeds.slice(0, normalizedOffset)];
+  return rotated.slice(0, queryCount);
+}
+
+export async function loadExistingEbayDiscoveryKeys(db: PrismaClient, take = 10_000): Promise<{
+  productFamilyKeys: string[];
+  ebayItemIds: string[];
+}> {
+  const [families, items, products] = await Promise.all([
+    db.ebayDiscoveryCandidate.findMany({
+      where: { productFamilyKey: { not: null } },
+      select: { productFamilyKey: true },
+      distinct: ['productFamilyKey'],
+      take
+    }),
+    db.ebayDiscoveryCandidate.findMany({
+      where: { ebayItemId: { not: null } },
+      select: { ebayItemId: true },
+      distinct: ['ebayItemId'],
+      take
+    }),
+    db.productCandidate.findMany({
+      select: { ebayTitle: true },
+      take
+    })
+  ]);
+  const familyRows = families as Array<{ productFamilyKey: string | null }>;
+  const itemRows = items as Array<{ ebayItemId: string | null }>;
+  const productRows = products as Array<{ ebayTitle: string }>;
+  const productFamilyKeys = productRows
+    .map((item) => productFamilyKeyForEbayCandidate({ title: item.ebayTitle }))
+    .filter(Boolean);
+
+  return {
+    productFamilyKeys: [...new Set([
+      ...familyRows.map((item) => item.productFamilyKey).filter((item): item is string => Boolean(item)),
+      ...productFamilyKeys
+    ])],
+    ebayItemIds: itemRows.map((item) => item.ebayItemId).filter((item): item is string => Boolean(item))
+  };
 }
 
 export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOptions): Promise<{
@@ -366,6 +528,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   queries: string[];
   candidates: EbayDiscoveryCandidateResult[];
   rejected: EbayDiscoveryCandidateResult[];
+  skippedExisting: number;
   filters: Record<string, unknown>;
 }> {
   const profile = getEbayDiscoveryProfile(options.profileKey);
@@ -377,7 +540,8 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const minSoldPrice = options.minSoldPrice ?? profile.minSoldPrice;
   const maxSoldPrice = options.maxSoldPrice ?? profile.maxSoldPrice;
   const query = options.query?.trim();
-  const queries = selectEbayDiscoveryQueries(profile, category, query, limit);
+  const queryBreadth = options.queryBreadth ?? 'BALANCED';
+  const queries = selectEbayDiscoveryQueries(profile, category, query, limit, queryBreadth, options.queryOffset ?? 0);
   const policy = safetyPolicy(options.ruleConfig, safeMode, options.ruleConfig.maxAmazonCostUsd);
   const itemCondition = options.itemCondition ?? 'NEW';
   const buyingFormat = options.buyingFormat ?? 'BIN';
@@ -385,8 +549,12 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const categoryId = options.categoryId?.trim() || category.categoryId;
   const soldOnly = options.soldOnly ?? true;
   const completedOnly = options.completedOnly ?? true;
+  const skipExistingProducts = options.skipExistingProducts ?? true;
+  const existingFamilyKeys = asSet(options.existingProductFamilyKeys);
+  const existingItemIds = asSet(options.existingEbayItemIds);
+  const rawResultMultiplier = queryBreadth === 'WIDE' ? 4 : queryBreadth === 'BALANCED' ? 3 : 2;
 
-  const byKey = new Map<string, EbayCandidateInput>();
+  const byKey = new Map<string, { ebay: EbayCandidateInput; sourceQuery: string }>();
   for (const seed of queries) {
     const ebayCandidates = await searchEbayCandidates({
       query: seed,
@@ -401,21 +569,52 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       categoryId,
       minPrice: minSoldPrice,
       maxPrice: maxSoldPrice,
-      limit: Math.max(3, Math.ceil(limit / Math.max(queries.length, 1)))
+      limit: Math.max(5, Math.ceil((limit * rawResultMultiplier) / Math.max(queries.length, 1)))
     });
 
     for (const ebay of ebayCandidates) {
       const key = ebay.itemId ?? `${ebay.title.toLowerCase()}|${ebay.soldPrice ?? ''}`;
-      if (!byKey.has(key)) byKey.set(key, ebay);
+      if (!byKey.has(key)) byKey.set(key, { ebay, sourceQuery: seed });
     }
   }
 
-  const reviewed = [...byKey.values()].slice(0, limit).map((ebay) => {
-    const safety = evaluateEbayCandidateSafety(ebay, policy);
-    const score = scoreEbayDiscoveryCandidate(ebay, { minSoldPrice, maxSoldPrice }, safety.riskFlags);
-    const base = { ebay, score, safety };
-    return { ...base, rejectionReasons: ebayRejectionReasons(base, minimumEbayScore) };
-  }).sort((a, b) => b.score.total - a.score.total);
+  const families = new Map<string, Array<{ ebay: EbayCandidateInput; sourceQuery: string }>>();
+  for (const item of byKey.values()) {
+    const familyKey = productFamilyKeyForEbayCandidate(item.ebay);
+    const family = families.get(familyKey) ?? [];
+    family.push(item);
+    families.set(familyKey, family);
+  }
+
+  let skippedExisting = 0;
+  const reviewed = [...families.entries()].flatMap(([familyKey, familyItems]) => {
+    const duplicateByFamily = skipExistingProducts && existingFamilyKeys.has(familyKey);
+    const duplicateByItem = skipExistingProducts && familyItems.some((item) => item.ebay.itemId && existingItemIds.has(item.ebay.itemId));
+    if (duplicateByFamily || duplicateByItem) {
+      skippedExisting += familyItems.length;
+      return [];
+    }
+
+    const soldPrices = familyItems.map((item) => item.ebay.soldPrice).filter((value): value is number => value !== undefined);
+    const family: EbayDiscoveryFamilySummary = {
+      key: familyKey,
+      sourceQuery: familyItems[0]?.sourceQuery,
+      soldCount: familyItems.length,
+      minSoldPrice: soldPrices.length ? Math.min(...soldPrices) : undefined,
+      medianSoldPrice: median(soldPrices),
+      maxSoldPrice: soldPrices.length ? Math.max(...soldPrices) : undefined,
+      duplicateItemCount: Math.max(0, familyItems.length - 1)
+    };
+
+    const familyReviewed = familyItems.map((item) => {
+      const safety = evaluateEbayCandidateSafety(item.ebay, policy);
+      const score = scoreEbayDiscoveryCandidate(item.ebay, { minSoldPrice, maxSoldPrice, family }, safety.riskFlags);
+      const base = { ebay: item.ebay, family: { ...family, sourceQuery: item.sourceQuery }, score, safety };
+      return { ...base, rejectionReasons: ebayRejectionReasons(base, minimumEbayScore) };
+    }).sort((a, b) => b.score.total - a.score.total);
+
+    return familyReviewed[0] ? [familyReviewed[0]] : [];
+  }).sort((a, b) => b.score.total - a.score.total).slice(0, limit);
 
   const candidates = reviewed.filter((candidate) => candidate.safety.status !== 'REJECT' && candidate.score.total >= minimumEbayScore);
   const rejected = reviewed.filter((candidate) => candidate.safety.status === 'REJECT' || candidate.score.total < minimumEbayScore);
@@ -426,6 +625,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
     queries,
     candidates,
     rejected,
+    skippedExisting,
     filters: {
       profileKey: profile.key,
       categoryKey: category.key,
@@ -433,6 +633,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       market,
       query,
       queries,
+      queryBreadth,
       limit,
       mode: options.mode ?? 'MANUAL',
       safeMode,
@@ -445,7 +646,9 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       itemCondition,
       preferredLocation,
       postalCode: options.postalCode?.trim() || market.defaultPostalCode,
-      categoryId
+      categoryId,
+      skipExistingProducts,
+      skippedExisting
     }
   };
 }
@@ -479,6 +682,8 @@ export async function persistEbayDiscoveryRun(
         data: {
           runId: run.id,
           ebayItemId: candidate.ebay.itemId,
+          productFamilyKey: candidate.family.key,
+          sourceQuery: candidate.family.sourceQuery,
           title: candidate.ebay.title,
           ebayUrl: candidate.ebay.url,
           soldPrice: money(candidate.ebay.soldPrice),
@@ -486,11 +691,16 @@ export async function persistEbayDiscoveryRun(
           condition: candidate.ebay.condition,
           category: candidate.ebay.category,
           categoryId: candidate.ebay.categoryId,
+          familySoldCount: candidate.family.soldCount,
+          familyMinSoldPrice: money(candidate.family.minSoldPrice),
+          familyMedianSoldPrice: money(candidate.family.medianSoldPrice),
+          familyMaxSoldPrice: money(candidate.family.maxSoldPrice),
           ebayScore: candidate.score.total,
           safetyStatus: candidate.safety.status,
           riskFlags: candidate.safety.riskFlags,
           scoreBreakdown: {
             ...candidate.score,
+            family: candidate.family,
             rejectionReasons: candidate.rejectionReasons
           },
           selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',

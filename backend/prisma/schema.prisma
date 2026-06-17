@@ -359,6 +359,9 @@ model RuleConfig {
   blockedKeywords                 Json?
   allowedCategories               Json?
   amazonPriceCheckIntervalMinutes Int      @default(30)
+  ebayDiscoveryAutoRunEnabled     Boolean  @default(false)
+  ebayDiscoveryAutoRunIntervalMinutes Int  @default(1)
+  ebayDiscoveryAutoRunLimit       Int      @default(5)
   createdAt                       DateTime @default(now())
   updatedAt                       DateTime @updatedAt
 }
@@ -466,6 +469,8 @@ model EbayDiscoveryCandidate {
   id                 String             @id @default(cuid())
   runId              String
   ebayItemId         String?
+  productFamilyKey   String?
+  sourceQuery        String?
   title              String
   ebayUrl            String?
   soldPrice          Decimal?           @db.Decimal(10, 2)
@@ -473,6 +478,10 @@ model EbayDiscoveryCandidate {
   condition          String?
   category           String?
   categoryId         String?
+  familySoldCount    Int                @default(1)
+  familyMinSoldPrice Decimal?           @db.Decimal(10, 2)
+  familyMedianSoldPrice Decimal?        @db.Decimal(10, 2)
+  familyMaxSoldPrice Decimal?           @db.Decimal(10, 2)
   ebayScore          Int                @default(0)
   safetyStatus       String?
   riskFlags          Json?
@@ -489,6 +498,7 @@ model EbayDiscoveryCandidate {
 
   @@index([runId, ebayScore])
   @@index([ebayItemId])
+  @@index([productFamilyKey])
   @@index([comparisonStatus])
 }
 

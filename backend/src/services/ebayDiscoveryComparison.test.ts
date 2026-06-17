@@ -1,4 +1,9 @@
-import { analyzeEbayAmazonComparison, selectEbayDiscoveryQueries } from './ebayDiscovery.js';
+import {
+  analyzeEbayAmazonComparison,
+  buildEbayDiscoveryCandidates,
+  productFamilyKeyForEbayCandidate,
+  selectEbayDiscoveryQueries
+} from './ebayDiscovery.js';
 import { getEbayDiscoveryCategory, getEbayDiscoveryProfile } from './discoveryPolicy.js';
 import { defaultRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { assertEqual } from './testHelpers.js';
@@ -95,5 +100,79 @@ assertEqual(customQueries[0], 'thermal label printer', 'custom eBay discovery qu
 
 const seedQueries = selectEbayDiscoveryQueries(profile, category, undefined, 20);
 assertEqual(seedQueries.length, 2, 'seed eBay discovery query count');
+
+const wideQueries = selectEbayDiscoveryQueries(profile, category, undefined, 20, 'WIDE');
+assertEqual(wideQueries.length, 4, 'wide eBay discovery query count');
+
+const manualQueries = selectEbayDiscoveryQueries(profile, category, 'barcode scanner, thermal printer', 10);
+assertEqual(manualQueries.length, 2, 'manual eBay discovery query list count');
+
+const familyKey = productFamilyKeyForEbayCandidate({
+  title: 'Tera X100 Wireless Barcode Scanner New',
+  soldPrice: 75
+});
+assertEqual(familyKey, 'tera:x100', 'eBay discovery product family key');
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async () => new Response(JSON.stringify({
+  organic_results: [
+    {
+      item_id: 'scan-1',
+      title: 'Tera X100 Wireless Barcode Scanner New',
+      link: 'https://www.ebay.com/itm/scan-1',
+      price: { raw: '$72.00' },
+      condition: 'New',
+      category: 'Office Products'
+    },
+    {
+      item_id: 'scan-2',
+      title: 'Tera X100 2D Barcode Scanner',
+      link: 'https://www.ebay.com/itm/scan-2',
+      price: { raw: '$78.00' },
+      condition: 'New',
+      category: 'Office Products'
+    },
+    {
+      item_id: 'label-1',
+      title: 'Zebra ZD420 Thermal Label Printer',
+      link: 'https://www.ebay.com/itm/label-1',
+      price: { raw: '$155.00' },
+      condition: 'New',
+      category: 'Office Products'
+    }
+  ]
+}), { status: 200 })) as typeof fetch;
+
+try {
+  const grouped = await buildEbayDiscoveryCandidates({
+    serpApiKey: 'test-key',
+    ruleConfig: defaultRuleConfig,
+    profileKey: 'starter-safe',
+    categoryKey: 'office-electronics',
+    query: 'barcode scanner',
+    limit: 10,
+    minimumEbayScore: 0,
+    itemCondition: 'ANY'
+  });
+  assertEqual(grouped.candidates.length, 2, 'eBay discovery groups duplicate product families');
+  const groupedScanner = grouped.candidates.find((candidate) => candidate.family.key === 'tera:x100');
+  assertEqual(groupedScanner?.family.soldCount, 2, 'eBay discovery grouped sold count');
+
+  const skipped = await buildEbayDiscoveryCandidates({
+    serpApiKey: 'test-key',
+    ruleConfig: defaultRuleConfig,
+    profileKey: 'starter-safe',
+    categoryKey: 'office-electronics',
+    query: 'barcode scanner',
+    limit: 10,
+    minimumEbayScore: 0,
+    itemCondition: 'ANY',
+    existingProductFamilyKeys: ['tera:x100']
+  });
+  assertEqual(skipped.skippedExisting, 2, 'eBay discovery skips existing product family items');
+  assertEqual(skipped.candidates.length, 1, 'eBay discovery keeps only new product families');
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 console.log('ebayDiscoveryComparison unit test passed');

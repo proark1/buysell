@@ -5,6 +5,7 @@ import { getDashboardData } from '../repositories/dashboardRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
+import { runScheduledEbayDiscovery } from '../services/ebayDiscoveryScheduler.js';
 
 const settingsSchema = z.object({
   minimumProfitUsd: z.number().positive().optional(),
@@ -30,7 +31,10 @@ const settingsSchema = z.object({
   blockedCategories: z.array(z.string()).optional(),
   blockedKeywords: z.array(z.string()).optional(),
   allowedCategories: z.array(z.string()).optional(),
-  amazonPriceCheckIntervalMinutes: z.number().int().positive().optional()
+  amazonPriceCheckIntervalMinutes: z.number().int().positive().optional(),
+  ebayDiscoveryAutoRunEnabled: z.boolean().optional(),
+  ebayDiscoveryAutoRunIntervalMinutes: z.number().int().positive().max(1440).optional(),
+  ebayDiscoveryAutoRunLimit: z.number().int().positive().max(25).optional()
 });
 
 export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<void> {
@@ -88,5 +92,10 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
   app.post('/api/monitor/amazon-prices/run', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return runAmazonPriceMonitor(prisma);
+  });
+
+  app.post('/api/ebay-discovery/auto-run/run', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return runScheduledEbayDiscovery();
   });
 }

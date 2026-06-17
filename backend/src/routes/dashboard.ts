@@ -159,6 +159,15 @@ const dashboardHtml = `<!doctype html>
     .metric{border:1px solid var(--border);border-radius:8px;padding:7px 8px;background:rgba(2,6,23,.35)}
     .metric .mk{color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.4px}.metric .mv{font-size:13px;font-weight:800;margin-top:1px}
     .card-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .compact-products{display:grid;gap:8px}
+    .compact-product{border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);overflow:hidden}
+    .compact-product[open]{border-color:var(--border-strong);background:rgba(15,23,42,.55)}
+    .compact-product summary{cursor:pointer;list-style:none;display:grid;grid-template-columns:44px minmax(260px,1fr) 100px 86px 116px 140px;gap:10px;align-items:center;padding:8px 10px}
+    .compact-product summary::-webkit-details-marker{display:none}
+    .compact-title{min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .compact-cell{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .compact-detail{border-top:1px solid var(--border);padding:10px;display:grid;gap:8px}
+    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
     .kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
@@ -435,9 +444,11 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Category</label><select id="ebayDiscoveryCategory"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
               <div class="field"><label>Sold Products To Check</label><input id="ebayDiscoveryLimit" type="number" min="1" max="100" value="25"></div>
+              <div class="field"><label>Query Breadth</label><select id="ebayDiscoveryQueryBreadth"><option value="BALANCED" selected>Balanced</option><option value="WIDE">Wide</option><option value="FOCUSED">Focused</option></select></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySafeMode" type="checkbox" checked> Safe mode</label></div>
+              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySkipExisting" type="checkbox" checked> Skip known products</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Auto compare top candidates</label></div>
             </div>
             <details class="advanced">
@@ -462,6 +473,14 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
                 <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" step="1" value="65"></div>
               </div>
+              <div class="subsection-title">Automatic discovery</div>
+              <div class="form-grid compact">
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run every interval</label></div>
+                <div class="field"><label>Interval Minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
+                <div class="field"><label>Products Per Run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save Auto Run</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAutoNow()">Run Auto Now</button></div>
+              </div>
             </details>
             <div class="actions-row">
               <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find eBay Sold Products</button>
@@ -474,6 +493,10 @@ const dashboardHtml = `<!doctype html>
         <div class="panel">
           <div class="panel-head"><h2>eBay Sold Candidates</h2><span class="hint" id="ebayDiscoverySummary">Run eBay Discovery to build a shortlist.</span></div>
           <div class="panel-body"><div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span></div>
+          <div class="panel-body"><div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div></div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Recent eBay Discovery Runs</h2></div>
@@ -989,6 +1012,19 @@ function ebayCandidatePrice(c){return c.soldPrice||(c.ebay&&c.ebay.soldPrice)}
 function ebayCandidateShipping(c){return c.shippingPrice||(c.ebay&&c.ebay.shippingPrice)}
 function ebayCandidateCondition(c){return c.condition||(c.ebay&&c.ebay.condition)}
 function ebayCandidateCategory(c){return c.category||(c.ebay&&c.ebay.category)}
+function ebayCandidateFamily(c){
+  var scoreData=ebayCandidateScoreData(c);
+  var family=(scoreData&&scoreData.family)||{};
+  return {
+    key:c.productFamilyKey||family.key||'',
+    sourceQuery:c.sourceQuery||family.sourceQuery||'',
+    soldCount:c.familySoldCount||family.soldCount||1,
+    minSoldPrice:c.familyMinSoldPrice||family.minSoldPrice,
+    medianSoldPrice:c.familyMedianSoldPrice||family.medianSoldPrice,
+    maxSoldPrice:c.familyMaxSoldPrice||family.maxSoldPrice,
+    duplicateItemCount:family.duplicateItemCount||Math.max(0,Number(c.familySoldCount||1)-1)
+  };
+}
 function ebaySafetyStatus(c){return c.safetyStatus||(c.safety&&c.safety.status)}
 function ebayCandidateStatus(c){return c.comparisonStatus||ebaySafetyStatus(c)||'PASS'}
 function ebayComparison(c){
@@ -1134,6 +1170,64 @@ function renderEbayDiscoveryReport(candidates,rejectedExtra,preserveSelection){
   updateEbayDiscoveryActions();
 }
 
+function compactEbayLines(candidates){
+  var byKey={};
+  (candidates||[]).forEach(function(c){
+    var family=ebayCandidateFamily(c);
+    var key=family.key||ebayCandidateItemId(c)||ebayCandidateTitle(c)+'|'+ebayCandidatePrice(c);
+    var existing=byKey[key];
+    if(!existing||ebayCandidateScore(c)>ebayCandidateScore(existing)||new Date(c.createdAt||0)>new Date(existing.createdAt||0))byKey[key]=c;
+  });
+  return Object.keys(byKey).map(function(k){return byKey[k]}).sort(function(a,b){
+    return ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.createdAt||0)-new Date(a.createdAt||0);
+  });
+}
+function renderEbayCompactProducts(candidates){
+  var el=document.getElementById('ebayCompactProducts');
+  var summary=document.getElementById('ebayCompactSummary');
+  if(!el)return;
+  var rows=compactEbayLines(candidates);
+  if(summary)summary.textContent=rows.length+' product lines · one row per family';
+  if(!rows.length){
+    el.innerHTML='<div class="empty">No product lines yet.</div>';
+    return;
+  }
+  el.innerHTML=rows.map(function(c){
+    var score=ebayCandidateScore(c);
+    var family=ebayCandidateFamily(c);
+    var market=ebayCandidateMarket(c);
+    var url=ebayCandidateUrl(c);
+    var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
+    var source=family.sourceQuery?'<span class="chip">'+esc(family.sourceQuery)+'</span>':'';
+    var reasons=ebayCandidateReasons(c).slice(0,5).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var positive=ebayPositiveReasons(c).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var priceRange=(family.minSoldPrice!==undefined&&family.maxSoldPrice!==undefined&&Number(family.minSoldPrice)!==Number(family.maxSoldPrice))
+      ? marketMoney(family.minSoldPrice,market)+'-'+marketMoney(family.maxSoldPrice,market)
+      : marketMoney(ebayCandidatePrice(c),market);
+    var comparison=renderAmazonComparisonForEbay(c,isRejectedEbayCandidate(c),isManualReviewEbayCandidate(c));
+    var actions='<div class="card-actions">';
+    if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c))&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
+    else if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
+    if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR')&&c.comparisonStatus!=='OPPORTUNITY')actions+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(c.id)+'\\')">Recompare</button>';
+    if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+    var comp=ebayComparison(c);
+    if(comp&&comp.best&&comp.best.url)actions+='<a class="btn sm" href="'+esc(comp.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+    actions+='</div>';
+    return '<details class="compact-product"><summary>'+
+      '<span class="'+scoreClass(score)+'">'+score+'</span>'+
+      '<span class="compact-title">'+title+'</span>'+
+      '<span class="compact-cell">'+priceRange+'</span>'+
+      '<span class="compact-cell">Comps '+esc(family.soldCount||1)+'</span>'+
+      '<span class="compact-cell compact-hide-sm">'+badge(ebayCandidateStatus(c))+'</span>'+
+      '<span class="compact-cell compact-hide-sm">'+esc(ebayCandidateCategory(c)||'No category')+'</span>'+
+      '</summary><div class="compact-detail">'+
+      '<div class="result-meta">Family <span class="mono">'+esc(family.key||'unknown')+'</span> · Item <span class="mono">'+esc(ebayCandidateItemId(c)||'unknown')+'</span> · '+esc(ebayCandidateCondition(c)||'condition unknown')+'</div>'+
+      '<div class="chips">'+(source||'')+(reasons||positive||'<span class="chip">No reasons captured yet</span>')+'</div>'+
+      comparison+actions+
+      '</div></details>';
+  }).join('');
+}
+
 function render(){
   var d=state.data;if(!d)return;
   var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
@@ -1226,9 +1320,13 @@ function render(){
     {key:'startedAt',label:'Started',fmt:when}
   ]);
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
+  renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
+  if(rc.ebayDiscoveryAutoRunEnabled!==undefined)document.getElementById('ebayAutoRunEnabled').checked=!!rc.ebayDiscoveryAutoRunEnabled;
+  if(rc.ebayDiscoveryAutoRunIntervalMinutes)document.getElementById('ebayAutoRunInterval').value=rc.ebayDiscoveryAutoRunIntervalMinutes;
+  if(rc.ebayDiscoveryAutoRunLimit)document.getElementById('ebayAutoRunLimit').value=rc.ebayDiscoveryAutoRunLimit;
   document.getElementById('settingsSafeMode').checked=!!rc.safeMode;
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
@@ -1332,6 +1430,29 @@ function checkDb(){
   function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';toast('Secret cleared',null,'ok')}
   function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
     apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
+function saveEbayAutoRun(){
+  var interval=Number(document.getElementById('ebayAutoRunInterval').value||1);
+  var limit=Number(document.getElementById('ebayAutoRunLimit').value||5);
+  if(!interval||interval<1)return toast('Invalid interval','Use at least 1 minute.','warn');
+  if(!limit||limit<1)return toast('Invalid product count','Use at least 1 product per run.','warn');
+  var body={
+    ebayDiscoveryAutoRunEnabled:document.getElementById('ebayAutoRunEnabled').checked,
+    ebayDiscoveryAutoRunIntervalMinutes:interval,
+    ebayDiscoveryAutoRunLimit:limit
+  };
+  apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){
+    toast('eBay auto-run saved',(body.ebayDiscoveryAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' products','ok');
+    load();
+  }).catch(function(e){toast('Save failed',e.message,'err')});
+}
+function runEbayAutoNow(){
+  toast('Running scheduled eBay discovery','Using auto-run settings');
+  jpost('/api/ebay-discovery/auto-run/run',{}).then(function(res){
+    toast('Scheduled eBay discovery complete',res,'ok');
+    loadKeepaTokenStatus();
+    load();
+  }).catch(function(e){toast('Scheduled run failed',e.message,'err')});
+}
 function saveSafety(){
   var body={
     safeMode:document.getElementById('settingsSafeMode').checked,
@@ -1460,6 +1581,7 @@ function runEbayDiscovery(){
     query:q||undefined,
     categoryId:document.getElementById('ebayDiscoveryCategoryId').value.trim()||undefined,
     limit:Number(document.getElementById('ebayDiscoveryLimit').value||25),
+    queryBreadth:document.getElementById('ebayDiscoveryQueryBreadth').value||'BALANCED',
     mode:auto?'AUTO':'MANUAL',
     autoCompare:auto,
     compareLimit:Number(document.getElementById('ebayDiscoveryCompareLimit').value||10),
@@ -1474,14 +1596,16 @@ function runEbayDiscovery(){
     buyingFormat:document.getElementById('ebayDiscoveryBuyingFormat').value||'BIN',
     itemCondition:document.getElementById('ebayDiscoveryCondition').value||'NEW',
     preferredLocation:document.getElementById('ebayDiscoveryLocation').value||'Domestic',
-    postalCode:document.getElementById('ebayDiscoveryPostalCode').value.trim()||undefined
+    postalCode:document.getElementById('ebayDiscoveryPostalCode').value.trim()||undefined,
+    skipExistingProducts:document.getElementById('ebayDiscoverySkipExisting').checked
   };
   toast('Running eBay Discovery',profile+' · '+category);
   jpost('/ebay-discovery/run',body).then(function(res){
     state.ebayDiscoveryRunId=res.run&&res.run.id;
     state.selectedEbay={};
     renderEbayDiscoveryReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
-    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    renderEbayCompactProducts((res.run&&res.run.candidates)||[]);
     toast('eBay Discovery complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();
     load();

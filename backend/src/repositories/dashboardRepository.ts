@@ -33,6 +33,8 @@ const ebayDiscoveryCandidateSelect = {
   id: true,
   runId: true,
   ebayItemId: true,
+  productFamilyKey: true,
+  sourceQuery: true,
   title: true,
   ebayUrl: true,
   soldPrice: true,
@@ -40,6 +42,10 @@ const ebayDiscoveryCandidateSelect = {
   condition: true,
   category: true,
   categoryId: true,
+  familySoldCount: true,
+  familyMinSoldPrice: true,
+  familyMedianSoldPrice: true,
+  familyMaxSoldPrice: true,
   ebayScore: true,
   safetyStatus: true,
   riskFlags: true,
@@ -63,6 +69,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     discoveryScanRuns,
     amazonDiscoveryRuns,
     ebayDiscoveryRuns,
+    allEbayDiscoveryCandidates,
     automationRuns,
     ruleConfig
   ] = await Promise.all([
@@ -94,6 +101,11 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
           take: 100
         }
       }
+    }),
+    db.ebayDiscoveryCandidate.findMany({
+      select: ebayDiscoveryCandidateSelect,
+      orderBy: [{ createdAt: 'desc' }, { ebayScore: 'desc' }],
+      take: 500
     }),
     db.automationRun.findMany({
       orderBy: { startedAt: 'desc' },
@@ -145,6 +157,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     amazonDiscoveryCandidates,
     ebayDiscoveryRuns,
     ebayDiscoveryCandidates,
+    allEbayDiscoveryCandidates,
     automationRuns,
     ruleConfig
   };

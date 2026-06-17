@@ -20,6 +20,7 @@ import {
   buildEbayDiscoveryCandidates,
   compareEbayDiscoveryCandidates,
   considerEbayDiscoveryCandidate,
+  loadExistingEbayDiscoveryKeys,
   persistEbayDiscoveryRun,
   type EbayDiscoveryCandidateResult
 } from '../services/ebayDiscovery.js';
@@ -133,7 +134,9 @@ const ebayDiscoveryRunRequestSchema = z.object({
   buyingFormat: z.enum(['ANY', 'BIN', 'Auction', 'BO']).default('BIN'),
   itemCondition: z.enum(['ANY', 'NEW', 'USED', 'OPEN_BOX']).default('NEW'),
   preferredLocation: z.enum(['ANY', 'Domestic', 'Regional', 'Worldwide']).default('Domestic'),
-  postalCode: z.string().max(20).optional()
+  postalCode: z.string().max(20).optional(),
+  queryBreadth: z.enum(['FOCUSED', 'BALANCED', 'WIDE']).default('BALANCED'),
+  skipExistingProducts: z.boolean().default(true)
 });
 
 const ebayDiscoverySelectRequestSchema = z.object({
@@ -837,6 +840,9 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     const ruleConfig = await getActiveRuleConfig(prisma);
     const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
     const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
+    const existingKeys = parsed.data.skipExistingProducts
+      ? await loadExistingEbayDiscoveryKeys(prisma)
+      : { productFamilyKeys: [], ebayItemIds: [] };
     let result: Awaited<ReturnType<typeof buildEbayDiscoveryCandidates>>;
     let persistedRun: Awaited<ReturnType<typeof persistEbayDiscoveryRun>>;
     try {
@@ -859,7 +865,11 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         buyingFormat: parsed.data.buyingFormat,
         itemCondition: parsed.data.itemCondition,
         preferredLocation: parsed.data.preferredLocation,
-        postalCode: parsed.data.postalCode
+        postalCode: parsed.data.postalCode,
+        queryBreadth: parsed.data.queryBreadth,
+        skipExistingProducts: parsed.data.skipExistingProducts,
+        existingProductFamilyKeys: existingKeys.productFamilyKeys,
+        existingEbayItemIds: existingKeys.ebayItemIds
       });
       persistedRun = await persistEbayDiscoveryRun(prisma, {
         serpApiKey,
@@ -880,7 +890,9 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         buyingFormat: parsed.data.buyingFormat,
         itemCondition: parsed.data.itemCondition,
         preferredLocation: parsed.data.preferredLocation,
-        postalCode: parsed.data.postalCode
+        postalCode: parsed.data.postalCode,
+        queryBreadth: parsed.data.queryBreadth,
+        skipExistingProducts: parsed.data.skipExistingProducts
       }, result);
     } catch (error) {
       if (error instanceof SerpApiError) {
@@ -946,6 +958,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         scanned: result.candidates.length + result.rejected.length,
         accepted: result.candidates.length,
         rejected: result.rejected.length,
+        skippedExisting: result.skippedExisting,
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0,
         manualReviews: comparison?.manualReviews.length ?? 0
