@@ -30,6 +30,9 @@ export interface ActiveRuleConfig {
   ebayDiscoveryAutoRunIntervalMinutes: number;
   ebayDiscoveryAutoRunLimit: number;
   ebayDiscoveryAutoCompareEnabled: boolean;
+  ebayAmazonCompareAutoRunEnabled: boolean;
+  ebayAmazonCompareAutoRunIntervalMinutes: number;
+  ebayAmazonCompareAutoRunLimit: number;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -63,7 +66,10 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   ebayDiscoveryAutoRunEnabled: false,
   ebayDiscoveryAutoRunIntervalMinutes: 1,
   ebayDiscoveryAutoRunLimit: 5,
-  ebayDiscoveryAutoCompareEnabled: false
+  ebayDiscoveryAutoCompareEnabled: false,
+  ebayAmazonCompareAutoRunEnabled: false,
+  ebayAmazonCompareAutoRunIntervalMinutes: 1,
+  ebayAmazonCompareAutoRunLimit: 1
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -117,6 +123,9 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     ebayDiscoveryAutoRunEnabled: typeof config.ebayDiscoveryAutoRunEnabled === 'boolean' ? config.ebayDiscoveryAutoRunEnabled : defaultRuleConfig.ebayDiscoveryAutoRunEnabled,
     ebayDiscoveryAutoRunIntervalMinutes: numberValue(config.ebayDiscoveryAutoRunIntervalMinutes, defaultRuleConfig.ebayDiscoveryAutoRunIntervalMinutes),
     ebayDiscoveryAutoRunLimit: numberValue(config.ebayDiscoveryAutoRunLimit, defaultRuleConfig.ebayDiscoveryAutoRunLimit),
-    ebayDiscoveryAutoCompareEnabled: typeof config.ebayDiscoveryAutoCompareEnabled === 'boolean' ? config.ebayDiscoveryAutoCompareEnabled : defaultRuleConfig.ebayDiscoveryAutoCompareEnabled
+    ebayDiscoveryAutoCompareEnabled: typeof config.ebayDiscoveryAutoCompareEnabled === 'boolean' ? config.ebayDiscoveryAutoCompareEnabled : defaultRuleConfig.ebayDiscoveryAutoCompareEnabled,
+    ebayAmazonCompareAutoRunEnabled: typeof config.ebayAmazonCompareAutoRunEnabled === 'boolean' ? config.ebayAmazonCompareAutoRunEnabled : defaultRuleConfig.ebayAmazonCompareAutoRunEnabled,
+    ebayAmazonCompareAutoRunIntervalMinutes: numberValue(config.ebayAmazonCompareAutoRunIntervalMinutes, defaultRuleConfig.ebayAmazonCompareAutoRunIntervalMinutes),
+    ebayAmazonCompareAutoRunLimit: numberValue(config.ebayAmazonCompareAutoRunLimit, defaultRuleConfig.ebayAmazonCompareAutoRunLimit)
   };
 }

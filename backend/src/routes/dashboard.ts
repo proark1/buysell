@@ -478,9 +478,16 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run every interval</label></div>
                 <div class="field"><label>Interval Minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
                 <div class="field"><label>Products Per Run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoCompareEnabled" type="checkbox"> Auto compare with Amazon</label></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save Auto Run</button></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAutoNow()">Run Auto Now</button></div>
+              </div>
+              <div class="subsection-title">Automatic Amazon comparison</div>
+              <div class="form-grid compact">
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAmazonCompareEnabled" type="checkbox"> Compare every interval</label></div>
+                <div class="field"><label>Interval Minutes</label><input id="ebayAmazonCompareInterval" type="number" min="1" max="1440" value="1"></div>
+                <div class="field"><label>Products Per Run</label><input id="ebayAmazonCompareLimit" type="number" min="1" max="25" value="1"></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAmazonCompareAutoRun()">Save Compare Run</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAmazonCompareNow()">Run Compare Now</button></div>
               </div>
             </details>
             <div class="actions-row">
@@ -498,6 +505,10 @@ const dashboardHtml = `<!doctype html>
         <div class="panel">
           <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span></div>
           <div class="panel-body"><div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span></div>
+          <div class="panel-body"><div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div></div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Recent eBay Discovery Runs</h2></div>
@@ -1228,6 +1239,62 @@ function renderEbayCompactProducts(candidates){
       '</div></details>';
   }).join('');
 }
+function comparisonSortWeight(c){
+  var status=ebayCandidateStatus(c);
+  if(status==='NOT_COMPARED'||status==='ERROR')return 0;
+  if(status==='COMPARING')return 1;
+  if(status==='MANUAL_REVIEW')return 2;
+  if(status==='OPPORTUNITY')return 3;
+  return 4;
+}
+function renderEbayAmazonComparisonRows(candidates){
+  var el=document.getElementById('ebayAmazonComparisonRows');
+  var summary=document.getElementById('ebayAmazonComparisonSummary');
+  if(!el)return;
+  var rows=(candidates||[]).slice().sort(function(a,b){
+    return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
+  }).slice(0,200);
+  var pending=rows.filter(function(c){var s=ebayCandidateStatus(c);return s==='NOT_COMPARED'||s==='ERROR'}).length;
+  if(summary)summary.textContent=pending+' queued · highest score compares first';
+  if(!rows.length){
+    el.innerHTML='<div class="empty">No comparison rows yet.</div>';
+    return;
+  }
+  el.innerHTML=rows.map(function(c){
+    var score=ebayCandidateScore(c);
+    var market=ebayCandidateMarket(c);
+    var comparison=ebayComparison(c);
+    var best=(comparison&&comparison.best)||{};
+    var sourcePrice=best.buyBoxPrice!==undefined?best.buyBoxPrice:best.currentPrice;
+    var profit=best.expectedProfit!==undefined?marketMoney(best.expectedProfit,market):'Queued';
+    var roi=best.roiPercent!==undefined?Number(best.roiPercent).toFixed(1)+'%':'—';
+    var cost=sourcePrice!==undefined?marketMoney(sourcePrice,market):'—';
+    var match=best.matchConfidence!==undefined?pct(Number(best.matchConfidence)*100):'—';
+    var url=ebayCandidateUrl(c);
+    var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
+    var reasons=ebayCandidateReasons(c).slice(0,5).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+    var actions='<div class="card-actions">';
+    if(c.id&&(ebayCandidateStatus(c)==='NOT_COMPARED'||ebayCandidateStatus(c)==='ERROR'))actions+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(c.id)+'\\')">Compare Now</button>';
+    if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c))&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
+    else if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
+    if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+    if(best.url)actions+='<a class="btn sm" href="'+esc(best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+    actions+='</div>';
+    return '<details class="compact-product"><summary>'+
+      '<span class="'+scoreClass(score)+'">'+score+'</span>'+
+      '<span class="compact-title">'+title+'</span>'+
+      '<span class="compact-cell">'+badge(ebayCandidateStatus(c))+'</span>'+
+      '<span class="compact-cell compact-hide-sm">Cost '+cost+'</span>'+
+      '<span class="compact-cell compact-hide-sm">Profit '+profit+'</span>'+
+      '<span class="compact-cell compact-hide-sm">ROI '+roi+' · Match '+match+'</span>'+
+      '</summary><div class="compact-detail">'+
+      '<div class="result-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Updated '+when(c.updatedAt||c.createdAt)+' · Item <span class="mono">'+esc(ebayCandidateItemId(c)||'unknown')+'</span></div>'+
+      renderAmazonComparisonForEbay(c,isRejectedEbayCandidate(c),isManualReviewEbayCandidate(c))+
+      (reasons?'<div class="chips">'+reasons+'</div>':'')+
+      actions+
+      '</div></details>';
+  }).join('');
+}
 
 function render(){
   var d=state.data;if(!d)return;
@@ -1322,13 +1389,16 @@ function render(){
   ]);
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
   renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
+  renderEbayAmazonComparisonRows((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
   if(rc.ebayDiscoveryAutoRunEnabled!==undefined)document.getElementById('ebayAutoRunEnabled').checked=!!rc.ebayDiscoveryAutoRunEnabled;
   if(rc.ebayDiscoveryAutoRunIntervalMinutes)document.getElementById('ebayAutoRunInterval').value=rc.ebayDiscoveryAutoRunIntervalMinutes;
   if(rc.ebayDiscoveryAutoRunLimit)document.getElementById('ebayAutoRunLimit').value=rc.ebayDiscoveryAutoRunLimit;
-  if(rc.ebayDiscoveryAutoCompareEnabled!==undefined)document.getElementById('ebayAutoCompareEnabled').checked=!!rc.ebayDiscoveryAutoCompareEnabled;
+  if(rc.ebayAmazonCompareAutoRunEnabled!==undefined)document.getElementById('ebayAmazonCompareEnabled').checked=!!rc.ebayAmazonCompareAutoRunEnabled;
+  if(rc.ebayAmazonCompareAutoRunIntervalMinutes)document.getElementById('ebayAmazonCompareInterval').value=rc.ebayAmazonCompareAutoRunIntervalMinutes;
+  if(rc.ebayAmazonCompareAutoRunLimit)document.getElementById('ebayAmazonCompareLimit').value=rc.ebayAmazonCompareAutoRunLimit;
   document.getElementById('settingsSafeMode').checked=!!rc.safeMode;
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
@@ -1440,11 +1510,25 @@ function saveEbayAutoRun(){
   var body={
     ebayDiscoveryAutoRunEnabled:document.getElementById('ebayAutoRunEnabled').checked,
     ebayDiscoveryAutoRunIntervalMinutes:interval,
-    ebayDiscoveryAutoRunLimit:limit,
-    ebayDiscoveryAutoCompareEnabled:document.getElementById('ebayAutoCompareEnabled').checked
+    ebayDiscoveryAutoRunLimit:limit
   };
   apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){
-    toast('eBay auto-run saved',(body.ebayDiscoveryAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' products · '+(body.ebayDiscoveryAutoCompareEnabled?'compare on':'eBay only'),'ok');
+    toast('eBay auto-run saved',(body.ebayDiscoveryAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' products · eBay only','ok');
+    load();
+  }).catch(function(e){toast('Save failed',e.message,'err')});
+}
+function saveEbayAmazonCompareAutoRun(){
+  var interval=Number(document.getElementById('ebayAmazonCompareInterval').value||1);
+  var limit=Number(document.getElementById('ebayAmazonCompareLimit').value||1);
+  if(!interval||interval<1)return toast('Invalid interval','Use at least 1 minute.','warn');
+  if(!limit||limit<1)return toast('Invalid product count','Use at least 1 product per run.','warn');
+  var body={
+    ebayAmazonCompareAutoRunEnabled:document.getElementById('ebayAmazonCompareEnabled').checked,
+    ebayAmazonCompareAutoRunIntervalMinutes:interval,
+    ebayAmazonCompareAutoRunLimit:limit
+  };
+  apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){
+    toast('Amazon comparison auto-run saved',(body.ebayAmazonCompareAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' product'+(limit===1?'':'s'),'ok');
     load();
   }).catch(function(e){toast('Save failed',e.message,'err')});
 }
@@ -1454,6 +1538,14 @@ function runEbayAutoNow(){
     toast('Scheduled eBay discovery complete',res,'ok');
     load();
   }).catch(function(e){toast('Scheduled run failed',e.message,'err')});
+}
+function runEbayAmazonCompareNow(){
+  toast('Running Amazon comparison','Using the highest-score queued eBay products');
+  jpost('/api/ebay-discovery/amazon-compare-auto-run/run',{}).then(function(res){
+    toast('Amazon comparison run complete',res,'ok');
+    loadKeepaTokenStatus();
+    load();
+  }).catch(function(e){toast('Comparison run failed',e.message,'err')});
 }
 function saveSafety(){
   var body={
