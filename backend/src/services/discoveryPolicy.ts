@@ -275,6 +275,17 @@ const normalizedIncludes = (value: string | undefined, patterns: string[]): stri
   return patterns.find((pattern) => normalized.includes(pattern.toLowerCase()));
 };
 
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizedKeywordIncludes = (value: string | undefined, patterns: string[]): string | undefined => {
+  if (!value) return undefined;
+  return patterns.find((pattern) => {
+    const normalizedPattern = pattern.trim().toLowerCase();
+    if (!normalizedPattern) return false;
+    return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedPattern)}([^a-z0-9]|$)`, 'i').test(value);
+  });
+};
+
 export function evaluateProductSafety(
   ebay: EbayCandidateInput,
   amazon: AmazonMatchInput,
@@ -298,7 +309,7 @@ export function evaluateProductSafety(
     reasons.push(`Blocked category: ${blockedCategory}`);
   }
 
-  const blockedKeyword = normalizedIncludes(titleText, policy.blockedKeywords);
+  const blockedKeyword = normalizedKeywordIncludes(titleText, policy.blockedKeywords);
   if (blockedKeyword) {
     riskFlags.push('BLOCKED_KEYWORD');
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
@@ -360,7 +371,7 @@ export function evaluateAmazonProductSafety(
     reasons.push(`Blocked category: ${blockedCategory}`);
   }
 
-  const blockedKeyword = normalizedIncludes(titleText, policy.blockedKeywords);
+  const blockedKeyword = normalizedKeywordIncludes(titleText, policy.blockedKeywords);
   if (blockedKeyword) {
     riskFlags.push('BLOCKED_KEYWORD');
     reasons.push(`Blocked keyword: ${blockedKeyword}`);

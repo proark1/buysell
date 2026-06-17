@@ -7,8 +7,14 @@ import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { amazonDiscoveryProfiles, discoveryProfiles, getDiscoveryProfile } from '../services/discoveryPolicy.js';
-import { buildAmazonDiscoveryCandidates, compareAmazonDiscoveryCandidates, persistAmazonDiscoveryRun } from '../services/amazonDiscovery.js';
+import {
+  buildAmazonDiscoveryCandidates,
+  compareAmazonDiscoveryCandidates,
+  persistAmazonDiscoveryRun,
+  type AmazonDiscoveryCandidateResult
+} from '../services/amazonDiscovery.js';
 import { getSecret } from '../services/secrets.js';
+import type { ProductOpportunity } from '../domain/products.js';
 
 const opportunityRequestSchema = z.object({
   query: z.string().min(2),
@@ -95,6 +101,35 @@ function keepaErrorResponse(error: KeepaApiError): {
       refillInMs: refillIn
     }
   };
+}
+
+function sanitizePersistedRun(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  return {
+    ...record,
+    candidates: Array.isArray(record.candidates)
+      ? record.candidates.map((candidate) => {
+        const rest = { ...(candidate as Record<string, unknown>) };
+        delete rest.rawKeepaJson;
+        return rest;
+      })
+      : record.candidates
+  };
+}
+
+function sanitizeAmazonDiscoveryCandidate(candidate: AmazonDiscoveryCandidateResult): AmazonDiscoveryCandidateResult {
+  const amazon = { ...candidate.amazon };
+  delete amazon.raw;
+  return { ...candidate, amazon };
+}
+
+function sanitizeOpportunity(opportunity: ProductOpportunity): ProductOpportunity {
+  const ebay = { ...opportunity.ebay };
+  const amazon = { ...opportunity.amazon };
+  delete ebay.raw;
+  delete amazon.raw;
+  return { ...opportunity, ebay, amazon };
 }
 
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
@@ -347,7 +382,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     }
 
     return {
-      run: persistedRun,
+      run: sanitizePersistedRun(persistedRun),
       profile: result.profile,
       category: result.category,
       summary: {
@@ -357,8 +392,14 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0
       },
-      rejectedPreview: result.rejected.slice(0, 5),
-      comparison
+      rejectedPreview: result.rejected.slice(0, 5).map(sanitizeAmazonDiscoveryCandidate),
+      comparison: comparison
+        ? {
+          ...comparison,
+          opportunities: comparison.opportunities.map(sanitizeOpportunity),
+          rejected: comparison.rejected.map(sanitizeOpportunity)
+        }
+        : undefined
     };
   });
 

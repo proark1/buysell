@@ -28,6 +28,23 @@ const safe = evaluateProductSafety(
 
 assertEqual(safe.status, 'PASS', 'safe product status');
 
+const addressLabel = evaluateProductSafety(
+  { title: 'Thermal address label printer', soldPrice: 79.99, category: 'Office Products' },
+  { asin: 'B000ADDR', title: 'Thermal address label printer', currentPrice: 35, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  { ...basePolicy, blockedKeywords: ['dress'] }
+);
+
+assertEqual(addressLabel.status, 'PASS', 'address should not match blocked dress keyword');
+
+const dress = evaluateProductSafety(
+  { title: 'Summer dress', soldPrice: 79.99, category: 'Office Products' },
+  { asin: 'B000DRESS', title: 'Summer dress', currentPrice: 35, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  { ...basePolicy, blockedKeywords: ['dress'] }
+);
+
+assertEqual(dress.status, 'REJECT', 'standalone dress keyword remains blocked');
+assertIncludes(dress.riskFlags, 'BLOCKED_KEYWORD', 'standalone dress keyword flag');
+
 const expensive = evaluateProductSafety(
   { title: 'Thermal label printer', soldPrice: 199.99, category: 'Office Products' },
   { asin: 'B000PRINT', title: 'Thermal label printer', currentPrice: 140, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
