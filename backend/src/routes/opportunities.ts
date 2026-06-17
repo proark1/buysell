@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
-import { KeepaApiError } from '../clients/keepaClient.js';
+import { getKeepaTokenStatus, KeepaApiError, type KeepaTokenStatus } from '../clients/keepaClient.js';
 import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
@@ -103,6 +103,36 @@ function keepaErrorResponse(error: KeepaApiError): {
   };
 }
 
+function estimatedAmazonDiscoveryTokens(data: {
+  profileKey?: string;
+  limit?: number;
+}): number {
+  const profile = amazonDiscoveryProfiles.find((item) => item.key === data.profileKey) ?? amazonDiscoveryProfiles[0];
+  return Math.min(Math.max(data.limit ?? profile.defaultLimit, 1), 100);
+}
+
+function lowKeepaTokenResponse(tokenStatus: KeepaTokenStatus, requestedTokens: number): {
+  statusCode: number;
+  body: Record<string, unknown>;
+} {
+  const retryAfterSeconds = tokenStatus.retryAfterSeconds ?? (tokenStatus.refillIn && tokenStatus.refillIn > 0 ? Math.ceil(tokenStatus.refillIn / 1000) : undefined);
+  return {
+    statusCode: 429,
+    body: {
+      error: retryAfterSeconds
+        ? `Keepa token budget is too low. Try again in ${retryAfterSeconds} seconds or lower Amazon Products To Check.`
+        : 'Keepa token budget is too low. Lower Amazon Products To Check or wait for more tokens.',
+      status: 429,
+      details: `Keepa has ${tokenStatus.tokensLeft} tokens available; this scan asks for about ${requestedTokens}.`,
+      retryAfterSeconds,
+      tokensLeft: tokenStatus.tokensLeft,
+      refillInMs: tokenStatus.refillIn,
+      refillRate: tokenStatus.refillRate,
+      requestedTokens
+    }
+  };
+}
+
 function sanitizePersistedRun(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
   const record = value as Record<string, unknown>;
@@ -132,9 +162,43 @@ function sanitizeOpportunity(opportunity: ProductOpportunity): ProductOpportunit
   return { ...opportunity, ebay, amazon };
 }
 
+function buildAmazonRejectionBreakdown(candidates: AmazonDiscoveryCandidateResult[]): Array<{
+  reason: string;
+  count: number;
+}> {
+  const counts = new Map<string, number>();
+  for (const candidate of candidates) {
+    const reasons = candidate.rejectionReasons.length > 0
+      ? candidate.rejectionReasons
+      : candidate.safety.riskFlags.length > 0
+        ? candidate.safety.riskFlags
+        : ['Below Amazon Scout filters'];
+    for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+}
+
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
   app.get('/amazon-discovery/profiles', async () => ({ profiles: amazonDiscoveryProfiles }));
+  app.get('/amazon-discovery/token-status', async (_request, reply) => {
+    const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
+    if (!keepaApiKey) {
+      return reply.status(503).send({ error: 'KEEPA_API_KEY is required for Keepa token status' });
+    }
+
+    try {
+      return await getKeepaTokenStatus(keepaApiKey);
+    } catch (error) {
+      if (error instanceof KeepaApiError) {
+        const keepaError = keepaErrorResponse(error);
+        return reply.status(keepaError.statusCode).send(keepaError.body);
+      }
+      throw error;
+    }
+  });
 
   app.post('/opportunities/search', async (request, reply) => {
     const parsed = opportunityRequestSchema.safeParse(request.body);
@@ -329,6 +393,13 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     let result: Awaited<ReturnType<typeof buildAmazonDiscoveryCandidates>>;
     let persistedRun: Awaited<ReturnType<typeof persistAmazonDiscoveryRun>>;
     try {
+      const requestedTokens = estimatedAmazonDiscoveryTokens(parsed.data);
+      const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+      if (tokenStatus.tokensLeft < requestedTokens) {
+        const lowTokenResponse = lowKeepaTokenResponse(tokenStatus, requestedTokens);
+        return reply.status(lowTokenResponse.statusCode).send(lowTokenResponse.body);
+      }
+
       result = await buildAmazonDiscoveryCandidates({
         keepaApiKey,
         ruleConfig,
@@ -392,7 +463,9 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0
       },
+      rejected: result.rejected.map(sanitizeAmazonDiscoveryCandidate),
       rejectedPreview: result.rejected.slice(0, 5).map(sanitizeAmazonDiscoveryCandidate),
+      rejectionBreakdown: buildAmazonRejectionBreakdown(result.rejected),
       comparison: comparison
         ? {
           ...comparison,

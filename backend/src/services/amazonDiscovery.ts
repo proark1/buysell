@@ -25,6 +25,7 @@ export interface AmazonDiscoveryCandidateResult {
     riskFlags: string[];
     reasons: string[];
   };
+  rejectionReasons: string[];
 }
 
 export interface AmazonDiscoveryRunOptions {
@@ -94,6 +95,15 @@ function safetyPolicy(ruleConfig: ActiveRuleConfig, safeMode: boolean, maxAmazon
   };
 }
 
+function amazonRejectionReasons(candidate: Omit<AmazonDiscoveryCandidateResult, 'rejectionReasons'>, minimumAmazonScore: number): string[] {
+  const reasons: string[] = [];
+  if (candidate.safety.status === 'REJECT') reasons.push(...candidate.safety.reasons);
+  if (candidate.score.total < minimumAmazonScore) {
+    reasons.push(`Amazon score ${candidate.score.total} is below minimum ${minimumAmazonScore}.`);
+  }
+  return [...new Set(reasons)];
+}
+
 export function selectAmazonDiscoveryQueries(
   profile: ReturnType<typeof getAmazonDiscoveryProfile>,
   category: ReturnType<typeof getAmazonDiscoveryCategory>,
@@ -146,7 +156,8 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
       maxAmazonCostUsd,
       minimumAmazonScore
     }, safety.riskFlags);
-    return { amazon, score, safety };
+    const base = { amazon, score, safety };
+    return { ...base, rejectionReasons: amazonRejectionReasons(base, minimumAmazonScore) };
   }).sort((a, b) => b.score.total - a.score.total);
 
   const candidates = reviewed.filter((candidate) => candidate.safety.status !== 'REJECT' && candidate.score.total >= minimumAmazonScore);
@@ -193,7 +204,7 @@ export async function persistAmazonDiscoveryRun(
     }
   });
 
-  for (const candidate of result.candidates) {
+  const persistCandidate = async (candidate: AmazonDiscoveryCandidateResult, accepted: boolean): Promise<void> => {
     await db.amazonDiscoveryCandidate.create({
       data: {
         runId: run.id,
@@ -214,12 +225,19 @@ export async function persistAmazonDiscoveryRun(
         amazonScore: candidate.score.total,
         safetyStatus: candidate.safety.status,
         riskFlags: candidate.safety.riskFlags,
-        scoreBreakdown: candidate.score,
-        selected: (options.mode ?? 'MANUAL') === 'AUTO',
+        scoreBreakdown: {
+          ...candidate.score,
+          rejectionReasons: candidate.rejectionReasons
+        },
+        selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
+        comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
         rawKeepaJson: candidate.amazon.raw
       }
     });
-  }
+  };
+
+  for (const candidate of result.candidates) await persistCandidate(candidate, true);
+  for (const candidate of result.rejected) await persistCandidate(candidate, false);
 
   return db.amazonDiscoveryRun.findUnique({
     where: { id: run.id },
@@ -300,7 +318,10 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
       comparisonStatus: { in: ['NOT_COMPARED', 'ERROR'] }
     };
   const candidates = await options.db.amazonDiscoveryCandidate.findMany({
-    where,
+    where: {
+      ...where,
+      comparisonStatus: { in: ['NOT_COMPARED', 'ERROR'] }
+    },
     orderBy: { amazonScore: 'desc' },
     take: options.limit ?? 25
   });

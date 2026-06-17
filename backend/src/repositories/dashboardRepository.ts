@@ -1,5 +1,34 @@
 import type { PrismaClient } from '@prisma/client';
 
+const amazonDiscoveryCandidateSelect = {
+  id: true,
+  runId: true,
+  asin: true,
+  title: true,
+  amazonUrl: true,
+  brand: true,
+  rootCategory: true,
+  categoryTree: true,
+  currentPrice: true,
+  buyBoxPrice: true,
+  avg90Price: true,
+  priceDropPercent: true,
+  availabilityStatus: true,
+  salesRank: true,
+  rating: true,
+  reviewCount: true,
+  amazonScore: true,
+  safetyStatus: true,
+  riskFlags: true,
+  scoreBreakdown: true,
+  selected: true,
+  comparisonStatus: true,
+  productCandidateId: true,
+  amazonMatchId: true,
+  createdAt: true,
+  updatedAt: true
+};
+
 export async function getDashboardData(db: PrismaClient): Promise<unknown> {
   const [
     productCandidates,
@@ -10,7 +39,6 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     purchases,
     discoveryScanRuns,
     amazonDiscoveryRuns,
-    amazonDiscoveryCandidates,
     ruleConfig
   ] = await Promise.all([
     db.productCandidate.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -20,10 +48,20 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     db.actionItem.findMany({ orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }], take: 50 }),
     db.amazonPurchase.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
     db.discoveryScanRun.findMany({ orderBy: { startedAt: 'desc' }, take: 10 }),
-    db.amazonDiscoveryRun.findMany({ orderBy: { startedAt: 'desc' }, take: 10 }),
-    db.amazonDiscoveryCandidate.findMany({ orderBy: [{ amazonScore: 'desc' }, { createdAt: 'desc' }], take: 50 }),
+    db.amazonDiscoveryRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 10,
+      include: {
+        candidates: {
+          select: amazonDiscoveryCandidateSelect,
+          orderBy: [{ comparisonStatus: 'asc' }, { amazonScore: 'desc' }, { createdAt: 'desc' }],
+          take: 100
+        }
+      }
+    }),
     db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } })
   ]);
+  const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];
 
   return {
     counts: {

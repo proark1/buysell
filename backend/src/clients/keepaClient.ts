@@ -31,6 +31,13 @@ const keepaResponseSchema = z.object({
   products: z.array(keepaProductSchema).optional()
 }).passthrough();
 
+const keepaTokenStatusSchema = z.object({
+  tokensLeft: z.number(),
+  refillIn: z.number().optional(),
+  refillRate: z.number().optional(),
+  tokenFlowReduction: z.number().optional()
+}).passthrough();
+
 export class KeepaApiError extends Error {
   constructor(
     public readonly status: number,
@@ -61,6 +68,9 @@ interface KeepaProduct {
   reviewCount?: number | null;
   availabilityAmazon?: number | null;
 }
+
+const KEEPA_SEARCH_PAGE_SIZE = 10;
+const KEEPA_PRODUCT_SEARCH_MAX_RESULTS = 50;
 
 const keepaCentsToMoney = (value?: number | null): number | undefined => {
   if (value === undefined || value === null || value < 0) return undefined;
@@ -96,54 +106,91 @@ export interface KeepaSearchOptions {
   limit?: number;
 }
 
-export async function findAmazonMatches(options: KeepaSearchOptions): Promise<AmazonMatchInput[]> {
-  const params = new URLSearchParams({
-    key: options.apiKey,
-    domain: String(options.domain ?? 1),
-    type: 'product',
-    term: options.query,
-    stats: '90',
-    history: '0',
-    update: '1',
-    'asins-only': '0'
-  });
+export interface KeepaTokenStatus {
+  tokensLeft: number;
+  refillIn?: number;
+  refillRate?: number;
+  retryAfterSeconds?: number;
+  tokenFlowReduction?: number;
+}
 
-  const response = await fetch(`https://api.keepa.com/search?${params.toString()}`);
+function keepaProductToAmazonMatch(product: KeepaProduct): AmazonMatchInput {
+  const currentPrice = keepaCentsToMoney(product.stats?.current?.[1]);
+  const buyBoxPrice = keepaCentsToMoney(product.stats?.buyBoxPrice);
+  const avg90Price = keepaCentsToMoney(product.stats?.avg90?.[1]) ?? keepaCentsToMoney(product.stats?.avg30?.[1]);
+  const latestPrice = buyBoxPrice ?? currentPrice;
+  const priceDropPercent = latestPrice && avg90Price && avg90Price > latestPrice
+    ? Math.round(((avg90Price - latestPrice) / avg90Price) * 1000) / 10
+    : undefined;
+  const categoryTree = product.categoryTree?.flatMap((category) => category.name ? [category.name] : []) ?? [];
+
+  return {
+    asin: product.asin,
+    title: product.title ?? product.asin,
+    url: `https://www.amazon.com/dp/${product.asin}`,
+    brand: nullableText(product.brand),
+    model: nullableText(product.model),
+    upc: product.upcList?.[0],
+    currentPrice,
+    buyBoxPrice,
+    avg90Price,
+    priceDropPercent,
+    availabilityStatus: product.availabilityAmazon === 0 ? 'IN_STOCK' : 'UNKNOWN',
+    salesRank: product.salesRankReference ?? undefined,
+    rating: product.rating ?? undefined,
+    reviewCount: keepaReviewCount(product),
+    categoryTree,
+    rootCategory: categoryTree[0],
+    matchConfidence: 0,
+    raw: product
+  };
+}
+
+export async function getKeepaTokenStatus(apiKey: string): Promise<KeepaTokenStatus> {
+  const params = new URLSearchParams({ key: apiKey });
+  const response = await fetch(`https://api.keepa.com/token?${params.toString()}`);
   if (!response.ok) {
     throw new KeepaApiError(response.status, await response.text());
   }
 
-  const payload = keepaResponseSchema.parse(await response.json());
+  const payload = keepaTokenStatusSchema.parse(await response.json());
+  return {
+    tokensLeft: payload.tokensLeft,
+    refillIn: payload.refillIn,
+    refillRate: payload.refillRate,
+    retryAfterSeconds: payload.refillIn && payload.refillIn > 0 ? Math.ceil(payload.refillIn / 1000) : undefined,
+    tokenFlowReduction: payload.tokenFlowReduction
+  };
+}
 
-  return (payload.products ?? []).slice(0, options.limit ?? 10).map((product: KeepaProduct) => {
-    const currentPrice = keepaCentsToMoney(product.stats?.current?.[1]);
-    const buyBoxPrice = keepaCentsToMoney(product.stats?.buyBoxPrice);
-    const avg90Price = keepaCentsToMoney(product.stats?.avg90?.[1]) ?? keepaCentsToMoney(product.stats?.avg30?.[1]);
-    const latestPrice = buyBoxPrice ?? currentPrice;
-    const priceDropPercent = latestPrice && avg90Price && avg90Price > latestPrice
-      ? Math.round(((avg90Price - latestPrice) / avg90Price) * 1000) / 10
-      : undefined;
-    const categoryTree = product.categoryTree?.flatMap((category) => category.name ? [category.name] : []) ?? [];
+export async function findAmazonMatches(options: KeepaSearchOptions): Promise<AmazonMatchInput[]> {
+  const limit = Math.min(Math.max(options.limit ?? KEEPA_SEARCH_PAGE_SIZE, 1), KEEPA_PRODUCT_SEARCH_MAX_RESULTS);
+  const pageCount = Math.min(Math.ceil(limit / KEEPA_SEARCH_PAGE_SIZE), 10);
+  const products: KeepaProduct[] = [];
 
-    return {
-      asin: product.asin,
-      title: product.title ?? product.asin,
-      url: `https://www.amazon.com/dp/${product.asin}`,
-      brand: nullableText(product.brand),
-      model: nullableText(product.model),
-      upc: product.upcList?.[0],
-      currentPrice,
-      buyBoxPrice,
-      avg90Price,
-      priceDropPercent,
-      availabilityStatus: product.availabilityAmazon === 0 ? 'IN_STOCK' : 'UNKNOWN',
-      salesRank: product.salesRankReference ?? undefined,
-      rating: product.rating ?? undefined,
-      reviewCount: keepaReviewCount(product),
-      categoryTree,
-      rootCategory: categoryTree[0],
-      matchConfidence: 0,
-      raw: product
-    };
-  });
+  for (let page = 0; page < pageCount && products.length < limit; page += 1) {
+    const params = new URLSearchParams({
+      key: options.apiKey,
+      domain: String(options.domain ?? 1),
+      type: 'product',
+      term: options.query,
+      page: String(page),
+      stats: '90',
+      history: '0',
+      update: '24',
+      'asins-only': '0'
+    });
+
+    const response = await fetch(`https://api.keepa.com/search?${params.toString()}`);
+    if (!response.ok) {
+      throw new KeepaApiError(response.status, await response.text());
+    }
+
+    const payload = keepaResponseSchema.parse(await response.json());
+    const pageProducts = (payload.products ?? []).slice(0, KEEPA_SEARCH_PAGE_SIZE);
+    products.push(...pageProducts);
+    if (pageProducts.length < KEEPA_SEARCH_PAGE_SIZE) break;
+  }
+
+  return products.slice(0, limit).map(keepaProductToAmazonMatch);
 }

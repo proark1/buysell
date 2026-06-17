@@ -89,6 +89,8 @@ const dashboardHtml = `<!doctype html>
     .btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;
       box-shadow:0 10px 24px -10px rgba(99,102,241,.8);color:#fff}
     .btn.primary:hover{filter:brightness(1.08)}
+    .btn:disabled{cursor:not-allowed;opacity:.5;transform:none;filter:none}
+    .btn:disabled:hover{background:rgba(148,163,184,.06);transform:none;filter:none}
     .btn.danger{background:linear-gradient(135deg,#ef4444,#db2777);border-color:transparent;color:#fff}
     .btn.ghost{background:transparent}
     .btn.sm{padding:6px 10px;font-size:12px}
@@ -148,9 +150,14 @@ const dashboardHtml = `<!doctype html>
     .score.mid{background:var(--amber)}.score.low{background:var(--red);color:#fff}
     .result-list{display:grid;gap:12px}
     .result-card{border:1px solid var(--border);border-radius:14px;background:rgba(2,6,23,.28);padding:14px;display:grid;gap:10px}
+    .result-card.rejected{border-color:rgba(248,113,113,.32);background:rgba(127,29,29,.08)}
     .result-head{display:flex;gap:12px;align-items:flex-start}
     .result-main{min-width:0;flex:1}.result-title{font-weight:700}.result-meta{color:var(--muted);font-size:12px;margin-top:3px}
     .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--border-strong);color:var(--muted)}
+    .section-label{display:flex;align-items:center;gap:8px;color:var(--text);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:2px 0}
+    .section-label span{color:var(--muted);font-weight:700;text-transform:none;letter-spacing:0}
+    .mini-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;padding:8px 0}
+    .placeholder-check{width:20px;flex:0 0 20px}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
     .kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
@@ -297,24 +304,24 @@ const dashboardHtml = `<!doctype html>
       <!-- DISCOVERY -->
       <section class="view" id="view-discovery">
         <div class="panel">
-          <div class="panel-head"><h2>Amazon Scout</h2><span class="hint">Find promising Amazon products before spending eBay checks</span></div>
+          <div class="panel-head"><h2>Amazon Scout</h2><span class="hint">Find promising Amazon products before spending eBay checks</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
           <div class="panel-body">
             <div class="form-grid">
               <div class="field"><label>Scout Profile</label><select id="amazonScoutProfile"></select></div>
               <div class="field"><label>Category</label><select id="amazonScoutCategory"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional Amazon Keywords</label><input id="amazonScoutQuery" placeholder="thermal label printer"></div>
-              <div class="field"><label>Max Products</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
+              <div class="field"><label>Amazon Products To Check</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
               <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
               <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
               <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
-              <div class="field"><label>Compare Limit</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
+              <div class="field"><label>Max eBay Comparisons</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSafeMode" type="checkbox" checked> Safe mode</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutAuto" type="checkbox"> Auto compare top candidates</label></div>
             </div>
             <div class="actions-row">
-              <button class="btn primary" onclick="runAmazonScout()">Find Amazon Candidates</button>
-              <button class="btn" onclick="selectHighAmazonScores()">Select High Score</button>
-              <button class="btn primary" onclick="compareSelectedAmazon()">Compare Selected With eBay</button>
+              <button class="btn primary" id="amazonScoutRunBtn" onclick="runAmazonScout()">Find Amazon Candidates</button>
+              <button class="btn" id="amazonScoutSelectBtn" onclick="selectHighAmazonScores()">Select High Score</button>
+              <button class="btn primary" id="amazonScoutCompareBtn" onclick="compareSelectedAmazon()">Compare Selected With eBay</button>
               <span class="hint" id="amazonScoutHint"></span>
             </div>
           </div>
@@ -414,7 +421,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonScoutRunId:null,amazonScoutCandidates:[],selectedAmazon:{}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutRejected:[],selectedAmazon:{},keepaToken:null};
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
   actions:['Actions','Approve, execute, and protect your listings'],
@@ -434,7 +441,7 @@ var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'
 
 function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
 function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
-function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));throw new Error(m)}return j})})}
+function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));var err=new Error(m);err.payload=j;throw err}return j})})}
 
 function toast(title,msg,kind){
   var box=document.getElementById('toasts');
@@ -506,6 +513,37 @@ function loadAmazonProfiles(){
   fetch('/amazon-discovery/profiles').then(function(r){return r.json()}).then(function(j){state.amazonProfiles=j.profiles||[];renderAmazonProfiles()}).catch(function(){});
 }
 function scoreClass(score){return score>=75?'score':score>=60?'score mid':'score low'}
+function renderKeepaTokenStatus(status){
+  var el=document.getElementById('keepaTokenHint');
+  if(!el)return;
+  if(!status||status.tokensLeft===undefined||status.tokensLeft===null){
+    el.textContent='Keepa tokens unavailable';
+    return;
+  }
+  state.keepaToken=status;
+  var refill=status.retryAfterSeconds||((status.refillInMs||status.refillIn)?Math.ceil((status.refillInMs||status.refillIn)/1000):0);
+  var parts=['Keepa tokens '+status.tokensLeft];
+  if(status.refillRate!==undefined&&status.refillRate!==null)parts.push('+'+status.refillRate+'/min');
+  if(refill>0)parts.push('next in '+refill+'s');
+  el.textContent=parts.join(' · ');
+}
+function loadKeepaTokenStatus(){
+  return fetch('/amazon-discovery/token-status').then(function(r){return r.json().then(function(j){if(!r.ok)throw j;return j})}).then(function(j){renderKeepaTokenStatus(j)}).catch(function(e){
+    var el=document.getElementById('keepaTokenHint');
+    if(el)el.textContent=(e&&e.error)?e.error:'Keepa tokens unavailable';
+  });
+}
+function renderKeepaTokenFromPayload(payload){
+  if(!payload)return;
+  if(payload.tokensLeft!==undefined||payload.refillInMs!==undefined||payload.refillRate!==undefined){
+    renderKeepaTokenStatus({
+      tokensLeft:payload.tokensLeft,
+      refillInMs:payload.refillInMs,
+      refillRate:payload.refillRate,
+      retryAfterSeconds:payload.retryAfterSeconds
+    });
+  }
+}
 function renderScanResults(res){
   var summary=res.summary||{};
   document.getElementById('scanSummary').textContent='Scanned '+(summary.scanned||0)+' · accepted '+(summary.accepted||0)+' · rejected '+(summary.rejected||0)+' · saved '+(summary.persisted||0);
@@ -528,27 +566,97 @@ function renderScanResults(res){
       '<div class="result-meta">ASIN <span class="mono">'+esc(o.amazon.asin)+'</span> · Match '+Number((o.amazon.matchConfidence||0)*100).toFixed(0)+'%</div></div>';
   }).join('');
 }
-function renderAmazonScoutCandidates(candidates){
-  state.amazonScoutCandidates=candidates||[];
-  if(!state.amazonScoutCandidates.length){
-    document.getElementById('amazonScoutResults').innerHTML='<div class="empty">No Amazon candidates yet.</div>';
-    return;
+function unique(items){var seen={};return items.filter(function(item){item=String(item||'').trim();if(!item||seen[item])return false;seen[item]=true;return true})}
+function addStrings(out,values){if(Array.isArray(values))values.forEach(function(v){if(v!==undefined&&v!==null)out.push(String(v))})}
+function amazonCandidateScoreData(c){return c.scoreBreakdown||c.score||{}}
+function amazonCandidateScore(c){var scoreData=amazonCandidateScoreData(c);var value=c.amazonScore;if(value===undefined||value===null)value=scoreData.total;return Number(value||0)}
+function amazonCandidateAsin(c){return c.asin||(c.amazon&&c.amazon.asin)||''}
+function amazonCandidateTitle(c){return c.title||(c.amazon&&c.amazon.title)||'Amazon product'}
+function amazonCandidatePrice(c){return c.buyBoxPrice||c.currentPrice||(c.amazon&&(c.amazon.buyBoxPrice||c.amazon.currentPrice))}
+function amazonCandidateAvg90(c){return c.avg90Price||(c.amazon&&c.amazon.avg90Price)}
+function amazonCandidateRank(c){return c.salesRank||(c.amazon&&c.amazon.salesRank)}
+function amazonCandidateDrop(c){return c.priceDropPercent||(c.amazon&&c.amazon.priceDropPercent)}
+function amazonCandidateUrl(c){return c.amazonUrl||(c.amazon&&c.amazon.url)}
+function amazonSafetyStatus(c){return c.safetyStatus||(c.safety&&c.safety.status)}
+function amazonCandidateStatus(c){return c.comparisonStatus||amazonSafetyStatus(c)||'PASS'}
+function amazonRiskFlags(c){var out=[];addStrings(out,c.riskFlags);if(c.safety)addStrings(out,c.safety.riskFlags);return unique(out)}
+function amazonPositiveReasons(c){var scoreData=amazonCandidateScoreData(c);var out=[];addStrings(out,scoreData.reasons);return unique(out)}
+function amazonCandidateReasons(c){
+  var scoreData=amazonCandidateScoreData(c);
+  var out=[];
+  addStrings(out,scoreData.rejectionReasons);
+  addStrings(out,c.rejectionReasons);
+  if(c.safety)addStrings(out,c.safety.reasons);
+  if(!out.length&&(c.comparisonStatus==='REJECTED'||amazonSafetyStatus(c)==='REJECT'))addStrings(out,amazonRiskFlags(c));
+  if(!out.length&&(c.comparisonStatus==='REJECTED'||amazonSafetyStatus(c)==='REJECT'))out.push('Below Amazon Scout filters');
+  return unique(out);
+}
+function isRejectedAmazonCandidate(c){return c.comparisonStatus==='REJECTED'||amazonSafetyStatus(c)==='REJECT'||(!c.id&&amazonCandidateReasons(c).length>0)}
+function isSelectableAmazonCandidate(c){
+  var status=amazonCandidateStatus(c);
+  return !!c.id&&!isRejectedAmazonCandidate(c)&&status!=='OPPORTUNITY'&&status!=='COMPARING';
+}
+function updateAmazonScoutActions(){
+  var selectBtn=document.getElementById('amazonScoutSelectBtn');
+  var compareBtn=document.getElementById('amazonScoutCompareBtn');
+  var selectable=state.amazonScoutCandidates.filter(isSelectableAmazonCandidate);
+  if(selectBtn)selectBtn.disabled=!selectable.length;
+  if(compareBtn)compareBtn.disabled=!selectedAmazonIds().length;
+}
+function renderRejectionBreakdown(rejected){
+  if(!rejected.length)return '';
+  var counts={};
+  rejected.forEach(function(c){
+    var reasons=amazonCandidateReasons(c);
+    if(!reasons.length)reasons=['Below Amazon Scout filters'];
+    reasons.forEach(function(reason){counts[reason]=(counts[reason]||0)+1});
+  });
+  var rows=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a]||a.localeCompare(b)}).slice(0,6);
+  return '<div class="mini-summary"><span>Top rejection reasons</span>'+rows.map(function(reason){return '<span class="chip">'+esc(reason)+' · '+counts[reason]+'</span>'}).join('')+'</div>';
+}
+function renderAmazonCandidateCard(c){
+  var rejected=isRejectedAmazonCandidate(c);
+  var selectable=isSelectableAmazonCandidate(c);
+  var selected=selectable&&(!!state.selectedAmazon[c.id]||!!c.selected);
+  if(selectable)state.selectedAmazon[c.id]=selected;
+  var score=amazonCandidateScore(c);
+  var positive=amazonPositiveReasons(c).slice(0,3).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+  var rejection=amazonCandidateReasons(c).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+  var risks=amazonRiskFlags(c).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+  var drop=amazonCandidateDrop(c);
+  var dropText=drop?(' · Down '+Number(drop).toFixed(1)+'%'):'';
+  var url=amazonCandidateUrl(c);
+  var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(amazonCandidateTitle(c))+'</a>':esc(amazonCandidateTitle(c));
+  var check=selectable?'<label class="check"><input type="checkbox" data-amazon-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleAmazonCandidate(this)"></label>':'<span class="placeholder-check"></span>';
+  return '<div class="result-card '+(rejected?'rejected':'')+'"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+    '<div class="result-title">'+title+'</div>'+
+    '<div class="result-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(c))+'</span> · Amazon '+money(amazonCandidatePrice(c))+' · Avg90 '+money(amazonCandidateAvg90(c))+' · Rank '+txt(amazonCandidateRank(c))+dropText+'</div>'+
+    '</div>'+badge(amazonCandidateStatus(c))+'</div>'+
+    (rejected?'<div class="result-meta"><b>Rejected because</b></div><div class="chips">'+(rejection||'<span class="chip">Below Amazon Scout filters</span>')+'</div>':'<div class="chips">'+(positive||'<span class="chip">Accepted by Amazon Scout filters</span>')+'</div>')+
+    (risks?'<div class="chips">'+risks+'</div>':'')+'</div>';
+}
+function renderAmazonScoutReport(candidates,rejectedExtra,preserveSelection){
+  var all=[];
+  var seen={};
+  function pushCandidate(c){
+    if(!c)return;
+    var key=c.id||amazonCandidateAsin(c)||JSON.stringify(c).slice(0,80);
+    if(seen[key])return;
+    seen[key]=true;
+    all.push(c);
   }
-  document.getElementById('amazonScoutResults').innerHTML=state.amazonScoutCandidates.map(function(c){
-    var selected=!!state.selectedAmazon[c.id]||!!c.selected;
-    var price=c.buyBoxPrice||c.currentPrice;
-    var score=c.amazonScore!==undefined?c.amazonScore:(c.score&&c.score.total)||0;
-    var scoreData=c.scoreBreakdown||c.score||{};
-    var reasons=(scoreData.reasons||[]).slice(0,3).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-    var risks=(Array.isArray(c.riskFlags)?c.riskFlags:[]).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-    var drop=c.priceDropPercent?(' · Down '+Number(c.priceDropPercent).toFixed(1)+'%'):'';
-    return '<div class="result-card"><div class="result-head"><label class="check"><input type="checkbox" data-amazon-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleAmazonCandidate(this)"></label><div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
-      '<div class="result-title">'+esc(c.title||c.amazon?.title||'Amazon product')+'</div>'+
-      '<div class="result-meta">ASIN <span class="mono">'+esc(c.asin||c.amazon?.asin||'')+'</span> · Amazon '+money(price)+' · Avg90 '+money(c.avg90Price)+' · Rank '+txt(c.salesRank)+drop+'</div>'+
-      '</div>'+badge(c.comparisonStatus||c.safetyStatus||'PASS')+'</div>'+
-      '<div class="chips">'+(reasons||'<span class="chip">Amazon-only candidate</span>')+'</div>'+
-      (risks?'<div class="chips">'+risks+'</div>':'')+'</div>';
-  }).join('');
+  (candidates||[]).forEach(pushCandidate);
+  (rejectedExtra||[]).forEach(pushCandidate);
+  var previous=preserveSelection?Object.assign({},state.selectedAmazon):{};
+  state.selectedAmazon={};
+  state.amazonScoutCandidates=all.filter(function(c){return !isRejectedAmazonCandidate(c)});
+  state.amazonScoutRejected=all.filter(isRejectedAmazonCandidate);
+  state.amazonScoutCandidates.forEach(function(c){if(c.id&&previous[c.id])state.selectedAmazon[c.id]=true;else if(c.id&&c.selected)state.selectedAmazon[c.id]=true});
+  var acceptedHtml=state.amazonScoutCandidates.length?'<div class="section-label">Accepted candidates <span>'+state.amazonScoutCandidates.length+'</span></div>'+state.amazonScoutCandidates.map(renderAmazonCandidateCard).join(''):'';
+  var rejectedHtml=state.amazonScoutRejected.length?'<div class="section-label">Rejected products <span>'+state.amazonScoutRejected.length+'</span></div>'+renderRejectionBreakdown(state.amazonScoutRejected)+state.amazonScoutRejected.map(renderAmazonCandidateCard).join(''):'';
+  if(!acceptedHtml&&!rejectedHtml)document.getElementById('amazonScoutResults').innerHTML='<div class="empty">No Amazon scout results yet.</div>';
+  else document.getElementById('amazonScoutResults').innerHTML=acceptedHtml+rejectedHtml;
+  updateAmazonScoutActions();
 }
 
 function render(){
@@ -619,7 +727,7 @@ function render(){
     {key:'opportunityCount',label:'Opps'},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
-  if((d.amazonDiscoveryCandidates||[]).length&&!state.amazonScoutCandidates.length)renderAmazonScoutCandidates(d.amazonDiscoveryCandidates);
+  if((d.amazonDiscoveryCandidates||[]).length&&!state.amazonScoutCandidates.length&&!state.amazonScoutRejected.length)renderAmazonScoutReport(d.amazonDiscoveryCandidates,[],false);
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
@@ -735,14 +843,21 @@ function updateAction(status){var id=actId();if(!id)return;apiFetch('/actions/'+
 function approveAction(){updateAction('APPROVED')}
 function rejectAction(){updateAction('REJECTED')}
 function executeAction(){var id=actId();if(!id)return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(function(r){return r.json()}).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
-function toggleAmazonCandidate(el){state.selectedAmazon[el.getAttribute('data-amazon-id')]=el.checked}
-function selectedAmazonIds(){return Object.keys(state.selectedAmazon).filter(function(id){return state.selectedAmazon[id]})}
+function toggleAmazonCandidate(el){
+  state.selectedAmazon[el.getAttribute('data-amazon-id')]=el.checked;
+  updateAmazonScoutActions();
+}
+function selectedAmazonIds(){
+  return state.amazonScoutCandidates.filter(function(c){return isSelectableAmazonCandidate(c)&&state.selectedAmazon[c.id]}).map(function(c){return c.id});
+}
 function selectHighAmazonScores(){
   state.selectedAmazon={};
   var min=Number(document.getElementById('amazonScoutMinScore').value||62);
-  state.amazonScoutCandidates.forEach(function(c){if(Number(c.amazonScore||0)>=min&&c.comparisonStatus!=='OPPORTUNITY')state.selectedAmazon[c.id]=true});
-  renderAmazonScoutCandidates(state.amazonScoutCandidates);
-  toast('Selected high-score candidates',selectedAmazonIds().length+' products','ok');
+  state.amazonScoutCandidates.forEach(function(c){if(isSelectableAmazonCandidate(c)&&amazonCandidateScore(c)>=min)state.selectedAmazon[c.id]=true});
+  renderAmazonScoutReport(state.amazonScoutCandidates.concat(state.amazonScoutRejected),[],true);
+  var selected=selectedAmazonIds().length;
+  if(!selected)return toast('No accepted Amazon candidates','All scanned products were rejected or below the selected score. Review the rejection reasons below.','warn');
+  toast('Selected high-score candidates',selected+' products','ok');
 }
 function runAmazonScout(){
   var profile=document.getElementById('amazonScoutProfile').value||'starter-safe';
@@ -767,19 +882,21 @@ function runAmazonScout(){
   jpost('/amazon-discovery/run',body).then(function(res){
     state.amazonScoutRunId=res.run&&res.run.id;
     state.selectedAmazon={};
-    renderAmazonScoutCandidates((res.run&&res.run.candidates)||[]);
+    renderAmazonScoutReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
     document.getElementById('amazonScoutSummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
-    toast('Amazon Scout complete',res.summary,'ok');
+    toast('Amazon Scout complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
+    loadKeepaTokenStatus();
     load();
-  }).catch(function(e){toast('Amazon Scout failed',e.message,'err')});
+  }).catch(function(e){renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('Amazon Scout failed',e.message,'err')});
 }
 function compareSelectedAmazon(){
   var ids=selectedAmazonIds();
-  if(!ids.length)return toast('No Amazon candidates selected','Select products first.','warn');
+  if(!ids.length)return toast('No accepted candidates selected','Only accepted Amazon candidates can be compared with eBay.','warn');
   toast('Comparing with eBay',ids.length+' selected products');
   jpost('/amazon-discovery/compare',{candidateIds:ids,limit:ids.length}).then(function(res){
     toast('eBay comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,rejected:(res.rejected||[]).length},'ok');
     state.amazonScoutCandidates=[];
+    state.amazonScoutRejected=[];
     state.selectedAmazon={};
     load();
   }).catch(function(e){toast('Comparison failed',e.message,'err')});
@@ -809,8 +926,11 @@ document.getElementById('amazonScoutProfile').addEventListener('change',renderAm
 document.getElementById('amazonScoutCategory').addEventListener('change',renderAmazonProfiles);
 loadProfiles();
 loadAmazonProfiles();
+loadKeepaTokenStatus();
+updateAmazonScoutActions();
 load();
 setInterval(checkDb,30000);
+setInterval(loadKeepaTokenStatus,60000);
 </script>
 </body>
 </html>`;
