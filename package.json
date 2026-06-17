@@ -2,6 +2,7 @@
   "name": "buysell",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "workspaces": [
     "backend",
     "local-agent"
@@ -11,8 +12,15 @@
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w local-agent",
     "lint": "npm run lint -w backend && npm run lint -w local-agent",
     "start": "npm run start -w backend",
+    "prisma:validate": "npm run prisma:validate -w backend",
+    "prisma:deploy": "npm run prisma:deploy -w backend",
+    "prisma:seed": "npm run prisma:seed -w backend",
     "railway:build": "npm run build",
     "railway:start": "npm run start:railway -w backend",
     "test": "npm run test -w backend && npm run test -w local-agent"
+  },
+  "devDependencies": {
+    "globals": "^17.6.0",
+    "typescript-eslint": "^8.61.1"
   }
 }

@@ -18,10 +18,12 @@ The initial implementation provides:
 ## Setup
 
 ```bash
-npm install
+npm ci
 cp .env.example .env
+npm run prisma:validate
 npm run typecheck
 npm run build
+npm run test
 ```
 
 ## Backend
@@ -96,24 +98,40 @@ curl -X POST http://localhost:3000/orders/order_id/amazon-purchase \
 
 ## Railway Postgres
 
-The backend connects to Postgres through Prisma using the `DATABASE_URL` environment variable. On Railway:
+The expected Railway layout is one app service (`buysell`) and one Postgres service (`Postgres`) in the same environment. The backend connects through Prisma using the `DATABASE_URL` environment variable.
 
-1. In your Railway project, click **New → Database → Add PostgreSQL**. Railway provisions a Postgres service and exposes `DATABASE_URL`.
-2. Open the **backend service → Variables** and add a reference variable so the API reads the database URL:
+On Railway:
+
+1. Confirm the Postgres service is online. Railway exposes database variables from that service, including `DATABASE_URL`.
+2. Open the app service (`buysell`) → **Variables** and add a reference variable so the API reads the Postgres URL:
 
    ```
    DATABASE_URL=${{ Postgres.DATABASE_URL }}
    ```
 
-   (Use the exact service name shown in your project, e.g. `Postgres`.) Add the other secrets from `.env.example` (`BUYSELL_ENCRYPTION_KEY`, eBay/Keepa/SerpApi keys, etc.) here too.
-3. Deploy. On every deploy the start command runs `prisma migrate deploy` against `DATABASE_URL` before booting the server, so the schema is created/updated automatically — no manual migration step is required.
-4. After the first deploy, optionally seed default rules:
+   Use the exact service name shown in your project. If the database service is renamed from `Postgres`, update the namespace in the reference.
+3. Add the remaining production variables from `.env.example` to the app service. At minimum set a stable `BUYSELL_ENCRYPTION_KEY` with 32+ characters so encrypted credentials remain decryptable across deploys.
+4. Deploy the app service. On every deploy the start command runs `prisma migrate deploy` against `DATABASE_URL` before booting the server, so the schema is created/updated automatically.
+5. After the first successful deploy, optionally seed default rules:
 
    ```bash
    railway run npm run prisma:seed -w backend
    ```
 
-The dashboard shows a live **Postgres connected / DB disconnected** indicator (backed by `GET /api/health/db`) so you can confirm the database is wired up at a glance.
+The dashboard shows a live **Postgres connected / DB disconnected** indicator backed by `GET /api/health/db`, so you can confirm the database is wired up at a glance.
+
+Useful Prisma checks:
+
+```bash
+# Validate schema locally. Requires DATABASE_URL to exist, but does not connect.
+npm run prisma:validate
+
+# Run pending migrations with Railway production variables.
+railway run npm run prisma:deploy
+
+# Confirm app-to-database connectivity after deploy.
+curl https://your-railway-domain.up.railway.app/api/health/db
+```
 
 Railway deployment:
 
@@ -122,7 +140,7 @@ npm run railway:build
 npm run railway:start
 ```
 
-`railway.json` sets the build command to `npm install && npm run build`, the start command to `npm run start:railway -w backend` (which runs `prisma migrate deploy` then starts the API from `backend/dist/index.js`), and points Railway at `/health` for deployment health checks.
+`railway.json` sets the build command to `npm ci && npm run build`, the start command to `npm run start:railway -w backend` (which runs `prisma migrate deploy` then starts the API from `backend/dist/index.js`), and points Railway at `/health` for deployment health checks.
 
 Database migrations:
 
@@ -149,16 +167,15 @@ npm run test
 Lint/type validation:
 
 ```bash
+npm run typecheck
 npm run lint
 ```
 
-For this TypeScript MVP, lint currently delegates to package-level typechecks so the advertised validation command works without additional parser setup.
+`npm run lint` runs ESLint against the TypeScript source in both workspaces.
 
 CI validation:
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs install, typecheck, build, tests, and lint validation on pushes and pull requests.
-
-Note: CI currently uses `npm install` instead of `npm ci` until a `package-lock.json` is committed.
 
 Dashboard:
 

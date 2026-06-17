@@ -21,6 +21,20 @@ const keepaResponseSchema = z.object({
   products: z.array(keepaProductSchema).optional()
 }).passthrough();
 
+interface KeepaProduct {
+  asin: string;
+  title?: string;
+  brand?: string;
+  model?: string;
+  upcList?: string[];
+  salesRankReference?: number;
+  stats?: {
+    current?: number[];
+    buyBoxPrice?: number;
+  };
+  availabilityAmazon?: number;
+}
+
 const keepaCentsToMoney = (value?: number): number | undefined => {
   if (value === undefined || value < 0) return undefined;
   return Math.round(value) / 100;
@@ -49,7 +63,7 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
 
   const payload = keepaResponseSchema.parse(await response.json());
 
-  return (payload.products ?? []).slice(0, options.limit ?? 10).map((product: any) => {
+  return (payload.products ?? []).slice(0, options.limit ?? 10).map((product: KeepaProduct) => {
     const currentPrice = keepaCentsToMoney(product.stats?.current?.[1]);
     const buyBoxPrice = keepaCentsToMoney(product.stats?.buyBoxPrice);
 
