@@ -6,6 +6,7 @@ import { calculateProfit } from '../services/profitCalculator.js';
 import { decideOpportunity, type OpportunityThresholds } from '../services/opportunityDecider.js';
 import { evaluateProductSafety, type SafetyPolicy } from '../services/discoveryPolicy.js';
 import { scoreOpportunity } from '../services/opportunityScorer.js';
+import { applyIdentityDecision, evaluateProductIdentity } from '../services/productIdentityMatcher.js';
 
 export interface BuildOpportunitiesOptions {
   query: string;
@@ -72,11 +73,12 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
     if (!bestMatch) continue;
 
     const safety = evaluateProductSafety(ebay, bestMatch, policy);
+    const identityMatch = evaluateProductIdentity(ebay, bestMatch);
 
     const amazonCost = bestMatch.buyBoxPrice ?? bestMatch.currentPrice;
     if (!ebay.soldPrice || !amazonCost) {
       const emptyProfit = { estimatedFees: 0, estimatedTax: 0, bufferAmount: 0, expectedProfit: 0, roiPercent: 0, marginPercent: 0 };
-      const decision = safety.status === 'REJECT'
+      const baseDecision = safety.status === 'REJECT'
         ? {
           decision: 'REJECT' as const,
           confidence: 0.95,
@@ -84,10 +86,12 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
           reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
         }
         : decideOpportunity(ebay, bestMatch, emptyProfit, thresholds);
+      const decision = applyIdentityDecision(baseDecision, identityMatch);
       const opportunity: ProductOpportunity = {
         ebay,
         amazon: bestMatch,
         profit: emptyProfit,
+        identityMatch,
         decision,
         safety,
         discoveryProfile: options.discoveryProfile
@@ -119,12 +123,14 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
         reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
       }
       : decideOpportunity(ebay, bestMatch, profit, thresholds);
+    const identityDecision = applyIdentityDecision(baseDecision, identityMatch);
 
     const preliminaryOpportunity: ProductOpportunity = {
       ebay,
       amazon: bestMatch,
       profit,
-      decision: baseDecision,
+      identityMatch,
+      decision: identityDecision,
       safety,
       discoveryProfile: options.discoveryProfile
     };
@@ -132,17 +138,17 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
       minimumProfitUsd: thresholds.minimumProfitUsd,
       minimumRoiPercent: thresholds.minimumRoiPercent,
       minimumOpportunityScore: options.minimumOpportunityScore ?? 65
-    }, [...new Set([...safety.riskFlags, ...baseDecision.riskFlags])]);
+    }, [...new Set([...safety.riskFlags, ...identityDecision.riskFlags])]);
 
     const minimumOpportunityScore = options.minimumOpportunityScore ?? 65;
-    const decision = baseDecision.decision !== 'REJECT' && score.total < minimumOpportunityScore
+    const decision = identityDecision.decision !== 'REJECT' && identityMatch.status !== 'REVIEW' && score.total < minimumOpportunityScore
       ? {
         decision: 'REJECT' as const,
         confidence: 0.8,
-        riskFlags: [...new Set([...baseDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+        riskFlags: [...new Set([...identityDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
         reasoningSummary: `Rejected because opportunity score ${score.total} is below ${minimumOpportunityScore}.`
       }
-      : baseDecision;
+      : identityDecision;
 
     opportunities.push({
       ...preliminaryOpportunity,

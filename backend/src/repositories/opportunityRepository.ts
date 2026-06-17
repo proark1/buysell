@@ -35,7 +35,12 @@ export async function persistOpportunity(
       opportunityScore: opportunity.score?.total,
       safetyStatus: opportunity.safety?.status,
       riskFlags: opportunity.safety?.riskFlags ?? opportunity.decision.riskFlags,
-      scoreBreakdown: opportunity.score,
+      scoreBreakdown: opportunity.identityMatch
+        ? {
+          ...(opportunity.score ?? {}),
+          identityMatch: opportunity.identityMatch
+        }
+        : opportunity.score,
       source: context.source ?? 'serpapi',
       ebayTitle: opportunity.ebay.title,
       ebayUrl: opportunity.ebay.url,

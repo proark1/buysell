@@ -5,8 +5,9 @@ import type { AmazonMatchInput, EbayCandidateInput } from '../domain/products.js
 
 const amazon: AmazonMatchInput = {
   asin: 'B000SCAN',
-  title: 'Tera Wireless Barcode Scanner',
+  title: 'Tera X100 Wireless Barcode Scanner',
   brand: 'Tera',
+  model: 'X100',
   buyBoxPrice: 50,
   currentPrice: 50,
   avg90Price: 70,
@@ -37,7 +38,7 @@ if (!cheapResult.report.reasons.some((reason) => reason.includes('is not above A
 }
 
 const strongEbay: EbayCandidateInput[] = [{
-  title: 'Tera Wireless Barcode Scanner',
+  title: 'Tera X100 Wireless Barcode Scanner',
   url: 'https://www.ebay.com/itm/1',
   soldPrice: 120,
   shippingPrice: 0,
@@ -57,7 +58,7 @@ const eyoyoAmazon: AmazonMatchInput = {
   currentPrice: 39.99
 };
 const uncertainButProfitable = analyzeAmazonEbayComparison(eyoyoAmazon, [{
-  title: 'Eyoyo 10PCS 1D 2D QR Code Wireless Barcode Scanner Bluetooth USB Bar Code Reader',
+  title: 'Eyoyo Mini Bluetooth Barcode Scanner Wireless USB Reader',
   url: 'https://www.ebay.de/itm/2',
   soldPrice: 305.99,
   shippingPrice: 0,

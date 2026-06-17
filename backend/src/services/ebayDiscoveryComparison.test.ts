@@ -6,7 +6,7 @@ import type { AmazonMatchInput, EbayCandidateInput } from '../domain/products.js
 
 const ebay: EbayCandidateInput = {
   itemId: '123',
-  title: 'Tera Wireless Barcode Scanner',
+  title: 'Tera X100 Wireless Barcode Scanner',
   url: 'https://www.ebay.com/itm/123',
   soldPrice: 120,
   shippingPrice: 0,
@@ -36,8 +36,9 @@ if (!expensiveResult.report.reasons.some((reason) => reason.includes('is not abo
 
 const profitableAmazon: AmazonMatchInput = {
   asin: 'B000SCAN',
-  title: 'Tera Wireless Barcode Scanner',
+  title: 'Tera X100 Wireless Barcode Scanner',
   brand: 'Tera',
+  model: 'X100',
   buyBoxPrice: 45,
   currentPrice: 45,
   avg90Price: 70,
@@ -56,7 +57,7 @@ assertEqual(profitableResult.report.status, 'OPPORTUNITY', 'eBay discovery profi
 assertEqual(profitableResult.report.best?.asin, 'B000SCAN', 'eBay discovery best Amazon ASIN');
 
 const uncertainEbay: EbayCandidateInput = {
-  title: 'Wireless Barcode Scanner Bundle Pack',
+  title: 'Tera Wireless Barcode Scanner',
   soldPrice: 150,
   condition: 'New',
   category: 'Office Products'
@@ -65,7 +66,8 @@ const uncertainEbay: EbayCandidateInput = {
 const uncertainAmazon: AmazonMatchInput = {
   ...profitableAmazon,
   asin: 'B000UNCERTAIN',
-  title: 'Wireless Barcode Scanner'
+  title: 'Tera Wireless Barcode Scanner',
+  model: undefined
 };
 
 const manualResult = analyzeEbayAmazonComparison(uncertainEbay, [uncertainAmazon], defaultRuleConfig, uncertainEbay.title);

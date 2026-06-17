@@ -42,6 +42,7 @@ export interface ProductOpportunity {
     roiPercent: number;
     marginPercent: number;
   };
+  identityMatch?: ProductIdentityMatch;
   decision: OpportunityDecision;
   score?: {
     total: number;
@@ -59,6 +60,22 @@ export interface ProductOpportunity {
     reasons: string[];
   };
   discoveryProfile?: string;
+}
+
+export interface ProductIdentityMatch {
+  status: 'EXACT' | 'STRONG' | 'REVIEW' | 'REJECT';
+  confidence: number;
+  evidence: string[];
+  conflicts: string[];
+  riskFlags: string[];
+  normalized: {
+    ebayBrand?: string;
+    amazonBrand?: string;
+    ebayModelTokens: string[];
+    amazonModelTokens: string[];
+    ebayIdentifiers: string[];
+    amazonIdentifiers: string[];
+  };
 }
 
 export interface OpportunityDecision {

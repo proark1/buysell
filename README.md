@@ -102,6 +102,8 @@ curl -X POST http://localhost:3000/ebay-discovery/compare \
 
 eBay Discovery is the reverse of Amazon Scout. It starts with sold/completed eBay listings through SerpApi, applies eBay-side category, price, condition, location, and safety filters, then uses Keepa to find Amazon source matches. Profitable matches are persisted through the same opportunity/action pipeline; uncertain high-upside matches stay in manual review.
 
+Automatic opportunities require exact-product evidence. Shared UPC/EAN/MPN/model data or exact brand-plus-model agreement can pass; brand, model, pack-count, or variant conflicts are rejected; brand-only or title-only similarity stays in manual review.
+
 Action list:
 
 ```bash

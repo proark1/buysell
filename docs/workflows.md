@@ -45,6 +45,8 @@ The route currently returns opportunities to the caller and does not create eBay
 
 `POST /ebay-discovery/compare` checks selected eBay candidates against Amazon source prices, applies the same match, safety, profit, ROI, and opportunity-score gates as the rest of the pipeline, and persists accepted matches through `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `ActionItem`. Borderline or user-overridden products can be routed to manual review with `POST /ebay-discovery/consider`.
 
+Both eBay-first and Amazon-first comparison now require product identity evidence before an automatic opportunity can be created. Shared UPC/EAN/MPN/model evidence or exact brand-plus-model evidence can pass; brand, model, pack-count, or variant conflicts are rejected; brand-only or title-only similarity is routed to manual review instead of listing.
+
 ## Persisting Opportunities
 
 The opportunity search request accepts `"persist": true`. When enabled, the backend requires `DATABASE_URL` and writes each returned opportunity into `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `AuditLog` records. This keeps the first API safe by making persistence explicit while still supporting a dry-run mode for API/parser testing.

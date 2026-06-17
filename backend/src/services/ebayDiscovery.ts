@@ -16,6 +16,7 @@ import {
 import { scoreAmazonMatch } from './matchScorer.js';
 import { getEbayDiscoveryMarket, type DiscoveryMarket } from './marketplaces.js';
 import { scoreOpportunity } from './opportunityScorer.js';
+import { applyIdentityDecision, evaluateProductIdentity } from './productIdentityMatcher.js';
 
 export interface EbayDiscoveryScore {
   total: number;
@@ -105,6 +106,7 @@ export interface AmazonComparisonReport {
     decision?: string;
     riskFlags?: string[];
     reasoningSummary?: string;
+    identityMatch?: ProductOpportunity['identityMatch'];
   };
   topMatches: Array<{
     asin: string;
@@ -119,6 +121,7 @@ export interface AmazonComparisonReport {
     opportunityScore?: number;
     decision?: string;
     riskFlags?: string[];
+    identityMatch?: ProductOpportunity['identityMatch'];
   }>;
   reasons: string[];
   thresholds: {
@@ -532,7 +535,8 @@ function comparisonSnapshot(opportunity: ProductOpportunity): NonNullable<Amazon
     opportunityScore: opportunity.score?.total,
     decision: opportunity.decision.decision,
     riskFlags: opportunity.decision.riskFlags,
-    reasoningSummary: opportunity.decision.reasoningSummary
+    reasoningSummary: opportunity.decision.reasoningSummary,
+    identityMatch: opportunity.identityMatch
   };
 }
 
@@ -553,6 +557,12 @@ function comparisonRejectionReasons(opportunity: ProductOpportunity, ruleConfig:
   if (opportunity.decision.riskFlags.includes('LOW_MATCH_CONFIDENCE')) {
     reasons.push(`Best Amazon match confidence ${percent((opportunity.amazon.matchConfidence ?? 0) * 100)} is below the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum, so it may not be the same product.`);
   }
+  if (opportunity.decision.riskFlags.includes('PRODUCT_IDENTITY_CONFLICT')) {
+    reasons.push(...(opportunity.identityMatch?.conflicts ?? ['Product identity conflicts were found.']));
+  }
+  if (opportunity.decision.riskFlags.includes('PRODUCT_IDENTITY_UNVERIFIED')) {
+    reasons.push(...(opportunity.identityMatch?.conflicts ?? ['Exact product identity is not proven by brand plus model or identifier evidence.']));
+  }
   if (opportunity.decision.riskFlags.includes('MISSING_EBAY_PRICE')) reasons.push('The eBay result did not include a usable sold price.');
   if (opportunity.decision.riskFlags.includes('MISSING_AMAZON_PRICE')) reasons.push('Amazon price is missing, so profit cannot be calculated safely.');
   if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) reasons.push('Amazon stock status is not confirmed as in stock.');
@@ -567,7 +577,7 @@ function comparisonRejectionReasons(opportunity: ProductOpportunity, ruleConfig:
 
 function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): boolean {
   const flags = opportunity.decision.riskFlags;
-  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE'].includes(flag))) {
+  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
     return false;
   }
 
@@ -594,6 +604,7 @@ function scoreAmazonCandidateForEbay(
 ): ProductOpportunity {
   const matchConfidence = scoreAmazonMatch(ebay, amazon);
   const matchedAmazon = { ...amazon, matchConfidence };
+  const identityMatch = evaluateProductIdentity(ebay, matchedAmazon);
   const amazonCost = matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice;
   const emptyProfit = { estimatedFees: 0, estimatedTax: 0, bufferAmount: 0, expectedProfit: 0, roiPercent: 0, marginPercent: 0 };
   const profit = ebay.soldPrice && amazonCost
@@ -615,11 +626,13 @@ function scoreAmazonCandidateForEbay(
       reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
     }
     : decideOpportunity(ebay, matchedAmazon, profit, ruleConfig.thresholds);
+  const identityDecision = applyIdentityDecision(baseDecision, identityMatch);
   const opportunity: ProductOpportunity = {
     ebay,
     amazon: matchedAmazon,
     profit,
-    decision: baseDecision,
+    identityMatch,
+    decision: identityDecision,
     safety,
     discoveryProfile: 'ebay-first'
   };
@@ -627,15 +640,15 @@ function scoreAmazonCandidateForEbay(
     minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
     minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
     minimumOpportunityScore: ruleConfig.minimumOpportunityScore
-  }, [...new Set([...safety.riskFlags, ...baseDecision.riskFlags])]);
-  const decision = baseDecision.decision !== 'REJECT' && score.total < ruleConfig.minimumOpportunityScore
+  }, [...new Set([...safety.riskFlags, ...identityDecision.riskFlags])]);
+  const decision = identityDecision.decision !== 'REJECT' && identityMatch.status !== 'REVIEW' && score.total < ruleConfig.minimumOpportunityScore
     ? {
       decision: 'REJECT' as const,
       confidence: 0.8,
-      riskFlags: [...new Set([...baseDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+      riskFlags: [...new Set([...identityDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
       reasoningSummary: `Rejected because opportunity score ${score.total} is below ${ruleConfig.minimumOpportunityScore}.`
     }
-    : baseDecision;
+    : identityDecision;
   return { ...opportunity, decision, score };
 }
 
@@ -710,7 +723,8 @@ export function analyzeEbayAmazonComparison(
     ? uniqueReasons([
       `Best Amazon source price ${dollars(best.amazon.buyBoxPrice ?? best.amazon.currentPrice)} leaves ${dollars(best.profit.expectedProfit)} expected profit.`,
       `ROI ${percent(best.profit.roiPercent)} clears the ${percent(ruleConfig.thresholds.minimumRoiPercent)} target.`,
-      `Match confidence ${percent((best.amazon.matchConfidence ?? 0) * 100)} clears the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum.`
+      `Match confidence ${percent((best.amazon.matchConfidence ?? 0) * 100)} clears the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum.`,
+      ...(best.identityMatch?.evidence ?? [])
     ])
     : status === 'MANUAL_REVIEW'
       ? manualReviewReasons(best, ruleConfig)

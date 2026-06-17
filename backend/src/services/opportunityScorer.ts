@@ -48,6 +48,8 @@ function priceSignalScore(priceDropPercent?: number, hasPrice?: boolean): number
 function riskPenalty(riskFlags: string[]): number {
   return riskFlags.reduce((penalty, flag) => {
     if (['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD'].includes(flag)) return penalty + 100;
+    if (['PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag)) return penalty + 100;
+    if (flag === 'PRODUCT_IDENTITY_UNVERIFIED' || flag === 'BRAND_NOT_VERIFIED' || flag === 'MODEL_NOT_VERIFIED') return penalty + 24;
     if (flag === 'AMAZON_COST_TOO_HIGH') return penalty + 40;
     if (flag.startsWith('MISSING_')) return penalty + 30;
     if (flag === 'LOW_MATCH_CONFIDENCE') return penalty + 18;
