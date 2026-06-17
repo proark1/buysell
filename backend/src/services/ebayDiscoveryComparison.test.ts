@@ -56,6 +56,20 @@ const profitableResult = analyzeEbayAmazonComparison(ebay, [profitableAmazon], d
 assertEqual(profitableResult.report.status, 'OPPORTUNITY', 'eBay discovery profitable Amazon status');
 assertEqual(profitableResult.report.best?.asin, 'B000SCAN', 'eBay discovery best Amazon ASIN');
 
+const sampledMarketResult = analyzeEbayAmazonComparison(ebay, [profitableAmazon], defaultRuleConfig, ebay.title, {
+  soldMarketCandidates: [
+    ebay,
+    { ...ebay, itemId: '124', soldPrice: 118 },
+    { ...ebay, itemId: '125', soldPrice: 123 }
+  ],
+  activeMarketCandidates: [
+    { ...ebay, itemId: 'active-1' },
+    { ...ebay, itemId: 'active-2' }
+  ]
+});
+assertEqual(sampledMarketResult.best?.marketMetrics?.soldSampleSize, 3, 'eBay discovery uses sold market sample');
+assertEqual(sampledMarketResult.best?.marketMetrics?.activeSampleSize, 2, 'eBay discovery uses active market sample');
+
 const uncertainEbay: EbayCandidateInput = {
   title: 'Tera Wireless Barcode Scanner',
   soldPrice: 150,

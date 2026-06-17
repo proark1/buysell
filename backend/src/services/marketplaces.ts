@@ -41,6 +41,13 @@ export interface EbayComparisonSettings {
   postalCode?: string;
 }
 
+export interface MarketplaceProfitDefaults {
+  ebayFinalValueFeeRate: number;
+  ebayPaymentFeeRate: number;
+  estimatedSalesTaxRate: number;
+  paymentFixedFee: number;
+}
+
 export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
   {
     key: 'de',
@@ -115,6 +122,51 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     ebayDomain: 'ebay.es'
   }
 ];
+
+const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
+  de: {
+    ebayFinalValueFeeRate: 0.11,
+    ebayPaymentFeeRate: 0.0235,
+    estimatedSalesTaxRate: 0.19,
+    paymentFixedFee: 0.35
+  },
+  us: {
+    ebayFinalValueFeeRate: 0.1325,
+    ebayPaymentFeeRate: 0.03,
+    estimatedSalesTaxRate: 0.08,
+    paymentFixedFee: 0.3
+  },
+  uk: {
+    ebayFinalValueFeeRate: 0.128,
+    ebayPaymentFeeRate: 0.029,
+    estimatedSalesTaxRate: 0.2,
+    paymentFixedFee: 0.3
+  },
+  fr: {
+    ebayFinalValueFeeRate: 0.11,
+    ebayPaymentFeeRate: 0.0235,
+    estimatedSalesTaxRate: 0.2,
+    paymentFixedFee: 0.35
+  },
+  ca: {
+    ebayFinalValueFeeRate: 0.1325,
+    ebayPaymentFeeRate: 0.03,
+    estimatedSalesTaxRate: 0.05,
+    paymentFixedFee: 0.3
+  },
+  it: {
+    ebayFinalValueFeeRate: 0.11,
+    ebayPaymentFeeRate: 0.0235,
+    estimatedSalesTaxRate: 0.22,
+    paymentFixedFee: 0.35
+  },
+  es: {
+    ebayFinalValueFeeRate: 0.11,
+    ebayPaymentFeeRate: 0.0235,
+    estimatedSalesTaxRate: 0.21,
+    paymentFixedFee: 0.35
+  }
+};
 
 export const ebayComparisonPresets: EbayComparisonPreset[] = [
   {
@@ -192,4 +244,9 @@ export function resolveEbayComparisonSettings(input: Partial<EbayComparisonSetti
     preferredLocation: input.preferredLocation ?? preset.preferredLocation,
     postalCode: input.postalCode
   };
+}
+
+export function profitDefaultsForMarket(market?: Pick<DiscoveryMarket, 'key'> | string): MarketplaceProfitDefaults {
+  const key = typeof market === 'string' ? market : market?.key;
+  return marketplaceProfitDefaults[key ?? ''] ?? marketplaceProfitDefaults.us;
 }

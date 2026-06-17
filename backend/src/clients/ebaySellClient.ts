@@ -65,6 +65,7 @@ export interface PublishEbayOfferOptions {
 
 export interface UpdateEbayOfferPriceQuantityOptions {
   sku: string;
+  offerId: string;
   accessToken: string;
   sandbox?: boolean;
   marketplaceId: string;
@@ -205,12 +206,14 @@ export async function updateEbayOfferPriceQuantity(options: UpdateEbayOfferPrice
     body: JSON.stringify({
       requests: [{
         sku: options.sku,
-        marketplaceId: options.marketplaceId,
-        price: {
-          value: options.price.toFixed(2),
-          currency: options.marketplaceId === 'EBAY_GB' ? 'GBP' : options.marketplaceId.startsWith('EBAY_DE') ? 'EUR' : 'USD'
-        },
-        shipToLocationAvailability: options.quantity === undefined ? undefined : { quantity: options.quantity }
+        offers: [{
+          offerId: options.offerId,
+          price: {
+            value: options.price.toFixed(2),
+            currency: options.marketplaceId === 'EBAY_GB' ? 'GBP' : options.marketplaceId.startsWith('EBAY_DE') ? 'EUR' : 'USD'
+          },
+          availableQuantity: options.quantity
+        }]
       }]
     })
   });

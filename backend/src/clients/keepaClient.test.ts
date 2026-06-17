@@ -1,4 +1,4 @@
-import { findAmazonMatches, getKeepaTokenStatus } from './keepaClient.js';
+import { findAmazonMatches, getAmazonProductByAsin, getKeepaTokenStatus, keepaDomainIdFromAmazonUrl } from './keepaClient.js';
 import { assertEqual } from '../services/testHelpers.js';
 
 const originalFetch = globalThis.fetch;
@@ -66,6 +66,42 @@ try {
   assertEqual(matches[0]?.reviewCount, 318, 'Keepa parsed review object count');
   assertEqual(matches[0]?.salesRank, 12345, 'Keepa parsed safe sales rank');
   assertEqual(matches[1]?.salesRank, undefined, 'Keepa oversized sales rank is not persisted');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+globalThis.fetch = (async (input: string | URL | Request) => {
+  capturedUrl = String(input);
+  return new Response(JSON.stringify({
+    products: [{
+      asin: 'B000TEST',
+      title: 'Exact ASIN scanner',
+      stats: {
+        current: [-1, 1599],
+        buyBoxPrice: 1399,
+        avg90: [-1, 1899]
+      },
+      availabilityAmazon: 0,
+      domainId: 3
+    }]
+  }), { status: 200 });
+}) as typeof fetch;
+
+try {
+  const product = await getAmazonProductByAsin({
+    asin: 'B000TEST',
+    apiKey: 'test-key',
+    domain: 3
+  });
+  const url = new URL(capturedUrl);
+
+  assertEqual(url.pathname, '/product', 'Keepa exact product path');
+  assertEqual(url.searchParams.get('asin'), 'B000TEST', 'Keepa exact ASIN parameter');
+  assertEqual(url.searchParams.get('domain'), '3', 'Keepa exact domain parameter');
+  assertEqual(url.searchParams.get('stats'), '90', 'Keepa exact stats window');
+  assertEqual(product?.buyBoxPrice, 13.99, 'Keepa exact parsed Buy Box price');
+  assertEqual(product?.url, 'https://www.amazon.de/dp/B000TEST', 'Keepa exact product URL');
+  assertEqual(keepaDomainIdFromAmazonUrl('https://www.amazon.de/dp/B000TEST'), 3, 'Keepa domain from Amazon URL');
 } finally {
   globalThis.fetch = originalFetch;
 }

@@ -312,6 +312,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
     if (listing.ebayOfferId && accessToken) {
       ebayResult = await updateEbayOfferPriceQuantity({
         sku: listing.productCandidateId,
+        offerId: listing.ebayOfferId,
         accessToken,
         sandbox,
         marketplaceId,

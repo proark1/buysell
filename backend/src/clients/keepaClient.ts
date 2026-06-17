@@ -121,6 +121,12 @@ export interface KeepaSearchOptions {
   limit?: number;
 }
 
+export interface KeepaProductOptions {
+  asin: string;
+  apiKey: string;
+  domain?: number;
+}
+
 export interface KeepaTokenStatus {
   tokensLeft: number;
   refillIn?: number;
@@ -159,6 +165,18 @@ function keepaProductToAmazonMatch(product: KeepaProduct, fallbackDomainId: numb
     matchConfidence: 0,
     raw: product
   };
+}
+
+export function keepaDomainIdFromAmazonUrl(url: string | undefined): number | undefined {
+  if (!url) return undefined;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return undefined;
+  }
+  const entry = Object.entries(amazonDomainByKeepaId).find(([, domain]) => domain === host);
+  return entry ? Number(entry[0]) : undefined;
 }
 
 export async function getKeepaTokenStatus(apiKey: string): Promise<KeepaTokenStatus> {
@@ -209,4 +227,25 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
   }
 
   return products.slice(0, limit).map((product) => keepaProductToAmazonMatch(product, domain));
+}
+
+export async function getAmazonProductByAsin(options: KeepaProductOptions): Promise<AmazonMatchInput | undefined> {
+  const domain = options.domain ?? 1;
+  const params = new URLSearchParams({
+    key: options.apiKey,
+    domain: String(domain),
+    asin: options.asin,
+    stats: '90',
+    history: '0',
+    update: '24'
+  });
+
+  const response = await fetch(`https://api.keepa.com/product?${params.toString()}`);
+  if (!response.ok) {
+    throw new KeepaApiError(response.status, await response.text());
+  }
+
+  const payload = keepaResponseSchema.parse(await response.json());
+  const product = payload.products?.find((item: KeepaProduct) => item.asin === options.asin) ?? payload.products?.[0];
+  return product ? keepaProductToAmazonMatch(product, domain) : undefined;
 }

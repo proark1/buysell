@@ -1,4 +1,6 @@
 import { calculateProfit } from './profitCalculator.js';
+import { defaultRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { profitInputsFromRuleConfig } from './profitInputs.js';
 import { assertApprox } from './testHelpers.js';
 
 const result = calculateProfit({
@@ -39,5 +41,12 @@ assertApprox(landed.totalSourceCost ?? 0, 57, 'landed source cost');
 assertApprox(landed.bufferAmount, 8.75, 'landed buffers');
 assertApprox(landed.totalLandedCost ?? 0, 67.25, 'landed cost');
 assertApprox(landed.expectedProfit, 17.35, 'landed expected profit');
+
+const germanInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'de');
+const usInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'us');
+assertApprox(germanInputs.estimatedSalesTaxRate, 0.19, 'Germany default source tax');
+assertApprox(germanInputs.ebayPaymentFeeRate, 0.0235, 'Germany payment fee default');
+assertApprox(usInputs.estimatedSalesTaxRate, 0.08, 'US default source tax');
+assertApprox(usInputs.ebayFinalValueFeeRate, 0.1325, 'US final value fee default');
 
 console.log('profitCalculator unit test passed');

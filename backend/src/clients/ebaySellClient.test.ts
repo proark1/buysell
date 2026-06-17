@@ -108,6 +108,7 @@ globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
 
 await updateEbayOfferPriceQuantity({
   sku: 'sku-1',
+  offerId: 'offer-1',
   accessToken: 'token',
   sandbox: true,
   marketplaceId: 'EBAY_US',
@@ -117,6 +118,8 @@ await updateEbayOfferPriceQuantity({
 assertEqual(capturedUrl, 'https://api.sandbox.ebay.com/sell/inventory/v1/bulk_update_price_quantity', 'bulk price URL');
 assertEqual(capturedMethod, 'POST', 'bulk price method');
 if (!capturedBody.includes('"value":"23.46"')) throw new Error('bulk price body should round price');
+if (!capturedBody.includes('"offers":[{"offerId":"offer-1"')) throw new Error('bulk price body should update by offerId');
+if (!capturedBody.includes('"availableQuantity":1')) throw new Error('bulk price body should include available quantity');
 
 globalThis.fetch = (async (url: string | URL | Request) => {
   capturedUrl = String(url);

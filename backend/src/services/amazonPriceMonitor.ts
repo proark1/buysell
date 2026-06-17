@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { findAmazonMatches } from '../clients/keepaClient.js';
+import { getAmazonProductByAsin, keepaDomainIdFromAmazonUrl } from '../clients/keepaClient.js';
 import { getSecret } from './secrets.js';
 
 const numberValue = (value: unknown): number | undefined => {
@@ -27,8 +27,11 @@ export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> 
     const storedPrice = numberValue(listing.amazonMatch?.buyBoxPrice) ?? numberValue(listing.amazonMatch?.currentPrice);
     if (!storedPrice || !listing.amazonMatch?.asin) continue;
 
-    const matches = await findAmazonMatches({ query: listing.amazonMatch.asin, apiKey: keepaApiKey, limit: 1 });
-    const latest = matches[0];
+    const latest = await getAmazonProductByAsin({
+      asin: listing.amazonMatch.asin,
+      apiKey: keepaApiKey,
+      domain: keepaDomainIdFromAmazonUrl(listing.amazonMatch.amazonUrl)
+    });
     const latestPrice = latest ? latest.buyBoxPrice ?? latest.currentPrice : undefined;
 
     if (!latestPrice) {

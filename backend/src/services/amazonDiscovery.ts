@@ -482,7 +482,8 @@ function comparisonRejectionReasons(
 function scoreEbayCandidateAgainstAmazon(
   amazon: AmazonMatchInput,
   ebay: EbayCandidateInput,
-  ruleConfig: ActiveRuleConfig
+  ruleConfig: ActiveRuleConfig,
+  market?: DiscoveryMarket
 ): ProductOpportunity | undefined {
   const matchConfidence = scoreAmazonMatch(ebay, amazon);
   const matchedAmazon = { ...amazon, matchConfidence };
@@ -493,7 +494,7 @@ function scoreEbayCandidateAgainstAmazon(
   const profit = calculateProfit({
     ebaySalePrice: ebay.soldPrice,
     amazonItemCost: amazonCost,
-    ...profitInputsFromRuleConfig(ruleConfig)
+    ...profitInputsFromRuleConfig(ruleConfig, market)
   });
   const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
   const safety = evaluateProductSafety(ebay, matchedAmazon, policy);
@@ -539,6 +540,7 @@ export function analyzeAmazonEbayComparison(
   context: {
     market?: DiscoveryMarket;
     comparisonSettings?: EbayComparisonSettings;
+    activeEbayCandidates?: EbayCandidateInput[];
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -589,13 +591,14 @@ export function analyzeAmazonEbayComparison(
 
   const scored = ebayCandidates
     .flatMap((ebay) => {
-      const opportunity = scoreEbayCandidateAgainstAmazon(amazon, ebay, ruleConfig);
+      const opportunity = scoreEbayCandidateAgainstAmazon(amazon, ebay, ruleConfig, context.market);
       return opportunity ? [opportunity] : [];
     })
     .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
 
   const marketMetrics = calculateEbayMarketMetrics({
     soldCandidates: ebayCandidates,
+    activeCandidates: context.activeEbayCandidates,
     targetPrice: scored[0]?.decision.recommendedPrice ?? amazonCost,
     minimumSellThroughRate: ruleConfig.minimumSellThroughRate,
     maximumCompetitionRatio: ruleConfig.maximumCompetitionRatio
@@ -746,7 +749,7 @@ export async function considerAmazonDiscoveryCandidate(options: ConsiderAmazonCa
     const profit = calculateProfit({
       ebaySalePrice: best.soldPrice,
       amazonItemCost: matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice ?? 0,
-      ...profitInputsFromRuleConfig(options.ruleConfig)
+      ...profitInputsFromRuleConfig(options.ruleConfig, report?.market?.key)
     });
     const opportunity: ProductOpportunity = {
       ebay,
@@ -925,9 +928,22 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
         postalCode: comparisonSettings.postalCode
       });
+      const activeEbayCandidates = await searchEbayCandidates({
+        query,
+        apiKey: options.serpApiKey,
+        ebayDomain: market.ebayDomain,
+        soldOnly: false,
+        completedOnly: false,
+        limit: Math.min(Math.max(comparisonSettings.ebayResultLimit * 2, 10), 50),
+        buyingFormat: comparisonSettings.buyingFormat === 'ANY' ? undefined : comparisonSettings.buyingFormat,
+        conditionIds: conditionIdsBySetting[comparisonSettings.itemCondition],
+        preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
+        postalCode: comparisonSettings.postalCode
+      });
       const comparison = analyzeAmazonEbayComparison(amazon, ebayCandidates, options.ruleConfig, query, {
         market,
-        comparisonSettings
+        comparisonSettings,
+        activeEbayCandidates
       });
       reports.push(comparison.report);
       const best = comparison.best;

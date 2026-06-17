@@ -69,6 +69,7 @@ export interface EbayDiscoveryRunOptions {
 export interface CompareEbayCandidatesOptions {
   db: PrismaClient;
   keepaApiKey: string;
+  serpApiKey?: string;
   ruleConfig: ActiveRuleConfig;
   runId?: string;
   candidateIds?: string[];
@@ -613,7 +614,8 @@ function manualReviewReasons(opportunity: ProductOpportunity, ruleConfig: Active
 function scoreAmazonCandidateForEbay(
   ebay: EbayCandidateInput,
   amazon: AmazonMatchInput,
-  ruleConfig: ActiveRuleConfig
+  ruleConfig: ActiveRuleConfig,
+  market?: DiscoveryMarket
 ): ProductOpportunity {
   const matchConfidence = scoreAmazonMatch(ebay, amazon);
   const matchedAmazon = { ...amazon, matchConfidence };
@@ -624,7 +626,7 @@ function scoreAmazonCandidateForEbay(
     ? calculateProfit({
       ebaySalePrice: ebay.soldPrice,
       amazonItemCost: amazonCost,
-      ...profitInputsFromRuleConfig(ruleConfig)
+      ...profitInputsFromRuleConfig(ruleConfig, market)
     })
     : emptyProfit;
   const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
@@ -671,6 +673,8 @@ export function analyzeEbayAmazonComparison(
   context: {
     market?: DiscoveryMarket;
     amazonMatchLimit?: number;
+    soldMarketCandidates?: EbayCandidateInput[];
+    activeMarketCandidates?: EbayCandidateInput[];
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -707,11 +711,12 @@ export function analyzeEbayAmazonComparison(
   }
 
   const scored = amazonMatches
-    .map((amazon) => scoreAmazonCandidateForEbay(ebay, amazon, ruleConfig))
+    .map((amazon) => scoreAmazonCandidateForEbay(ebay, amazon, ruleConfig, context.market))
     .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
 
   const marketMetrics = calculateEbayMarketMetrics({
-    soldCandidates: [ebay],
+    soldCandidates: context.soldMarketCandidates?.length ? context.soldMarketCandidates : [ebay],
+    activeCandidates: context.activeMarketCandidates,
     targetPrice: ebay.soldPrice,
     minimumSellThroughRate: ruleConfig.minimumSellThroughRate,
     maximumCompetitionRatio: ruleConfig.maximumCompetitionRatio
@@ -843,6 +848,19 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
     orderBy: { ebayScore: 'desc' },
     take: options.limit ?? 25
   });
+  const runIds = [...new Set(candidates.map((candidate: { runId: string }) => candidate.runId))];
+  const marketCandidateRecords = runIds.length === 1
+    ? await options.db.ebayDiscoveryCandidate.findMany({
+      where: {
+        runId: runIds[0],
+        soldPrice: { not: null },
+        safetyStatus: { not: 'REJECT' }
+      },
+      orderBy: { ebayScore: 'desc' },
+      take: 100
+    })
+    : candidates;
+  const soldMarketCandidates = marketCandidateRecords.map((candidate: Record<string, unknown>) => ebayFromRecord(candidate));
 
   const opportunities: ProductOpportunity[] = [];
   const manualReviews: ProductOpportunity[] = [];
@@ -860,9 +878,25 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
         domain: market.amazonDomainId,
         limit: amazonMatchLimit
       });
+      const activeMarketCandidates = options.serpApiKey
+        ? await searchEbayCandidates({
+          query,
+          apiKey: options.serpApiKey,
+          ebayDomain: market.ebayDomain,
+          soldOnly: false,
+          completedOnly: false,
+          buyingFormat: 'BIN',
+          conditionIds: conditionIdsBySetting.NEW,
+          preferredLocation: 'Domestic',
+          postalCode: market.defaultPostalCode,
+          limit: 25
+        })
+        : undefined;
       const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, query, {
         market,
-        amazonMatchLimit
+        amazonMatchLimit,
+        soldMarketCandidates,
+        activeMarketCandidates
       });
       reports.push(comparison.report);
       const best = comparison.best;
@@ -994,7 +1028,7 @@ export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandid
     const profit = calculateProfit({
       ebaySalePrice: ebay.soldPrice,
       amazonItemCost: amazon.buyBoxPrice ?? amazon.currentPrice ?? 0,
-      ...profitInputsFromRuleConfig(options.ruleConfig)
+      ...profitInputsFromRuleConfig(options.ruleConfig, report?.market?.key)
     });
     const opportunity: ProductOpportunity = {
       ebay,

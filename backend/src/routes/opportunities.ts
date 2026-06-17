@@ -921,6 +921,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
           comparison = await compareEbayDiscoveryCandidates({
             db: prisma,
             keepaApiKey,
+            serpApiKey,
             ruleConfig: comparisonRuleConfig,
             runId,
             limit: parsed.data.compareLimit,
@@ -990,6 +991,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     if (!keepaApiKey) {
       return reply.status(503).send({ error: 'KEEPA_API_KEY is required for Amazon comparison' });
     }
+    const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
 
     const ruleConfig = await getActiveRuleConfig(prisma);
     const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
@@ -998,6 +1000,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       comparison = await compareEbayDiscoveryCandidates({
         db: prisma,
         keepaApiKey,
+        serpApiKey,
         ruleConfig: comparisonRuleConfig,
         runId: parsed.data.runId,
         candidateIds: parsed.data.candidateIds,

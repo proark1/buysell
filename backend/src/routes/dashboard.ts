@@ -124,6 +124,12 @@ const dashboardHtml = `<!doctype html>
     .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;align-items:end}
     .form-grid.compact{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
     .subsection-title{margin:16px 0 10px;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.55px}
+    .advanced{margin-top:14px;border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);padding:0 14px 14px}
+    .advanced summary{cursor:pointer;list-style:none;margin:0 -14px;padding:12px 14px;color:var(--text);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid transparent}
+    .advanced summary::-webkit-details-marker{display:none}
+    .advanced summary::after{content:'+';float:right;color:var(--muted);font-size:15px;line-height:1}
+    .advanced[open] summary{border-bottom-color:var(--border)}
+    .advanced[open] summary::after{content:'-'}
     .settings-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:12px}
     .actions-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
     .inline{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -332,33 +338,39 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Market</label><select id="amazonScoutMarket"></select></div>
               <div class="field"><label>eBay Preset</label><select id="amazonScoutEbayPreset"></select></div>
             </div>
-            <div class="subsection-title">Amazon filters</div>
+            <div class="subsection-title">Amazon search</div>
             <div class="form-grid">
               <div class="field"><label>Scout Profile</label><select id="amazonScoutProfile"></select></div>
               <div class="field"><label>Category</label><select id="amazonScoutCategory"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional Amazon Keywords</label><input id="amazonScoutQuery" placeholder="thermal label printer"></div>
               <div class="field"><label>Amazon Products To Check</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
-              <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
-              <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
-              <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSafeMode" type="checkbox" checked> Safe mode</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutAuto" type="checkbox"> Auto compare top candidates</label></div>
             </div>
-            <div class="subsection-title">eBay comparison filters</div>
-            <div class="form-grid compact">
-              <div class="field"><label>Max eBay Comparisons</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
-              <div class="field"><label>eBay Results Per Product</label><input id="amazonScoutEbayResults" type="number" min="1" max="50" value="10"></div>
-              <div class="field"><label>Min Profit</label><input id="amazonScoutMinProfit" type="number" min="0" step="1" value="10"></div>
-              <div class="field"><label>Min ROI %</label><input id="amazonScoutMinRoi" type="number" min="0" max="500" step="1" value="20"></div>
-              <div class="field"><label>Min Match %</label><input id="amazonScoutMinMatch" type="number" min="0" max="100" step="1" value="60"></div>
-              <div class="field"><label>Min Compare Score</label><input id="amazonScoutMinCompareScore" type="number" min="0" max="100" step="1" value="55"></div>
-              <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
-              <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="NEW" selected>New</option></select></div>
-              <div class="field"><label>eBay Location</label><select id="amazonScoutLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
-              <div class="field"><label>Postal Code</label><input id="amazonScoutPostalCode" placeholder="10115"></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSoldOnly" type="checkbox" checked> Sold</label></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutCompletedOnly" type="checkbox" checked> Completed</label></div>
-            </div>
+            <details class="advanced">
+              <summary>Advanced filters</summary>
+              <div class="subsection-title">Amazon score filters</div>
+              <div class="form-grid compact">
+                <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
+                <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
+                <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
+              </div>
+              <div class="subsection-title">eBay comparison gates</div>
+              <div class="form-grid compact">
+                <div class="field"><label>Max eBay Comparisons</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
+                <div class="field"><label>eBay Results Per Product</label><input id="amazonScoutEbayResults" type="number" min="1" max="50" value="10"></div>
+                <div class="field"><label>Min Profit</label><input id="amazonScoutMinProfit" type="number" min="0" step="1" value="10"></div>
+                <div class="field"><label>Min ROI %</label><input id="amazonScoutMinRoi" type="number" min="0" max="500" step="1" value="20"></div>
+                <div class="field"><label>Min Match %</label><input id="amazonScoutMinMatch" type="number" min="0" max="100" step="1" value="60"></div>
+                <div class="field"><label>Min Compare Score</label><input id="amazonScoutMinCompareScore" type="number" min="0" max="100" step="1" value="55"></div>
+                <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+                <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="NEW" selected>New</option></select></div>
+                <div class="field"><label>eBay Location</label><select id="amazonScoutLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
+                <div class="field"><label>Postal Code</label><input id="amazonScoutPostalCode" placeholder="10115"></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSoldOnly" type="checkbox" checked> Sold</label></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutCompletedOnly" type="checkbox" checked> Completed</label></div>
+              </div>
+            </details>
             <div class="actions-row">
               <button class="btn primary" id="amazonScoutRunBtn" onclick="runAmazonScout()">Find Amazon Candidates</button>
               <button class="btn" id="amazonScoutSelectBtn" onclick="selectHighAmazonScores()">Select High Score</button>
@@ -382,11 +394,16 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Profile</label><select id="scanProfile"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional Keywords</label><input id="searchQuery" placeholder="wireless barcode scanner"></div>
               <div class="field"><label>Limit</label><input id="searchLimit" type="number" min="1" max="25" value="8"></div>
-              <div class="field"><label>Min Score</label><input id="scanMinScore" type="number" min="0" max="100" value="65"></div>
-              <div class="field"><label>Max Amazon Cost</label><input id="scanMaxCost" type="number" min="1" step="1" value="150"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="scanSafeMode" type="checkbox" checked> Safe mode</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="searchPersist" type="checkbox" checked> Save accepted</label></div>
             </div>
+            <details class="advanced">
+              <summary>Advanced filters</summary>
+              <div class="form-grid compact">
+                <div class="field"><label>Min Score</label><input id="scanMinScore" type="number" min="0" max="100" value="65"></div>
+                <div class="field"><label>Max Amazon Cost</label><input id="scanMaxCost" type="number" min="1" step="1" value="150"></div>
+              </div>
+            </details>
             <div class="actions-row"><button class="btn primary" onclick="searchOpportunities()">⌕ Find Opportunities</button><span class="hint" id="scanHint"></span></div>
           </div>
         </div>
@@ -413,33 +430,39 @@ const dashboardHtml = `<!doctype html>
               <div class="field"><label>Market</label><select id="ebayDiscoveryMarket"></select></div>
               <div class="field"><label>Profile</label><select id="ebayDiscoveryProfile"></select></div>
             </div>
-            <div class="subsection-title">eBay sold-listing filters</div>
+            <div class="subsection-title">Sold product search</div>
             <div class="form-grid">
               <div class="field"><label>Category</label><select id="ebayDiscoveryCategory"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
-              <div class="field"><label>eBay Category ID</label><input id="ebayDiscoveryCategoryId" placeholder="optional"></div>
               <div class="field"><label>Sold Products To Check</label><input id="ebayDiscoveryLimit" type="number" min="1" max="100" value="25"></div>
-              <div class="field"><label>Min eBay Score</label><input id="ebayDiscoveryMinScore" type="number" min="0" max="100" value="50"></div>
-              <div class="field"><label>Min Sold Price</label><input id="ebayDiscoveryMinSold" type="number" min="0" step="1" value="25"></div>
-              <div class="field"><label>Max Sold Price</label><input id="ebayDiscoveryMaxSold" type="number" min="0" step="1" value="250"></div>
-              <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
-              <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
-              <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
-              <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySafeMode" type="checkbox" checked> Safe mode</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Auto compare top candidates</label></div>
             </div>
-            <div class="subsection-title">Amazon comparison gates</div>
-            <div class="form-grid compact">
-              <div class="field"><label>Max Amazon Comparisons</label><input id="ebayDiscoveryCompareLimit" type="number" min="1" max="50" value="10"></div>
-              <div class="field"><label>Amazon Matches Per Product</label><input id="ebayDiscoveryAmazonMatches" type="number" min="1" max="10" value="3"></div>
-              <div class="field"><label>Min Profit</label><input id="ebayDiscoveryMinProfit" type="number" min="0" step="1" value="10"></div>
-              <div class="field"><label>Min ROI %</label><input id="ebayDiscoveryMinRoi" type="number" min="0" max="500" step="1" value="25"></div>
-              <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
-              <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" step="1" value="65"></div>
-            </div>
+            <details class="advanced">
+              <summary>Advanced filters</summary>
+              <div class="subsection-title">eBay filters</div>
+              <div class="form-grid compact">
+                <div class="field"><label>eBay Category ID</label><input id="ebayDiscoveryCategoryId" placeholder="optional"></div>
+                <div class="field"><label>Min eBay Score</label><input id="ebayDiscoveryMinScore" type="number" min="0" max="100" value="50"></div>
+                <div class="field"><label>Min Sold Price</label><input id="ebayDiscoveryMinSold" type="number" min="0" step="1" value="25"></div>
+                <div class="field"><label>Max Sold Price</label><input id="ebayDiscoveryMaxSold" type="number" min="0" step="1" value="250"></div>
+                <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+                <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
+                <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
+                <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
+              </div>
+              <div class="subsection-title">Amazon comparison gates</div>
+              <div class="form-grid compact">
+                <div class="field"><label>Max Amazon Comparisons</label><input id="ebayDiscoveryCompareLimit" type="number" min="1" max="50" value="10"></div>
+                <div class="field"><label>Amazon Matches Per Product</label><input id="ebayDiscoveryAmazonMatches" type="number" min="1" max="10" value="3"></div>
+                <div class="field"><label>Min Profit</label><input id="ebayDiscoveryMinProfit" type="number" min="0" step="1" value="10"></div>
+                <div class="field"><label>Min ROI %</label><input id="ebayDiscoveryMinRoi" type="number" min="0" max="500" step="1" value="25"></div>
+                <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
+                <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" step="1" value="65"></div>
+              </div>
+            </details>
             <div class="actions-row">
               <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find eBay Sold Products</button>
               <button class="btn" id="ebayDiscoverySelectBtn" onclick="selectHighEbayScores()">Select High Score</button>
