@@ -28,6 +28,17 @@ const keepaResponseSchema = z.object({
   products: z.array(keepaProductSchema).optional()
 }).passthrough();
 
+export class KeepaApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: string
+  ) {
+    const detail = body.trim().slice(0, 300);
+    super(detail ? `Keepa request failed with status ${status}: ${detail}` : `Keepa request failed with status ${status}`);
+    this.name = 'KeepaApiError';
+  }
+}
+
 interface KeepaProduct {
   asin: string;
   title?: string;
@@ -64,14 +75,17 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
   const params = new URLSearchParams({
     key: options.apiKey,
     domain: String(options.domain ?? 1),
+    type: 'product',
     term: options.query,
     stats: '90',
-    offers: '20'
+    history: '0',
+    update: '1',
+    'asins-only': '0'
   });
 
   const response = await fetch(`https://api.keepa.com/search?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Keepa request failed with status ${response.status}`);
+    throw new KeepaApiError(response.status, await response.text());
   }
 
   const payload = keepaResponseSchema.parse(await response.json());

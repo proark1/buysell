@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
+import { KeepaApiError } from '../clients/keepaClient.js';
 import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
@@ -250,32 +251,45 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
 
     const ruleConfig = await getActiveRuleConfig(prisma);
     const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
-    const result = await buildAmazonDiscoveryCandidates({
-      keepaApiKey,
-      ruleConfig,
-      profileKey: parsed.data.profileKey,
-      categoryKey: parsed.data.categoryKey,
-      query: parsed.data.query,
-      limit: parsed.data.limit,
-      mode: effectiveMode,
-      safeMode: parsed.data.safeMode,
-      minimumAmazonScore: parsed.data.minAmazonScore,
-      maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
-      minPriceDropPercent: parsed.data.minPriceDropPercent
-    });
-    const persistedRun = await persistAmazonDiscoveryRun(prisma, {
-      keepaApiKey,
-      ruleConfig,
-      profileKey: parsed.data.profileKey,
-      categoryKey: parsed.data.categoryKey,
-      query: parsed.data.query,
-      limit: parsed.data.limit,
-      mode: effectiveMode,
-      safeMode: parsed.data.safeMode,
-      minimumAmazonScore: parsed.data.minAmazonScore,
-      maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
-      minPriceDropPercent: parsed.data.minPriceDropPercent
-    }, result);
+    let result: Awaited<ReturnType<typeof buildAmazonDiscoveryCandidates>>;
+    let persistedRun: Awaited<ReturnType<typeof persistAmazonDiscoveryRun>>;
+    try {
+      result = await buildAmazonDiscoveryCandidates({
+        keepaApiKey,
+        ruleConfig,
+        profileKey: parsed.data.profileKey,
+        categoryKey: parsed.data.categoryKey,
+        query: parsed.data.query,
+        limit: parsed.data.limit,
+        mode: effectiveMode,
+        safeMode: parsed.data.safeMode,
+        minimumAmazonScore: parsed.data.minAmazonScore,
+        maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
+        minPriceDropPercent: parsed.data.minPriceDropPercent
+      });
+      persistedRun = await persistAmazonDiscoveryRun(prisma, {
+        keepaApiKey,
+        ruleConfig,
+        profileKey: parsed.data.profileKey,
+        categoryKey: parsed.data.categoryKey,
+        query: parsed.data.query,
+        limit: parsed.data.limit,
+        mode: effectiveMode,
+        safeMode: parsed.data.safeMode,
+        minimumAmazonScore: parsed.data.minAmazonScore,
+        maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
+        minPriceDropPercent: parsed.data.minPriceDropPercent
+      }, result);
+    } catch (error) {
+      if (error instanceof KeepaApiError) {
+        return reply.status(502).send({
+          error: 'Keepa rejected the Amazon discovery request',
+          status: error.status,
+          details: error.body.trim().slice(0, 300)
+        });
+      }
+      throw error;
+    }
 
     let comparison;
     if (parsed.data.autoCompare || parsed.data.mode === 'AUTO') {
