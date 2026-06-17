@@ -434,7 +434,7 @@ var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'
 
 function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
 function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
-function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j})})}
+function jpost(url,body,auth){var h={'content-type':'application/json'};if(auth)h=Object.assign(h,authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));throw new Error(m)}return j})})}
 
 function toast(title,msg,kind){
   var box=document.getElementById('toasts');
