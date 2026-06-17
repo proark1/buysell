@@ -94,6 +94,12 @@ const parseEbayItemId = (result: Record<string, unknown>, url: string | undefine
   return match?.[1];
 };
 
+const preferredLocationValue: Record<NonNullable<SerpApiSearchOptions['preferredLocation']>, string> = {
+  Domestic: '1',
+  Worldwide: '2',
+  Regional: '3'
+};
+
 export interface SerpApiSearchOptions {
   query: string;
   apiKey: string;
@@ -143,10 +149,10 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   }
   if (options.buyingFormat) params.set('buying_format', options.buyingFormat);
   if (options.conditionIds?.length) params.set('LH_ItemCondition', options.conditionIds.join('|'));
-  if (options.categoryId?.trim()) params.set('_sacat', options.categoryId.trim());
+  if (options.categoryId?.trim()) params.set('category_id', options.categoryId.trim());
   if (options.minPrice !== undefined) params.set('_udlo', String(options.minPrice));
   if (options.maxPrice !== undefined) params.set('_udhi', String(options.maxPrice));
-  if (options.preferredLocation) params.set('LH_PrefLoc', options.preferredLocation);
+  if (options.preferredLocation) params.set('LH_PrefLoc', preferredLocationValue[options.preferredLocation]);
   if (options.postalCode?.trim()) params.set('_stpos', options.postalCode.trim());
   if (options.exactQueryOnly) params.set('_blrs', 'spell_auto_correct');
 

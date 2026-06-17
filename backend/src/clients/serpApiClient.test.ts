@@ -66,10 +66,10 @@ try {
   assertEqual(url.searchParams.get('LH_Complete'), '1', 'SerpAPI completed filter');
   assertEqual(url.searchParams.get('buying_format'), 'BIN', 'SerpAPI buying format filter');
   assertEqual(url.searchParams.get('LH_ItemCondition'), '1000', 'SerpAPI condition filter');
-  assertEqual(url.searchParams.get('_sacat'), '58058', 'SerpAPI category filter');
+  assertEqual(url.searchParams.get('category_id'), '58058', 'SerpAPI category filter');
   assertEqual(url.searchParams.get('_udlo'), '20', 'SerpAPI min price filter');
   assertEqual(url.searchParams.get('_udhi'), '150', 'SerpAPI max price filter');
-  assertEqual(url.searchParams.get('LH_PrefLoc'), 'Domestic', 'SerpAPI location filter');
+  assertEqual(url.searchParams.get('LH_PrefLoc'), '1', 'SerpAPI location filter');
   assertEqual(url.searchParams.get('_stpos'), '10115', 'SerpAPI postal code filter');
   assertEqual(candidates.length, 3, 'SerpAPI parsed candidates');
   assertEqual(candidates[0]?.itemId, '123', 'SerpAPI item id');
