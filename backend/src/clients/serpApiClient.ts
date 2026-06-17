@@ -2,12 +2,19 @@ import { z } from 'zod';
 import type { EbayCandidateInput } from '../domain/products.js';
 
 const serpApiEbayResultSchema = z.object({
+  id: z.unknown().optional(),
+  item_id: z.unknown().optional(),
+  itemId: z.unknown().optional(),
   title: z.unknown().optional(),
   link: z.unknown().optional(),
   price: z.unknown().optional(),
   extracted_price: z.unknown().optional(),
   shipping: z.unknown().optional(),
   condition: z.unknown().optional(),
+  category: z.unknown().optional(),
+  category_id: z.unknown().optional(),
+  categoryId: z.unknown().optional(),
+  categories: z.array(z.unknown()).optional(),
   extensions: z.array(z.unknown()).optional()
 }).passthrough();
 
@@ -67,6 +74,26 @@ const parseMoney = (value: unknown, depth = 0): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+const parseCategory = (result: Record<string, unknown>): string | undefined => {
+  const direct = parseText(result.category);
+  if (direct) return direct;
+
+  const categories = Array.isArray(result.categories)
+    ? result.categories.map(parseText).filter((item): item is string => Boolean(item))
+    : [];
+  if (categories.length > 0) return categories.join(' > ');
+
+  return undefined;
+};
+
+const parseEbayItemId = (result: Record<string, unknown>, url: string | undefined): string | undefined => {
+  const direct = parseText(result.item_id) ?? parseText(result.itemId) ?? parseText(result.id);
+  if (direct) return direct;
+
+  const match = url?.match(/\/itm\/(?:[^/]+\/)?(\d+)/i) ?? url?.match(/[?&]item=(\d+)/i);
+  return match?.[1];
+};
+
 export interface SerpApiSearchOptions {
   query: string;
   apiKey: string;
@@ -76,6 +103,9 @@ export interface SerpApiSearchOptions {
   resultPageSize?: 25 | 50 | 100 | 200;
   buyingFormat?: 'BIN' | 'Auction' | 'BO';
   conditionIds?: string[];
+  categoryId?: string;
+  minPrice?: number;
+  maxPrice?: number;
   preferredLocation?: 'Domestic' | 'Regional' | 'Worldwide';
   postalCode?: string;
   exactQueryOnly?: boolean;
@@ -113,6 +143,9 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   }
   if (options.buyingFormat) params.set('buying_format', options.buyingFormat);
   if (options.conditionIds?.length) params.set('LH_ItemCondition', options.conditionIds.join('|'));
+  if (options.categoryId?.trim()) params.set('_sacat', options.categoryId.trim());
+  if (options.minPrice !== undefined) params.set('_udlo', String(options.minPrice));
+  if (options.maxPrice !== undefined) params.set('_udhi', String(options.maxPrice));
   if (options.preferredLocation) params.set('LH_PrefLoc', options.preferredLocation);
   if (options.postalCode?.trim()) params.set('_stpos', options.postalCode.trim());
   if (options.exactQueryOnly) params.set('_blrs', 'spell_auto_correct');
@@ -133,13 +166,17 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   return results.slice(0, limit).flatMap((result) => {
     const title = parseText(result.title);
     if (!title) return [];
+    const url = parseText(result.link);
 
     return [{
+      itemId: parseEbayItemId(result, url),
       title,
-      url: parseText(result.link),
+      url,
       soldPrice: parseMoney(result.extracted_price) ?? parseMoney(result.price),
       shippingPrice: parseMoney(result.shipping),
       condition: parseText(result.condition),
+      category: parseCategory(result),
+      categoryId: parseText(result.category_id) ?? parseText(result.categoryId),
       raw: result
     }];
   });

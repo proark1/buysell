@@ -39,6 +39,12 @@ Example request:
 
 The route currently returns opportunities to the caller and does not create eBay listings or Amazon purchases. Persisting the returned opportunities into Prisma tables is the next implementation step.
 
+## eBay-First Discovery
+
+`POST /ebay-discovery/run` is the first-class reverse discovery flow. It starts from sold/completed eBay listings, stores the full eBay candidate shortlist in `EbayDiscoveryRun` and `EbayDiscoveryCandidate`, and can either stop for operator selection or automatically compare the selected set with Keepa/Amazon matches.
+
+`POST /ebay-discovery/compare` checks selected eBay candidates against Amazon source prices, applies the same match, safety, profit, ROI, and opportunity-score gates as the rest of the pipeline, and persists accepted matches through `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `ActionItem`. Borderline or user-overridden products can be routed to manual review with `POST /ebay-discovery/consider`.
+
 ## Persisting Opportunities
 
 The opportunity search request accepts `"persist": true`. When enabled, the backend requires `DATABASE_URL` and writes each returned opportunity into `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `AuditLog` records. This keeps the first API safe by making persistence explicit while still supporting a dry-run mode for API/parser testing.

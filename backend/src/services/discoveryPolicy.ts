@@ -31,6 +31,26 @@ export interface AmazonDiscoveryProfile {
   minPriceDropPercent: number;
 }
 
+export interface EbayDiscoveryCategory {
+  key: string;
+  label: string;
+  description: string;
+  seedQueries: string[];
+  categoryId?: string;
+}
+
+export interface EbayDiscoveryProfile {
+  key: string;
+  label: string;
+  description: string;
+  categories: EbayDiscoveryCategory[];
+  defaultLimit: number;
+  compareLimit: number;
+  minEbayScore: number;
+  minSoldPrice: number;
+  maxSoldPrice: number;
+}
+
 export interface SafetyPolicy {
   safeMode: boolean;
   blockedBrands: string[];
@@ -257,6 +277,105 @@ export const amazonDiscoveryProfiles: AmazonDiscoveryProfile[] = [
   }
 ];
 
+export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
+  {
+    key: 'starter-safe',
+    label: 'Starter Safe Sold Items',
+    description: 'eBay-first scan for compact, non-consumable sold listings with safer fulfillment characteristics.',
+    defaultLimit: 25,
+    compareLimit: 10,
+    minEbayScore: 50,
+    minSoldPrice: 25,
+    maxSoldPrice: 250,
+    categories: [
+      {
+        key: 'office-electronics',
+        label: 'Office Electronics',
+        description: 'Sold scanners, label printers, remotes, small office devices, and accessories.',
+        seedQueries: ['wireless barcode scanner', 'thermal label printer', 'laminator machine', 'replacement remote control']
+      },
+      {
+        key: 'small-tools',
+        label: 'Small Tools',
+        description: 'Sold chargers, measuring tools, adapters, and compact shop equipment.',
+        seedQueries: ['cordless tool charger', 'digital caliper', 'laser distance measure', 'multimeter leads']
+      },
+      {
+        key: 'home-parts',
+        label: 'Home Parts',
+        description: 'Sold replacement filters, vacuum parts, remotes, and small household components.',
+        seedQueries: ['air purifier filter', 'vacuum replacement part', 'garage remote control', 'appliance replacement knob']
+      }
+    ]
+  },
+  {
+    key: 'electronics-accessories',
+    label: 'Electronics Accessories',
+    description: 'eBay sold listings for cables, adapters, mounts, batteries, remotes, and small electronics accessories.',
+    defaultLimit: 30,
+    compareLimit: 12,
+    minEbayScore: 52,
+    minSoldPrice: 20,
+    maxSoldPrice: 300,
+    categories: [
+      {
+        key: 'adapters-cables',
+        label: 'Adapters & Cables',
+        description: 'Sold docking stations, splitters, adapters, hubs, and cable tools.',
+        seedQueries: ['usb c docking station', 'hdmi splitter', 'displayport adapter', 'ethernet adapter', 'usb hub powered']
+      },
+      {
+        key: 'camera-accessories',
+        label: 'Camera Accessories',
+        description: 'Sold chargers, mounts, lights, and compact camera accessories.',
+        seedQueries: ['camera battery charger', 'led video light', 'tripod quick release plate', 'camera remote shutter']
+      }
+    ]
+  },
+  {
+    key: 'tools-office',
+    label: 'Tools & Office',
+    description: 'eBay sold listings where model matching and practical demand signals are usually clearer.',
+    defaultLimit: 30,
+    compareLimit: 12,
+    minEbayScore: 55,
+    minSoldPrice: 30,
+    maxSoldPrice: 350,
+    categories: [
+      {
+        key: 'office-equipment',
+        label: 'Office Equipment',
+        description: 'Sold printers, scanners, label tools, laminators, and office hardware.',
+        seedQueries: ['thermal label printer', 'document scanner', 'barcode scanner', 'paper cutter heavy duty']
+      },
+      {
+        key: 'tool-accessories',
+        label: 'Tool Accessories',
+        description: 'Sold chargers, adapters, meters, and compact hardware.',
+        seedQueries: ['cordless tool charger', 'battery adapter tool', 'stud finder', 'digital multimeter']
+      }
+    ]
+  },
+  {
+    key: 'custom',
+    label: 'Custom eBay Discovery',
+    description: 'Use your own sold-listing keywords with the same safety and score gates.',
+    defaultLimit: 20,
+    compareLimit: 8,
+    minEbayScore: 45,
+    minSoldPrice: 10,
+    maxSoldPrice: 300,
+    categories: [
+      {
+        key: 'custom',
+        label: 'Custom',
+        description: 'Custom sold-listing search terms.',
+        seedQueries: []
+      }
+    ]
+  }
+];
+
 export function getDiscoveryProfile(key?: string): DiscoveryProfile {
   return discoveryProfiles.find((profile) => profile.key === key) ?? discoveryProfiles[0];
 }
@@ -266,6 +385,14 @@ export function getAmazonDiscoveryProfile(key?: string): AmazonDiscoveryProfile 
 }
 
 export function getAmazonDiscoveryCategory(profile: AmazonDiscoveryProfile, key?: string): AmazonDiscoveryCategory {
+  return profile.categories.find((category) => category.key === key) ?? profile.categories[0];
+}
+
+export function getEbayDiscoveryProfile(key?: string): EbayDiscoveryProfile {
+  return ebayDiscoveryProfiles.find((profile) => profile.key === key) ?? ebayDiscoveryProfiles[0];
+}
+
+export function getEbayDiscoveryCategory(profile: EbayDiscoveryProfile, key?: string): EbayDiscoveryCategory {
   return profile.categories.find((category) => category.key === key) ?? profile.categories[0];
 }
 

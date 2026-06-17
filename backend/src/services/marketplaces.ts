@@ -168,6 +168,10 @@ export function getAmazonDiscoveryMarket(key?: string): DiscoveryMarket {
   return amazonDiscoveryMarkets.find((market) => market.key === key) ?? amazonDiscoveryMarkets[0];
 }
 
+export function getEbayDiscoveryMarket(key?: string): DiscoveryMarket {
+  return getAmazonDiscoveryMarket(key);
+}
+
 export function getEbayComparisonPreset(key?: string): EbayComparisonPreset {
   return ebayComparisonPresets.find((preset) => preset.key === key) ?? ebayComparisonPresets[0];
 }
@@ -189,4 +193,3 @@ export function resolveEbayComparisonSettings(input: Partial<EbayComparisonSetti
     postalCode: input.postalCode
   };
 }
-

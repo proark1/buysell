@@ -8,7 +8,7 @@ import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
-import { amazonDiscoveryProfiles, discoveryProfiles, getDiscoveryProfile } from '../services/discoveryPolicy.js';
+import { amazonDiscoveryProfiles, discoveryProfiles, ebayDiscoveryProfiles, getDiscoveryProfile } from '../services/discoveryPolicy.js';
 import {
   buildAmazonDiscoveryCandidates,
   considerAmazonDiscoveryCandidate,
@@ -16,6 +16,13 @@ import {
   persistAmazonDiscoveryRun,
   type AmazonDiscoveryCandidateResult
 } from '../services/amazonDiscovery.js';
+import {
+  buildEbayDiscoveryCandidates,
+  compareEbayDiscoveryCandidates,
+  considerEbayDiscoveryCandidate,
+  persistEbayDiscoveryRun,
+  type EbayDiscoveryCandidateResult
+} from '../services/ebayDiscovery.js';
 import {
   amazonDiscoveryMarkets,
   ebayComparisonPresets,
@@ -97,6 +104,59 @@ const amazonDiscoveryConsiderRequestSchema = z.object({
   note: z.string().max(500).optional()
 });
 
+const comparisonThresholdsSchema = z.object({
+  minProfit: z.number().min(0).optional(),
+  minRoiPercent: z.number().min(0).max(500).optional(),
+  minMatchConfidencePercent: z.number().min(0).max(100).optional(),
+  minOpportunityScore: z.number().int().min(0).max(100).optional()
+}).optional();
+
+const ebayDiscoveryRunRequestSchema = z.object({
+  profileKey: z.string().default('starter-safe'),
+  categoryKey: z.string().optional(),
+  marketKey: z.string().optional(),
+  query: z.string().min(2).optional(),
+  categoryId: z.string().max(40).optional(),
+  limit: z.number().int().positive().max(100).optional(),
+  mode: z.enum(['MANUAL', 'AUTO']).default('MANUAL'),
+  autoCompare: z.boolean().default(false),
+  compareLimit: z.number().int().positive().max(50).optional(),
+  amazonMatchLimit: z.number().int().positive().max(10).optional(),
+  comparison: comparisonThresholdsSchema,
+  safeMode: z.boolean().optional(),
+  minEbayScore: z.number().int().min(0).max(100).optional(),
+  minSoldPrice: z.number().min(0).optional(),
+  maxSoldPrice: z.number().min(0).optional(),
+  soldOnly: z.boolean().default(true),
+  completedOnly: z.boolean().default(true),
+  buyingFormat: z.enum(['ANY', 'BIN', 'Auction', 'BO']).default('ANY'),
+  itemCondition: z.enum(['ANY', 'NEW', 'USED', 'OPEN_BOX']).default('ANY'),
+  preferredLocation: z.enum(['ANY', 'Domestic', 'Regional', 'Worldwide']).default('Domestic'),
+  postalCode: z.string().max(20).optional()
+});
+
+const ebayDiscoverySelectRequestSchema = z.object({
+  candidateIds: z.array(z.string()).min(1),
+  selected: z.boolean().default(true)
+});
+
+const ebayDiscoveryCompareRequestSchema = z.object({
+  runId: z.string().optional(),
+  candidateIds: z.array(z.string()).optional(),
+  limit: z.number().int().positive().max(50).optional(),
+  marketKey: z.string().optional(),
+  amazonMatchLimit: z.number().int().positive().max(10).optional(),
+  comparison: comparisonThresholdsSchema,
+  force: z.boolean().default(false)
+}).refine((value: { runId?: string; candidateIds?: string[] }) => value.runId || (value.candidateIds && value.candidateIds.length > 0), {
+  message: 'runId or candidateIds is required'
+});
+
+const ebayDiscoveryConsiderRequestSchema = z.object({
+  candidateId: z.string(),
+  note: z.string().max(500).optional()
+});
+
 type EbayComparisonSettingsBody = {
   presetKey?: string;
   minProfit?: number;
@@ -110,6 +170,13 @@ type EbayComparisonSettingsBody = {
   itemCondition?: 'ANY' | 'NEW' | 'USED' | 'OPEN_BOX';
   preferredLocation?: 'ANY' | 'Domestic' | 'Regional' | 'Worldwide';
   postalCode?: string;
+} | undefined;
+
+type ComparisonThresholdsBody = {
+  minProfit?: number;
+  minRoiPercent?: number;
+  minMatchConfidencePercent?: number;
+  minOpportunityScore?: number;
 } | undefined;
 
 function recordValue(value: unknown, key: string): unknown {
@@ -175,6 +242,17 @@ function estimatedAmazonDiscoveryTokens(data: {
   return Math.min(Math.max(data.limit ?? profile.defaultLimit, 1), 100);
 }
 
+function estimatedEbayDiscoveryTokens(data: {
+  profileKey?: string;
+  compareLimit?: number;
+  amazonMatchLimit?: number;
+}): number {
+  const profile = ebayDiscoveryProfiles.find((item) => item.key === data.profileKey) ?? ebayDiscoveryProfiles[0];
+  const compareLimit = data.compareLimit ?? profile.compareLimit;
+  const amazonMatchLimit = data.amazonMatchLimit ?? 3;
+  return Math.min(Math.max(compareLimit * Math.max(amazonMatchLimit, 1), 1), 100);
+}
+
 function lowKeepaTokenResponse(tokenStatus: KeepaTokenStatus, requestedTokens: number): {
   statusCode: number;
   body: Record<string, unknown>;
@@ -206,6 +284,7 @@ function sanitizePersistedRun(value: unknown): unknown {
       ? record.candidates.map((candidate) => {
         const rest = { ...(candidate as Record<string, unknown>) };
         delete rest.rawKeepaJson;
+        delete rest.rawSerpapiJson;
         return rest;
       })
       : record.candidates
@@ -216,6 +295,12 @@ function sanitizeAmazonDiscoveryCandidate(candidate: AmazonDiscoveryCandidateRes
   const amazon = { ...candidate.amazon };
   delete amazon.raw;
   return { ...candidate, amazon };
+}
+
+function sanitizeEbayDiscoveryCandidate(candidate: EbayDiscoveryCandidateResult): EbayDiscoveryCandidateResult {
+  const ebay = { ...candidate.ebay };
+  delete ebay.raw;
+  return { ...candidate, ebay };
 }
 
 function sanitizeOpportunity(opportunity: ProductOpportunity): ProductOpportunity {
@@ -237,6 +322,24 @@ function buildAmazonRejectionBreakdown(candidates: AmazonDiscoveryCandidateResul
       : candidate.safety.riskFlags.length > 0
         ? candidate.safety.riskFlags
         : ['Below Amazon Scout filters'];
+    for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+}
+
+function buildEbayRejectionBreakdown(candidates: EbayDiscoveryCandidateResult[]): Array<{
+  reason: string;
+  count: number;
+}> {
+  const counts = new Map<string, number>();
+  for (const candidate of candidates) {
+    const reasons = candidate.rejectionReasons.length > 0
+      ? candidate.rejectionReasons
+      : candidate.safety.riskFlags.length > 0
+        ? candidate.safety.riskFlags
+        : ['Below eBay Discovery filters'];
     for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
   }
   return [...counts.entries()]
@@ -274,12 +377,32 @@ function ruleConfigWithEbaySettings(ruleConfig: ActiveRuleConfig, settings: Ebay
   };
 }
 
+function ruleConfigWithComparisonThresholds(ruleConfig: ActiveRuleConfig, input: ComparisonThresholdsBody): ActiveRuleConfig {
+  return {
+    ...ruleConfig,
+    thresholds: {
+      ...ruleConfig.thresholds,
+      minimumProfitUsd: input?.minProfit ?? ruleConfig.thresholds.minimumProfitUsd,
+      minimumRoiPercent: input?.minRoiPercent ?? ruleConfig.thresholds.minimumRoiPercent,
+      minimumMatchConfidence: input?.minMatchConfidencePercent === undefined
+        ? ruleConfig.thresholds.minimumMatchConfidence
+        : input.minMatchConfidencePercent / 100
+    },
+    minimumOpportunityScore: input?.minOpportunityScore ?? ruleConfig.minimumOpportunityScore
+  };
+}
+
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
   app.get('/amazon-discovery/profiles', async () => ({
     profiles: amazonDiscoveryProfiles,
     markets: amazonDiscoveryMarkets,
     ebayComparisonPresets
+  }));
+  app.get('/ebay-discovery/profiles', async () => ({
+    profiles: ebayDiscoveryProfiles,
+    markets: amazonDiscoveryMarkets,
+    comparisonPresets: ebayComparisonPresets
   }));
   app.get('/amazon-discovery/token-status', async (_request, reply) => {
     const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
@@ -653,6 +776,216 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
 
     const ruleConfig = await getActiveRuleConfig(prisma);
     const result = await considerAmazonDiscoveryCandidate({
+      db: prisma,
+      candidateId: parsed.data.candidateId,
+      note: parsed.data.note,
+      ruleConfig
+    });
+    return result;
+  });
+
+  app.post('/ebay-discovery/run', async (request, reply) => {
+    const parsed = ebayDiscoveryRunRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid eBay discovery request', details: parsed.error.flatten() });
+    }
+
+    if (!env.DATABASE_URL) {
+      return reply.status(503).send({ error: 'DATABASE_URL is required for eBay discovery scans' });
+    }
+
+    const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
+    if (!serpApiKey) {
+      return reply.status(503).send({ error: 'SERPAPI_API_KEY is required for eBay discovery scans' });
+    }
+
+    const ruleConfig = await getActiveRuleConfig(prisma);
+    const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
+    const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
+    let result: Awaited<ReturnType<typeof buildEbayDiscoveryCandidates>>;
+    let persistedRun: Awaited<ReturnType<typeof persistEbayDiscoveryRun>>;
+    try {
+      result = await buildEbayDiscoveryCandidates({
+        serpApiKey,
+        ruleConfig,
+        profileKey: parsed.data.profileKey,
+        categoryKey: parsed.data.categoryKey,
+        marketKey: parsed.data.marketKey,
+        query: parsed.data.query,
+        categoryId: parsed.data.categoryId,
+        limit: parsed.data.limit,
+        mode: effectiveMode,
+        safeMode: parsed.data.safeMode,
+        minimumEbayScore: parsed.data.minEbayScore,
+        minSoldPrice: parsed.data.minSoldPrice,
+        maxSoldPrice: parsed.data.maxSoldPrice,
+        soldOnly: parsed.data.soldOnly,
+        completedOnly: parsed.data.completedOnly,
+        buyingFormat: parsed.data.buyingFormat,
+        itemCondition: parsed.data.itemCondition,
+        preferredLocation: parsed.data.preferredLocation,
+        postalCode: parsed.data.postalCode
+      });
+      persistedRun = await persistEbayDiscoveryRun(prisma, {
+        serpApiKey,
+        ruleConfig,
+        profileKey: parsed.data.profileKey,
+        categoryKey: parsed.data.categoryKey,
+        marketKey: parsed.data.marketKey,
+        query: parsed.data.query,
+        categoryId: parsed.data.categoryId,
+        limit: parsed.data.limit,
+        mode: effectiveMode,
+        safeMode: parsed.data.safeMode,
+        minimumEbayScore: parsed.data.minEbayScore,
+        minSoldPrice: parsed.data.minSoldPrice,
+        maxSoldPrice: parsed.data.maxSoldPrice,
+        soldOnly: parsed.data.soldOnly,
+        completedOnly: parsed.data.completedOnly,
+        buyingFormat: parsed.data.buyingFormat,
+        itemCondition: parsed.data.itemCondition,
+        preferredLocation: parsed.data.preferredLocation,
+        postalCode: parsed.data.postalCode
+      }, result);
+    } catch (error) {
+      if (error instanceof SerpApiError) {
+        const serpApiError = serpApiErrorResponse(error);
+        return reply.status(serpApiError.statusCode).send(serpApiError.body);
+      }
+      app.log.error({ error }, 'eBay discovery run failed');
+      return reply.status(500).send({
+        error: 'eBay Discovery failed while saving results',
+        details: error instanceof Error ? error.message.slice(0, 500) : 'Unexpected eBay Discovery persistence error'
+      });
+    }
+
+    let comparison;
+    if (parsed.data.autoCompare || parsed.data.mode === 'AUTO') {
+      const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
+      if (!keepaApiKey) {
+        return reply.status(503).send({ error: 'KEEPA_API_KEY is required for automatic Amazon comparison' });
+      }
+      try {
+        const requestedTokens = estimatedEbayDiscoveryTokens(parsed.data);
+        const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+        if (tokenStatus.tokensLeft < requestedTokens) {
+          const lowTokenResponse = lowKeepaTokenResponse(tokenStatus, requestedTokens);
+          return reply.status(lowTokenResponse.statusCode).send(lowTokenResponse.body);
+        }
+      } catch (error) {
+        if (error instanceof KeepaApiError) {
+          const keepaError = keepaErrorResponse(error);
+          return reply.status(keepaError.statusCode).send(keepaError.body);
+        }
+        throw error;
+      }
+
+      const runId = typeof persistedRun === 'object' && persistedRun && 'id' in persistedRun ? String(persistedRun.id) : undefined;
+      if (runId) {
+        try {
+          comparison = await compareEbayDiscoveryCandidates({
+            db: prisma,
+            keepaApiKey,
+            ruleConfig: comparisonRuleConfig,
+            runId,
+            limit: parsed.data.compareLimit,
+            marketKey: parsed.data.marketKey,
+            amazonMatchLimit: parsed.data.amazonMatchLimit
+          });
+        } catch (error) {
+          if (error instanceof KeepaApiError) {
+            const keepaError = keepaErrorResponse(error);
+            return reply.status(keepaError.statusCode).send(keepaError.body);
+          }
+          throw error;
+        }
+      }
+    }
+
+    return {
+      run: sanitizePersistedRun(persistedRun),
+      profile: result.profile,
+      category: result.category,
+      summary: {
+        scanned: result.candidates.length + result.rejected.length,
+        accepted: result.candidates.length,
+        rejected: result.rejected.length,
+        compared: comparison?.compared ?? 0,
+        opportunities: comparison?.opportunities.length ?? 0,
+        manualReviews: comparison?.manualReviews.length ?? 0
+      },
+      rejected: result.rejected.map(sanitizeEbayDiscoveryCandidate),
+      rejectedPreview: result.rejected.slice(0, 5).map(sanitizeEbayDiscoveryCandidate),
+      rejectionBreakdown: buildEbayRejectionBreakdown(result.rejected),
+      comparison: comparison
+        ? {
+          ...comparison,
+          opportunities: comparison.opportunities.map(sanitizeOpportunity),
+          manualReviews: comparison.manualReviews.map(sanitizeOpportunity),
+          rejected: comparison.rejected.map(sanitizeOpportunity)
+        }
+        : undefined
+    };
+  });
+
+  app.post('/ebay-discovery/select', async (request, reply) => {
+    const parsed = ebayDiscoverySelectRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid eBay discovery selection request', details: parsed.error.flatten() });
+    }
+
+    await prisma.ebayDiscoveryCandidate.updateMany({
+      where: { id: { in: parsed.data.candidateIds } },
+      data: { selected: parsed.data.selected }
+    });
+    return { selected: parsed.data.selected, count: parsed.data.candidateIds.length };
+  });
+
+  app.post('/ebay-discovery/compare', async (request, reply) => {
+    const parsed = ebayDiscoveryCompareRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid eBay discovery comparison request', details: parsed.error.flatten() });
+    }
+
+    const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
+    if (!keepaApiKey) {
+      return reply.status(503).send({ error: 'KEEPA_API_KEY is required for Amazon comparison' });
+    }
+
+    const ruleConfig = await getActiveRuleConfig(prisma);
+    const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
+    let comparison: Awaited<ReturnType<typeof compareEbayDiscoveryCandidates>>;
+    try {
+      comparison = await compareEbayDiscoveryCandidates({
+        db: prisma,
+        keepaApiKey,
+        ruleConfig: comparisonRuleConfig,
+        runId: parsed.data.runId,
+        candidateIds: parsed.data.candidateIds,
+        limit: parsed.data.limit,
+        marketKey: parsed.data.marketKey,
+        amazonMatchLimit: parsed.data.amazonMatchLimit,
+        force: parsed.data.force
+      });
+    } catch (error) {
+      if (error instanceof KeepaApiError) {
+        const keepaError = keepaErrorResponse(error);
+        return reply.status(keepaError.statusCode).send(keepaError.body);
+      }
+      throw error;
+    }
+
+    return comparison;
+  });
+
+  app.post('/ebay-discovery/consider', async (request, reply) => {
+    const parsed = ebayDiscoveryConsiderRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid eBay discovery review request', details: parsed.error.flatten() });
+    }
+
+    const ruleConfig = await getActiveRuleConfig(prisma);
+    const result = await considerEbayDiscoveryCandidate({
       db: prisma,
       candidateId: parsed.data.candidateId,
       note: parsed.data.note,

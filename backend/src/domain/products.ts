@@ -1,10 +1,12 @@
 export interface EbayCandidateInput {
+  itemId?: string;
   title: string;
   url?: string;
   soldPrice?: number;
   shippingPrice?: number;
   condition?: string;
   category?: string;
+  categoryId?: string;
   raw?: unknown;
 }
 

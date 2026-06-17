@@ -86,6 +86,22 @@ curl -X POST http://localhost:3000/amazon-discovery/compare \
 
 Amazon Scout intentionally runs before eBay comparison. It uses Keepa/Amazon signals — current price, 90-day average, price-drop percentage, Buy Box/in-stock status, sales rank, ratings/reviews, and safety filters — to reduce a large category into a smaller shortlist. Operators can bulk-select high-score Amazon candidates and compare only those products with eBay, which keeps SerpApi/eBay checks focused on candidates that already look promising.
 
+eBay-first discovery:
+
+```bash
+# Find sold eBay products first
+curl -X POST http://localhost:3000/ebay-discovery/run \
+  -H 'content-type: application/json' \
+  -d '{"profileKey":"starter-safe","categoryKey":"office-electronics","limit":25,"minEbayScore":50,"soldOnly":true,"completedOnly":true}'
+
+# Compare selected eBay sold candidates with Amazon/Keepa matches
+curl -X POST http://localhost:3000/ebay-discovery/compare \
+  -H 'content-type: application/json' \
+  -d '{"candidateIds":["ebay_discovery_candidate_id"],"amazonMatchLimit":3}'
+```
+
+eBay Discovery is the reverse of Amazon Scout. It starts with sold/completed eBay listings through SerpApi, applies eBay-side category, price, condition, location, and safety filters, then uses Keepa to find Amazon source matches. Profitable matches are persisted through the same opportunity/action pipeline; uncertain high-upside matches stay in manual review.
+
 Action list:
 
 ```bash
@@ -227,6 +243,7 @@ The **Discovery** tab is intentionally profile-first instead of a raw product du
 
 - Start in **Amazon Scout** to scan a profile/category and build a shortlist from Amazon data before eBay comparison.
 - Select high-score Amazon candidates in bulk, then click **Compare Selected With eBay**.
+- Use **eBay Discovery** when you want the reverse: start from sold eBay products, then compare selected candidates with Amazon prices.
 - Pick a profile such as **Starter Safe Products**, **Electronics Accessories**, **Tools & Office**, or **Home / Small Goods**.
 - Keep **Safe mode** enabled to exclude risky products such as clothing, shoes, food, supplements, cosmetics, medical items, weapons, adult items, and other blocked keywords/categories.
 - Run **Find Opportunities**. Accepted results are ranked by opportunity score, expected profit, ROI, Keepa price signal, demand signal, match confidence, and risk penalties.

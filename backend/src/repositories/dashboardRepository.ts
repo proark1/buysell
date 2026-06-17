@@ -29,6 +29,29 @@ const amazonDiscoveryCandidateSelect = {
   updatedAt: true
 };
 
+const ebayDiscoveryCandidateSelect = {
+  id: true,
+  runId: true,
+  ebayItemId: true,
+  title: true,
+  ebayUrl: true,
+  soldPrice: true,
+  shippingPrice: true,
+  condition: true,
+  category: true,
+  categoryId: true,
+  ebayScore: true,
+  safetyStatus: true,
+  riskFlags: true,
+  scoreBreakdown: true,
+  selected: true,
+  comparisonStatus: true,
+  productCandidateId: true,
+  amazonMatchId: true,
+  createdAt: true,
+  updatedAt: true
+};
+
 export async function getDashboardData(db: PrismaClient): Promise<unknown> {
   const [
     productCandidates,
@@ -39,6 +62,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     purchases,
     discoveryScanRuns,
     amazonDiscoveryRuns,
+    ebayDiscoveryRuns,
     ruleConfig
   ] = await Promise.all([
     db.productCandidate.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -59,9 +83,21 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
         }
       }
     }),
+    db.ebayDiscoveryRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 10,
+      include: {
+        candidates: {
+          select: ebayDiscoveryCandidateSelect,
+          orderBy: [{ comparisonStatus: 'asc' }, { ebayScore: 'desc' }, { createdAt: 'desc' }],
+          take: 100
+        }
+      }
+    }),
     db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } })
   ]);
   const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];
+  const ebayDiscoveryCandidates = ebayDiscoveryRuns[0]?.candidates ?? [];
 
   return {
     counts: {
@@ -72,7 +108,8 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
       actions: await db.actionItem.count(),
       purchases: await db.amazonPurchase.count(),
       discoveryScans: await db.discoveryScanRun.count(),
-      amazonScouts: await db.amazonDiscoveryRun.count()
+      amazonScouts: await db.amazonDiscoveryRun.count(),
+      ebayDiscoveries: await db.ebayDiscoveryRun.count()
     },
     productCandidates,
     amazonMatches,
@@ -83,6 +120,8 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     discoveryScanRuns,
     amazonDiscoveryRuns,
     amazonDiscoveryCandidates,
+    ebayDiscoveryRuns,
+    ebayDiscoveryCandidates,
     ruleConfig
   };
 }

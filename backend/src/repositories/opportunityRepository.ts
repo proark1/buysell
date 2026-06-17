@@ -14,6 +14,8 @@ export interface PersistOpportunityContext {
   discoveryRunId?: string;
   discoveryProfile?: string;
   amazonCandidateId?: string;
+  ebayCandidateId?: string;
+  source?: string;
 }
 
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
@@ -28,12 +30,13 @@ export async function persistOpportunity(
     data: {
       discoveryRunId: context.discoveryRunId,
       amazonCandidateId: context.amazonCandidateId,
+      ebayCandidateId: context.ebayCandidateId,
       discoveryProfile: context.discoveryProfile ?? opportunity.discoveryProfile,
       opportunityScore: opportunity.score?.total,
       safetyStatus: opportunity.safety?.status,
       riskFlags: opportunity.safety?.riskFlags ?? opportunity.decision.riskFlags,
       scoreBreakdown: opportunity.score,
-      source: 'serpapi',
+      source: context.source ?? 'serpapi',
       ebayTitle: opportunity.ebay.title,
       ebayUrl: opportunity.ebay.url,
       ebaySoldPrice: money(opportunity.ebay.soldPrice),
