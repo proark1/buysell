@@ -13,5 +13,7 @@ The Prisma schema in `backend/prisma/schema.prisma` defines the MVP persistence 
 - `AmazonPurchase`: Amazon purchase/tracking information for an eBay order.
 - `AuditLog`: append-only record of automation decisions and marketplace-impacting actions.
 - `ActionItem`: operator queue for next actions such as listing, repricing, pausing, buying, or manual review.
+- `AutomationRun`: lifecycle record for a computer-use/local-agent attempt, including mode, phase, status, risk score, result JSON, and errors.
+- `AutomationEvent`: append-only event stream for an automation run.
 - `RuleConfig`: active safety/business rules for opportunity scoring, buffers, blocklists, and daily limits.
 - `Order.actionItems`: links eBay orders to generated `BUY` action items for local-agent purchase review.

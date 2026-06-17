@@ -54,6 +54,8 @@ declare module '@prisma/client' {
     ebayDiscoveryRun: any;
     ebayDiscoveryCandidate: any;
     priceVerification: any;
+    automationRun: any;
+    automationEvent: any;
     $transaction<T>(fn: (tx: PrismaClient) => Promise<T>): Promise<T>;
     $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
     $queryRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;

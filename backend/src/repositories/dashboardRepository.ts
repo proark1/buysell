@@ -63,6 +63,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     discoveryScanRuns,
     amazonDiscoveryRuns,
     ebayDiscoveryRuns,
+    automationRuns,
     ruleConfig
   ] = await Promise.all([
     db.productCandidate.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -94,6 +95,25 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
         }
       }
     }),
+    db.automationRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 25,
+      include: {
+        actionItem: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            priority: true,
+            reason: true
+          }
+        },
+        events: {
+          orderBy: { createdAt: 'desc' },
+          take: 3
+        }
+      }
+    }),
     db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } })
   ]);
   const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];
@@ -109,7 +129,10 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
       purchases: await db.amazonPurchase.count(),
       discoveryScans: await db.discoveryScanRun.count(),
       amazonScouts: await db.amazonDiscoveryRun.count(),
-      ebayDiscoveries: await db.ebayDiscoveryRun.count()
+      ebayDiscoveries: await db.ebayDiscoveryRun.count(),
+      automationRuns: await db.automationRun.count(),
+      automationNeedsConfirmation: await db.automationRun.count({ where: { status: 'NEEDS_HUMAN_CONFIRMATION' } }),
+      automationFailures: await db.automationRun.count({ where: { status: { in: ['FAILED', 'REVIEW_REQUIRED'] } } })
     },
     productCandidates,
     amazonMatches,
@@ -122,6 +145,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     amazonDiscoveryCandidates,
     ebayDiscoveryRuns,
     ebayDiscoveryCandidates,
+    automationRuns,
     ruleConfig
   };
 }

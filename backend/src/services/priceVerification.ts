@@ -93,6 +93,28 @@ const verificationEvidence = (input: PriceVerificationResultInput): Record<strin
   evidence: input.evidence
 });
 
+const activeAutomationStatuses = ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION'];
+
+async function closeActiveVerificationAutomationRuns(
+  db: PrismaClient,
+  actionId: string,
+  status: 'COMPLETED' | 'FAILED' | 'REVIEW_REQUIRED',
+  result: Record<string, unknown>
+): Promise<void> {
+  await db.automationRun.updateMany({
+    where: {
+      actionItemId: actionId,
+      status: { in: activeAutomationStatuses }
+    },
+    data: {
+      status,
+      phase: status,
+      resultJson: result,
+      completedAt: new Date()
+    }
+  });
+}
+
 export async function submitPriceVerificationResult(
   db: PrismaClient,
   actionId: string,
@@ -172,7 +194,9 @@ export async function submitPriceVerificationResult(
 
   if (terminalStatus === 'PASSED') {
     if (verification.listingActionItemId) {
-      return { status: 'PASSED', listingActionItemId: verification.listingActionItemId, failureReasons: [] };
+      const result = { status: 'PASSED', listingActionItemId: verification.listingActionItemId, failureReasons: [] };
+      await closeActiveVerificationAutomationRuns(db, action.id, 'COMPLETED', result);
+      return result;
     }
 
     const transactionalDb = db as unknown as {
@@ -227,6 +251,21 @@ export async function submitPriceVerificationResult(
         data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date() }
       });
 
+      const result = { status: 'PASSED', listingActionItemId: listAction.id, failureReasons: [], observedProfit };
+
+      await tx.automationRun.updateMany({
+        where: {
+          actionItemId: action.id,
+          status: { in: activeAutomationStatuses }
+        },
+        data: {
+          status: 'COMPLETED',
+          phase: 'COMPLETED',
+          resultJson: result,
+          completedAt: new Date()
+        }
+      });
+
       await tx.auditLog.create({
         data: {
           entityType: 'PriceVerification',
@@ -237,7 +276,7 @@ export async function submitPriceVerificationResult(
         }
       });
 
-      return { status: 'PASSED', listingActionItemId: listAction.id, failureReasons: [], observedProfit };
+      return result;
     });
   }
 
@@ -278,6 +317,8 @@ export async function submitPriceVerificationResult(
       }
     });
     await db.actionItem.update({ where: { id: action.id }, data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date() } });
+    const result = { status: 'MANUAL_REVIEW', reviewActionItemId: reviewAction.id, failureReasons };
+    await closeActiveVerificationAutomationRuns(db, action.id, 'REVIEW_REQUIRED', result);
     await db.auditLog.create({
       data: {
         entityType: 'PriceVerification',
@@ -287,7 +328,7 @@ export async function submitPriceVerificationResult(
         afterJson: { reviewActionItemId: reviewAction.id, failureReasons }
       }
     });
-    return { status: 'MANUAL_REVIEW', reviewActionItemId: reviewAction.id, failureReasons };
+    return result;
   }
 
   await db.priceVerification.update({
@@ -307,6 +348,8 @@ export async function submitPriceVerificationResult(
     }
   });
   await db.actionItem.update({ where: { id: action.id }, data: { status: 'REJECTED', reviewedBy: actor, reviewedAt: new Date() } });
+  const result = { status: 'FAILED', failureReasons, observedProfit };
+  await closeActiveVerificationAutomationRuns(db, action.id, 'FAILED', result);
   await db.auditLog.create({
     data: {
       entityType: 'PriceVerification',
@@ -317,5 +360,5 @@ export async function submitPriceVerificationResult(
     }
   });
 
-  return { status: 'FAILED', failureReasons, observedProfit };
+  return result;
 }

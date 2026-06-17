@@ -58,7 +58,22 @@ When persisted opportunities produce a `LIST`, `REPRICE`, `PAUSE`, or `MANUAL_RE
 
 ## Local Agent Polling
 
-The local agent polls `GET /actions?status=APPROVED` and describes the approved work for the operator. It leaves manual marketplace actions open by default so the dashboard or API can record completion after the operator or a trusted executor actually finishes the step. `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` restores the scaffold auto-complete behavior only for controlled environments.
+The local agent polls `GET /actions?status=APPROVED` and starts an `AutomationRun` for each runnable action. Actions with an active `RUNNING` or `NEEDS_HUMAN_CONFIRMATION` run are not re-polled, so long browser tasks and prepared final-confirmation screens do not repeat every interval.
+
+Supported modes:
+
+- `VERIFY`: browser-observed Amazon/eBay price, condition, brand, and buying-format checks before a `LIST` action can be created.
+- `DRAFT`: listing, reprice, or pause preparation that stops before final submit.
+- `ASSISTED`: checkout or marketplace preparation that stops on the final human-confirmation screen.
+- `AUTOPILOT`: final submission is allowed only for a local agent explicitly configured with `LOCAL_AGENT_AUTOMATION_MODE=AUTOPILOT` and a trusted operator command.
+
+The local agent leaves manual marketplace actions open by default so the dashboard or API can record completion after the operator or a trusted executor actually finishes the step. `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` restores scaffold auto-complete behavior only for controlled environments.
+
+`COMPUTER_USE_VERIFIER_COMMAND` is the dedicated verification adapter. `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, and `COMPUTER_USE_AUTOPILOT_COMMAND` are mode-specific operator adapters; `COMPUTER_USE_OPERATOR_COMMAND` is the fallback. Each command receives job JSON on stdin and returns structured JSON plus evidence on stdout.
+
+## Automation Runs
+
+`AutomationRun` records the mode, agent type, phase, status, risk score, result JSON, and error for every AI/browser operation. `AutomationEvent` stores recent run events. The dashboard's Automation view shows these records, and the Actions view can queue a selected action as Verify, Draft, Assisted, or Autopilot by setting `payloadJson.automationMode` and approving it.
 
 ## Local Agent Authentication
 

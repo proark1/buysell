@@ -191,6 +191,7 @@ const dashboardHtml = `<!doctype html>
     <nav id="nav">
       <div class="nav-item active" data-view="overview"><span class="ic">▦</span> Overview</div>
       <div class="nav-item" data-view="actions"><span class="ic">⚡</span> Actions</div>
+      <div class="nav-item" data-view="automation"><span class="ic">◉</span> Automation</div>
       <div class="nav-item" data-view="catalog"><span class="ic">◳</span> Listings &amp; Orders</div>
       <div class="nav-item" data-view="discovery"><span class="ic">⌕</span> Discovery</div>
       <div class="nav-item" data-view="ebayDiscovery"><span class="ic">⇄</span> eBay Discovery</div>
@@ -211,6 +212,7 @@ const dashboardHtml = `<!doctype html>
         <select id="mobileNav" class="mobile-nav" aria-label="View">
           <option value="overview">Overview</option>
           <option value="actions">Actions</option>
+          <option value="automation">Automation</option>
           <option value="catalog">Listings &amp; Orders</option>
           <option value="discovery">Discovery</option>
           <option value="ebayDiscovery">eBay Discovery</option>
@@ -260,11 +262,26 @@ const dashboardHtml = `<!doctype html>
               <input id="actionId" placeholder="Action ID (or click a row)" style="max-width:320px">
               <button class="btn" onclick="approveAction()">✓ Approve</button>
               <button class="btn primary" onclick="executeAction()">▶ Execute</button>
+              <button class="btn" onclick="completeSelectedAction()">✓ Complete</button>
               <button class="btn ghost" onclick="rejectAction()">✕ Reject</button>
               <span class="selected-tag" id="selTag"></span>
             </div>
+            <div class="inline" style="margin-bottom:14px">
+              <button class="btn" onclick="queueAutomation('VERIFY')">Queue Verify</button>
+              <button class="btn" onclick="queueAutomation('DRAFT')">Queue Draft</button>
+              <button class="btn" onclick="queueAutomation('ASSISTED')">Queue Assisted</button>
+              <button class="btn danger" onclick="queueAutomation('AUTOPILOT')">Queue Autopilot</button>
+            </div>
             <div class="table-wrap"><div id="actionsTable"></div></div>
           </div>
+        </div>
+      </section>
+
+      <!-- AUTOMATION -->
+      <section class="view" id="view-automation">
+        <div class="panel">
+          <div class="panel-head"><h2>Automation Runs</h2><span class="hint">Browser and computer-use operator history</span></div>
+          <div class="panel-body"><div class="table-wrap"><div id="automationRunsTable"></div></div></div>
         </div>
       </section>
 
@@ -503,6 +520,7 @@ var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
   actions:['Actions','Approve, execute, and protect your listings'],
+  automation:['Automation','Track AI browser runs, evidence, and confirmation states'],
   catalog:['Listings & Orders','Manage marketplace inventory and fulfillment'],
   discovery:['Discovery','Scout Amazon first, then compare selected products with eBay'],
   ebayDiscovery:['eBay Discovery','Start from sold eBay products, then compare with Amazon'],
@@ -514,6 +532,8 @@ var BADGE={
   ACTIVE:'green',PAUSED:'amber',DRAFT:'slate',ENDED:'slate',
   NEW:'blue',VALIDATING:'amber',READY_FOR_PURCHASE:'blue',MANUAL_REVIEW:'amber',PURCHASED:'green',SHIPPED:'teal',
   VERIFY:'amber',LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
+  DRAFT:'blue',ASSISTED:'amber',AUTOPILOT:'red',
+  NEEDS_HUMAN_CONFIRMATION:'amber',FAILED:'red',REVIEW_REQUIRED:'amber',
   PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
   ,NO_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red'
 };
@@ -539,6 +559,18 @@ function money(v){if(v===null||v===undefined||v==='')return '—';var n=Number(v
 function when(v){if(!v)return '—';var d=new Date(v);return isNaN(d.getTime())?esc(v):d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function badge(v){if(!v)return '—';var c=COLORS[BADGE[v]]||'#94a3b8';return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+esc(v)+'</span>'}
 function txt(v){return (v===null||v===undefined||v==='')?'<span style="color:var(--faint)">—</span>':esc(v)}
+function actionMode(a){
+  var p=a&&a.payloadJson&&typeof a.payloadJson==='object'?a.payloadJson:{};
+  if(p.automationMode)return p.automationMode;
+  if(a&&a.type==='VERIFY')return 'VERIFY';
+  if(a&&a.type==='BUY')return 'ASSISTED';
+  return 'DRAFT';
+}
+function latestEventText(run){
+  var events=(run&&run.events)||[];
+  if(!events.length)return '—';
+  return events[0].eventType+': '+events[0].message;
+}
 function marketMoney(v,market){if(v===null||v===undefined||v==='')return '—';var n=Number(v);var symbol=(market&&market.currencySymbol)||'$';return isNaN(n)?esc(v):esc(symbol)+n.toFixed(2)}
 function lines(v){return String(v||'').split(/\\n|,/).map(function(s){return s.trim()}).filter(Boolean)}
 function lineText(v){return Array.isArray(v)?v.join('\\n'):''}
@@ -1081,8 +1113,8 @@ function renderEbayDiscoveryReport(candidates,rejectedExtra,preserveSelection){
 
 function render(){
   var d=state.data;if(!d)return;
-  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)']};
-  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Discovery'};
+  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
+  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Discovery',automationRuns:'Automation Runs',automationNeedsConfirmation:'Needs Confirm',automationFailures:'Automation Issues'};
   document.getElementById('stats').innerHTML=Object.keys(d.counts).map(function(k){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
@@ -1092,12 +1124,24 @@ function render(){
     {key:'id',label:'ID',fmt:function(v){return shortId(v)}},
     {key:'type',label:'Type',fmt:badge},
     {key:'status',label:'Status',fmt:badge},
+    {key:'payloadJson',label:'Mode',fmt:function(_v,r){return badge(actionMode(r))}},
     {key:'priority',label:'Pri'},
     {key:'reason',label:'Reason',cls:'truncate',fmt:function(v){return '<span class="truncate" title="'+esc(v||'')+'">'+txt(v)+'</span>'}},
     {key:'createdAt',label:'Created',fmt:when}
   ];
   document.getElementById('actionsTable').innerHTML=table(d.actions,actCols,{selectKey:'id'});
   document.getElementById('ovActions').innerHTML=table((d.actions||[]).slice(0,6),actCols,{selectKey:'id'});
+
+  document.getElementById('automationRunsTable').innerHTML=table(d.automationRuns||[],[
+    {key:'id',label:'Run',fmt:shortId},
+    {key:'mode',label:'Mode',fmt:badge},
+    {key:'status',label:'Status',fmt:badge},
+    {key:'phase',label:'Phase',fmt:function(v){return '<span class="mono">'+esc(v||'—')+'</span>'}},
+    {key:'riskScore',label:'Risk'},
+    {key:'actionItem',label:'Action',fmt:function(v){return v?badge(v.type)+' '+shortId(v.id):'—'}},
+    {key:'events',label:'Latest Event',cls:'truncate',fmt:function(_v,r){var e=latestEventText(r);return '<span class="truncate" title="'+esc(e)+'">'+esc(e)+'</span>'}},
+    {key:'startedAt',label:'Started',fmt:when}
+  ]);
 
   var listCols=[
     {key:'id',label:'ID',fmt:shortId},
@@ -1282,7 +1326,14 @@ function saveSafety(){
   function updateAction(status){var id=actId();if(!id)return;if(!confirmAction(status.charAt(0)+status.slice(1).toLowerCase()+' this action?',id))return;apiFetch('/actions/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:status,reviewedBy:'dashboard'})}).then(responseJson).then(function(){toast('Action '+status.toLowerCase(),id,'ok');load()}).catch(function(e){toast('Update failed',e.message,'err')})}
   function approveAction(){updateAction('APPROVED')}
   function rejectAction(){updateAction('REJECTED')}
+  function completeSelectedAction(){updateAction('COMPLETED')}
   function executeAction(){var id=actId();if(!id)return;if(!confirmAction('Execute this approved action?',id))return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(responseJson).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
+  function queueAutomation(mode){
+    var id=actId();if(!id)return;
+    var detail=mode==='AUTOPILOT'?'Autopilot allows a configured local agent to complete the final marketplace action. Backend limits and agent config still apply.':id;
+    if(!confirmAction('Queue '+mode+' automation?',detail))return;
+    apiFetch('/actions/'+encodeURIComponent(id)+'/automation-mode',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({mode:mode,approve:true,reviewedBy:'dashboard'})}).then(responseJson).then(function(res){toast('Automation queued',{id:id,mode:mode,status:res.action&&res.action.status},'ok');load();navigate('automation')}).catch(function(e){toast('Queue failed',e.message,'err')})
+  }
 function toggleAmazonCandidate(el){
   state.selectedAmazon[el.getAttribute('data-amazon-id')]=el.checked;
   updateAmazonScoutActions();

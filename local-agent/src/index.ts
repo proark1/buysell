@@ -21,6 +21,12 @@ async function pollApprovedActions(): Promise<void> {
     backendUrl: env.backendUrl,
     sharedSecret: env.sharedSecret,
     computerUseVerifierCommand: env.computerUseVerifierCommand,
+    computerUseOperatorCommand: env.computerUseOperatorCommand,
+    computerUseDraftCommand: env.computerUseDraftCommand,
+    computerUseAssistedCommand: env.computerUseAssistedCommand,
+    computerUseAutopilotCommand: env.computerUseAutopilotCommand,
+    automationMode: env.automationMode,
+    computerUseTimeoutMs: env.computerUseTimeoutMs,
     autoCompleteManualActions: env.autoCompleteManualActions
   };
   const actions = await fetchApprovedActions(clientOptions);

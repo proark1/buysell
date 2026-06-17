@@ -243,10 +243,45 @@ model ActionItem {
   amazonMatch        AmazonMatch?       @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
   order              Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
   priceVerification  PriceVerification?
+  automationRuns     AutomationRun[]
 
   @@index([status, type])
   @@index([productCandidateId])
   @@index([orderId])
+}
+
+model AutomationRun {
+  id             String            @id @default(cuid())
+  actionItemId   String
+  mode           String
+  agentType      String            @default("local-agent")
+  status         String            @default("RUNNING")
+  phase          String            @default("STARTED")
+  riskScore      Int               @default(50)
+  resultJson     Json?
+  error          String?
+  startedAt      DateTime          @default(now())
+  completedAt    DateTime?
+  updatedAt      DateTime          @updatedAt
+  actionItem     ActionItem        @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  events         AutomationEvent[]
+
+  @@index([actionItemId])
+  @@index([status, startedAt])
+  @@index([mode])
+}
+
+model AutomationEvent {
+  id              String        @id @default(cuid())
+  automationRunId String
+  level           String        @default("INFO")
+  eventType       String
+  message         String
+  dataJson        Json?
+  createdAt       DateTime      @default(now())
+  automationRun   AutomationRun @relation(fields: [automationRunId], references: [id], onDelete: Cascade)
+
+  @@index([automationRunId, createdAt])
 }
 
 model PriceVerification {

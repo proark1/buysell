@@ -5,7 +5,7 @@ Buysell is planned as a controlled eBay/Amazon arbitrage assistant. The MVP star
 ## Services
 
 - `backend`: Fastify API, worker entry points, Prisma data model, profit calculator, and future SerpApi/Keepa/eBay integrations.
-- `local-agent`: PC-side automation scaffold for Amazon checkout assistance. The MVP requires manual confirmation before purchase submission.
+- `local-agent`: PC-side automation host for real browser/computer-use verification, draft preparation, assisted execution, and controlled autopilot.
 - `Railway Postgres`: canonical store for product candidates, Amazon matches, profit snapshots, AI decisions, listings, orders, purchase records, and audit logs.
 
 ## Workflow
@@ -17,12 +17,15 @@ Buysell is planned as a controlled eBay/Amazon arbitrage assistant. The MVP star
 5. Approved listings are created or updated through the eBay Sell API.
 6. Active listings are repriced or paused when Keepa data shows margin or inventory risk.
 7. eBay orders are validated before a local PC agent prepares the Amazon purchase.
-8. The first production version stops for human approval before Amazon checkout submission.
+8. `AutomationRun` and `AutomationEvent` records track every AI/browser operator attempt, artifact, and confirmation state.
+9. The default production mode stops for human approval before Amazon checkout submission; explicit autopilot requires a trusted local operator command and agent-side opt-in.
 
 ## Safety Defaults
 
 - Manual approval for listing creation.
 - Manual approval for Amazon purchases.
+- Automation modes default to draft/assisted behavior unless the local agent is explicitly configured for autopilot.
+- Run/event records for every computer-use operation.
 - Audit log for every automated decision.
 - Hard profit, stock, and match-confidence gates before AI can recommend listing.
 - Immediate pause path for out-of-stock or unprofitable active listings.

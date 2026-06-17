@@ -7,6 +7,20 @@ export interface ActionItemDto {
   payloadJson?: unknown;
 }
 
+export type AutomationMode = 'VERIFY' | 'DRAFT' | 'ASSISTED' | 'AUTOPILOT';
+export type AutomationRunStatus = 'RUNNING' | 'NEEDS_HUMAN_CONFIRMATION' | 'COMPLETED' | 'FAILED' | 'REVIEW_REQUIRED' | 'CANCELLED';
+export type AutomationEventLevel = 'INFO' | 'WARN' | 'ERROR';
+
+export interface AutomationRunDto {
+  id: string;
+  actionItemId: string;
+  mode: AutomationMode;
+  status: AutomationRunStatus;
+  phase: string;
+  riskScore: number;
+  agentType: string;
+}
+
 export interface VerificationResultDto {
   status?: 'PASSED' | 'FAILED' | 'MANUAL_REVIEW';
   amazon?: {
@@ -37,6 +51,12 @@ export interface BackendClientOptions {
   backendUrl: string;
   sharedSecret?: string;
   computerUseVerifierCommand?: string;
+  computerUseOperatorCommand?: string;
+  computerUseDraftCommand?: string;
+  computerUseAssistedCommand?: string;
+  computerUseAutopilotCommand?: string;
+  automationMode?: AutomationMode;
+  computerUseTimeoutMs?: number;
   autoCompleteManualActions?: boolean;
 }
 
@@ -68,6 +88,75 @@ export async function completeAction(options: BackendClientOptions, actionId: st
 
   if (!response.ok) {
     throw new Error(`Backend action update failed with status ${response.status}`);
+  }
+}
+
+export async function startAutomationRun(
+  options: BackendClientOptions,
+  actionId: string,
+  input: {
+    mode: AutomationMode;
+    agentType?: string;
+    phase?: string;
+    riskScore?: number;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<AutomationRunDto> {
+  const response = await fetch(`${options.backendUrl}/actions/${actionId}/automation-runs`, {
+    method: 'POST',
+    headers: headers(options.sharedSecret),
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend automation start failed with status ${response.status}`);
+  }
+
+  const payload = await response.json() as { run: AutomationRunDto };
+  return payload.run;
+}
+
+export async function addAutomationEvent(
+  options: BackendClientOptions,
+  runId: string,
+  input: {
+    eventType: string;
+    message: string;
+    level?: AutomationEventLevel;
+    data?: Record<string, unknown>;
+  }
+): Promise<void> {
+  const response = await fetch(`${options.backendUrl}/automation-runs/${runId}/events`, {
+    method: 'POST',
+    headers: headers(options.sharedSecret),
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend automation event failed with status ${response.status}`);
+  }
+}
+
+export async function finishAutomationRun(
+  options: BackendClientOptions,
+  runId: string,
+  input: {
+    status: AutomationRunStatus;
+    phase?: string;
+    result?: Record<string, unknown>;
+    error?: string;
+    eventType?: string;
+    message?: string;
+  }
+): Promise<void> {
+  const response = await fetch(`${options.backendUrl}/automation-runs/${runId}`, {
+    method: 'PATCH',
+    headers: headers(options.sharedSecret),
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend automation finish failed with status ${response.status}`);
   }
 }
 

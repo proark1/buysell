@@ -130,7 +130,16 @@ export async function createActionForDecision(db: PrismaClient, input: CreateAct
 
 export async function listActionItems(db: PrismaClient, status = 'PENDING'): Promise<unknown[]> {
   return db.actionItem.findMany({
-    where: { status },
+    where: {
+      status,
+      ...(status === 'APPROVED'
+        ? {
+            automationRuns: {
+              none: { status: { in: ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION'] } }
+            }
+          }
+        : {})
+    },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
     take: 100
   });

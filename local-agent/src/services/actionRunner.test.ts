@@ -1,4 +1,4 @@
-import { describeAction } from './actionRunner.js';
+import { buildAutomationJob, describeAction, resolveAutomationMode } from './actionRunner.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 
 const buyDescription = describeAction({
@@ -43,5 +43,55 @@ const reviewDescription = describeAction({
 });
 
 assertEqual(reviewDescription, 'Open manual review for approved action action-3: Needs operator review.', 'REVIEW action description');
+
+const baseOptions = { backendUrl: 'http://localhost:3000', automationMode: 'ASSISTED' as const };
+
+assertEqual(resolveAutomationMode(baseOptions, {
+  id: 'verify-mode',
+  type: 'VERIFY',
+  status: 'APPROVED',
+  reason: 'Verify.'
+}), 'VERIFY', 'VERIFY action mode');
+
+assertEqual(resolveAutomationMode(baseOptions, {
+  id: 'list-mode',
+  type: 'LIST',
+  status: 'APPROVED',
+  reason: 'List.'
+}), 'DRAFT', 'LIST action default mode');
+
+assertEqual(resolveAutomationMode(baseOptions, {
+  id: 'buy-mode',
+  type: 'BUY',
+  status: 'APPROVED',
+  reason: 'Buy.'
+}), 'ASSISTED', 'BUY action default mode');
+
+assertEqual(resolveAutomationMode({ ...baseOptions, automationMode: 'AUTOPILOT' }, {
+  id: 'autopilot-mode',
+  type: 'LIST',
+  status: 'APPROVED',
+  reason: 'List autopilot.'
+}), 'AUTOPILOT', 'Configured AUTOPILOT mode');
+
+assertEqual(resolveAutomationMode(baseOptions, {
+  id: 'blocked-autopilot-mode',
+  type: 'LIST',
+  status: 'APPROVED',
+  reason: 'List autopilot.',
+  payloadJson: { automationMode: 'AUTOPILOT' }
+}), 'DRAFT', 'Payload AUTOPILOT cannot exceed configured mode');
+
+const draftJob = buildAutomationJob(baseOptions, {
+  id: 'draft-job',
+  type: 'LIST',
+  status: 'APPROVED',
+  reason: 'Prepare listing.',
+  payloadJson: { recommendedTitle: 'Acme scanner' }
+}, 'DRAFT');
+
+assertEqual(draftJob.guardrails.finalSubmitAllowed, false, 'DRAFT mode blocks final submit');
+assertEqual(draftJob.guardrails.requiresHumanConfirmation, true, 'DRAFT mode requires human confirmation');
+assertIncludes(draftJob.instructions.join(' '), 'Do not publish', 'DRAFT instructions stop before publish');
 
 console.log('local-agent actionRunner unit test passed');

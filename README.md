@@ -13,7 +13,7 @@ The initial implementation provides:
 ## Packages
 
 - `backend`: API, database schema, and future marketplace integrations.
-- `local-agent`: local browser automation host, initially manual-confirmation only.
+- `local-agent`: local browser automation host for verify, draft, assisted, and controlled autopilot workflows.
 
 ## Setup
 
@@ -130,10 +130,18 @@ Local agent:
 BACKEND_URL=http://localhost:3000 LOCAL_AGENT_RUN_ONCE=true npm run dev -w local-agent
 ```
 
-The local agent polls approved action-list items and keeps the MVP in manual-confirmation mode before any eBay or Amazon action is completed.
-Manual marketplace actions are left open by default after the agent prints the required operator step. Set `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` only when another trusted process has actually completed those manual actions and you want the scaffold to mark them complete.
+The local agent polls approved action-list items and runs the selected automation mode:
 
-Set `COMPUTER_USE_VERIFIER_COMMAND` to connect a real computer-use verifier. The local agent sends the verification job JSON to the command on stdin and expects a verification-result JSON object on stdout; it then posts that result back to `/actions/:id/verification-result`. No Playwright browser automation is used for this gate.
+- `VERIFY`: opens real browser evidence through `COMPUTER_USE_VERIFIER_COMMAND` or `COMPUTER_USE_OPERATOR_COMMAND`, then posts observed prices/conditions to `/actions/:id/verification-result`.
+- `DRAFT`: prepares listing/reprice/pause workflows and stops before publish, submit, pause, withdraw, purchase, or any irreversible final action.
+- `ASSISTED`: prepares checkout or marketplace changes up to the final confirmation screen and leaves the run waiting for human confirmation.
+- `AUTOPILOT`: allows the configured operator command to complete the final marketplace action only when visible page data matches the approved payload and guardrails.
+
+Set `LOCAL_AGENT_AUTOMATION_MODE` to the maximum mode the local agent may use. The default is `ASSISTED`; dashboard/payload requests for `AUTOPILOT` are ignored unless the agent is explicitly configured for `AUTOPILOT`.
+
+Manual marketplace actions are left open by default after the agent prepares the workflow or prints the required operator step. Set `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` only when another trusted process has actually completed those manual actions and you want the scaffold to mark them complete.
+
+Set `COMPUTER_USE_VERIFIER_COMMAND`, `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, `COMPUTER_USE_AUTOPILOT_COMMAND`, or fallback `COMPUTER_USE_OPERATOR_COMMAND` to connect Codex Computer Use or another real computer-use provider. The local agent sends a job JSON object on stdin and expects structured JSON on stdout. No Playwright browser automation is used for marketplace account flows.
 
 Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted.
 
