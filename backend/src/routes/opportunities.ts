@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { getKeepaTokenStatus, KeepaApiError, type KeepaTokenStatus } from '../clients/keepaClient.js';
+import { SerpApiError } from '../clients/serpApiClient.js';
 import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
@@ -99,6 +100,21 @@ function keepaErrorResponse(error: KeepaApiError): {
       retryAfterSeconds,
       tokensLeft: recordValue(parsedBody, 'tokensLeft'),
       refillInMs: refillIn
+    }
+  };
+}
+
+function serpApiErrorResponse(error: SerpApiError): {
+  statusCode: number;
+  body: Record<string, unknown>;
+} {
+  const upstreamStatusCodes = new Set([401, 402, 403, 429]);
+  return {
+    statusCode: upstreamStatusCodes.has(error.status) ? error.status : 502,
+    body: {
+      error: 'SerpAPI rejected the eBay comparison request',
+      status: error.status,
+      details: error.body.trim().slice(0, 300)
     }
   };
 }
@@ -442,13 +458,21 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       }
       const runId = typeof persistedRun === 'object' && persistedRun && 'id' in persistedRun ? String(persistedRun.id) : undefined;
       if (runId) {
-        comparison = await compareAmazonDiscoveryCandidates({
-          db: prisma,
-          serpApiKey,
-          ruleConfig,
-          runId,
-          limit: parsed.data.compareLimit
-        });
+        try {
+          comparison = await compareAmazonDiscoveryCandidates({
+            db: prisma,
+            serpApiKey,
+            ruleConfig,
+            runId,
+            limit: parsed.data.compareLimit
+          });
+        } catch (error) {
+          if (error instanceof SerpApiError) {
+            const serpApiError = serpApiErrorResponse(error);
+            return reply.status(serpApiError.statusCode).send(serpApiError.body);
+          }
+          throw error;
+        }
       }
     }
 
@@ -501,14 +525,23 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     }
 
     const ruleConfig = await getActiveRuleConfig(prisma);
-    const comparison = await compareAmazonDiscoveryCandidates({
-      db: prisma,
-      serpApiKey,
-      ruleConfig,
-      runId: parsed.data.runId,
-      candidateIds: parsed.data.candidateIds,
-      limit: parsed.data.limit
-    });
+    let comparison: Awaited<ReturnType<typeof compareAmazonDiscoveryCandidates>>;
+    try {
+      comparison = await compareAmazonDiscoveryCandidates({
+        db: prisma,
+        serpApiKey,
+        ruleConfig,
+        runId: parsed.data.runId,
+        candidateIds: parsed.data.candidateIds,
+        limit: parsed.data.limit
+      });
+    } catch (error) {
+      if (error instanceof SerpApiError) {
+        const serpApiError = serpApiErrorResponse(error);
+        return reply.status(serpApiError.statusCode).send(serpApiError.body);
+      }
+      throw error;
+    }
 
     return comparison;
   });
