@@ -25,6 +25,20 @@ globalThis.fetch = (async (input: string | URL | Request) => {
         csv: null,
         availabilityAmazon: 0,
         salesRankReference: 12345
+      },
+      {
+        asin: 'B000BIGRANK',
+        title: 'Huge rank product',
+        stats: {
+          current: [-1, 2499],
+          buyBoxPrice: 2299,
+          avg90: [-1, 2999]
+        },
+        reviews: {
+          ratingCount: [1, 2, 3]
+        },
+        availabilityAmazon: 0,
+        salesRankReference: 5_866_098_031
       }
     ]
   }), { status: 200 });
@@ -34,7 +48,7 @@ try {
   const matches = await findAmazonMatches({
     query: 'barcode scanner',
     apiKey: 'test-key',
-    limit: 1
+    limit: 2
   });
   const url = new URL(capturedUrl);
 
@@ -50,6 +64,8 @@ try {
   assertEqual(matches[0]?.asin, 'B000TEST', 'Keepa parsed ASIN');
   assertEqual(matches[0]?.buyBoxPrice, 12.99, 'Keepa parsed Buy Box price');
   assertEqual(matches[0]?.reviewCount, 318, 'Keepa parsed review object count');
+  assertEqual(matches[0]?.salesRank, 12345, 'Keepa parsed safe sales rank');
+  assertEqual(matches[1]?.salesRank, undefined, 'Keepa oversized sales rank is not persisted');
 } finally {
   globalThis.fetch = originalFetch;
 }

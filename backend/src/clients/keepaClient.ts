@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AmazonMatchInput } from '../domain/products.js';
+import { postgresInt } from '../utils/postgres.js';
 
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
@@ -150,9 +151,9 @@ function keepaProductToAmazonMatch(product: KeepaProduct, fallbackDomainId: numb
     avg90Price,
     priceDropPercent,
     availabilityStatus: product.availabilityAmazon === 0 ? 'IN_STOCK' : 'UNKNOWN',
-    salesRank: product.salesRankReference ?? undefined,
+    salesRank: postgresInt(product.salesRankReference),
     rating: product.rating ?? undefined,
-    reviewCount: keepaReviewCount(product),
+    reviewCount: postgresInt(keepaReviewCount(product)),
     categoryTree,
     rootCategory: categoryTree[0],
     matchConfidence: 0,

@@ -17,6 +17,7 @@ import { scoreOpportunity } from './opportunityScorer.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
 import { createActionForDecision } from '../repositories/actionRepository.js';
+import { postgresInt } from '../utils/postgres.js';
 import {
   getAmazonDiscoveryMarket,
   resolveEbayComparisonSettings,
@@ -279,59 +280,64 @@ export async function persistAmazonDiscoveryRun(
   options: AmazonDiscoveryRunOptions,
   result: Awaited<ReturnType<typeof buildAmazonDiscoveryCandidates>>
 ): Promise<unknown> {
-  const run = await db.amazonDiscoveryRun.create({
-    data: {
-      profileKey: result.profile.key,
-      categoryKey: result.category.key,
-      query: options.query?.trim(),
-      mode: options.mode ?? 'MANUAL',
-      status: 'COMPLETED',
-      filtersJson: result.filters,
-      scannedCount: result.candidates.length + result.rejected.length,
-      acceptedCount: result.candidates.length,
-      rejectedCount: result.rejected.length,
-      completedAt: new Date()
-    }
-  });
-
-  const persistCandidate = async (candidate: AmazonDiscoveryCandidateResult, accepted: boolean): Promise<void> => {
-    await db.amazonDiscoveryCandidate.create({
+  const transactionalDb = db as unknown as {
+    $transaction<T>(fn: (tx: PrismaClient) => Promise<T>): Promise<T>;
+  };
+  return transactionalDb.$transaction(async (tx) => {
+    const run = await tx.amazonDiscoveryRun.create({
       data: {
-        runId: run.id,
-        asin: candidate.amazon.asin,
-        title: candidate.amazon.title,
-        amazonUrl: candidate.amazon.url,
-        brand: candidate.amazon.brand,
-        rootCategory: candidate.amazon.rootCategory,
-        categoryTree: candidate.amazon.categoryTree,
-        currentPrice: money(candidate.amazon.currentPrice),
-        buyBoxPrice: money(candidate.amazon.buyBoxPrice),
-        avg90Price: money(candidate.amazon.avg90Price),
-        priceDropPercent: decimal(candidate.amazon.priceDropPercent),
-        availabilityStatus: candidate.amazon.availabilityStatus,
-        salesRank: candidate.amazon.salesRank,
-        rating: decimal(candidate.amazon.rating),
-        reviewCount: candidate.amazon.reviewCount,
-        amazonScore: candidate.score.total,
-        safetyStatus: candidate.safety.status,
-        riskFlags: candidate.safety.riskFlags,
-        scoreBreakdown: {
-          ...candidate.score,
-          rejectionReasons: candidate.rejectionReasons
-        },
-        selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
-        comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
-        rawKeepaJson: candidate.amazon.raw
+        profileKey: result.profile.key,
+        categoryKey: result.category.key,
+        query: options.query?.trim(),
+        mode: options.mode ?? 'MANUAL',
+        status: 'COMPLETED',
+        filtersJson: result.filters,
+        scannedCount: result.candidates.length + result.rejected.length,
+        acceptedCount: result.candidates.length,
+        rejectedCount: result.rejected.length,
+        completedAt: new Date()
       }
     });
-  };
 
-  for (const candidate of result.candidates) await persistCandidate(candidate, true);
-  for (const candidate of result.rejected) await persistCandidate(candidate, false);
+    const persistCandidate = async (candidate: AmazonDiscoveryCandidateResult, accepted: boolean): Promise<void> => {
+      await tx.amazonDiscoveryCandidate.create({
+        data: {
+          runId: run.id,
+          asin: candidate.amazon.asin,
+          title: candidate.amazon.title,
+          amazonUrl: candidate.amazon.url,
+          brand: candidate.amazon.brand,
+          rootCategory: candidate.amazon.rootCategory,
+          categoryTree: candidate.amazon.categoryTree,
+          currentPrice: money(candidate.amazon.currentPrice),
+          buyBoxPrice: money(candidate.amazon.buyBoxPrice),
+          avg90Price: money(candidate.amazon.avg90Price),
+          priceDropPercent: decimal(candidate.amazon.priceDropPercent),
+          availabilityStatus: candidate.amazon.availabilityStatus,
+          salesRank: postgresInt(candidate.amazon.salesRank),
+          rating: decimal(candidate.amazon.rating),
+          reviewCount: postgresInt(candidate.amazon.reviewCount),
+          amazonScore: candidate.score.total,
+          safetyStatus: candidate.safety.status,
+          riskFlags: candidate.safety.riskFlags,
+          scoreBreakdown: {
+            ...candidate.score,
+            rejectionReasons: candidate.rejectionReasons
+          },
+          selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
+          comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
+          rawKeepaJson: candidate.amazon.raw
+        }
+      });
+    };
 
-  return db.amazonDiscoveryRun.findUnique({
-    where: { id: run.id },
-    include: { candidates: { orderBy: { amazonScore: 'desc' } } }
+    for (const candidate of result.candidates) await persistCandidate(candidate, true);
+    for (const candidate of result.rejected) await persistCandidate(candidate, false);
+
+    return tx.amazonDiscoveryRun.findUnique({
+      where: { id: run.id },
+      include: { candidates: { orderBy: { amazonScore: 'desc' } } }
+    });
   });
 }
 

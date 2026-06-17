@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { ProductOpportunity } from '../domain/products.js';
 import { createActionForDecision } from './actionRepository.js';
+import { postgresInt } from '../utils/postgres.js';
 
 export interface PersistedOpportunityIds {
   productCandidateId: string;
@@ -57,9 +58,9 @@ export async function persistOpportunity(
       avg90Price: money(opportunity.amazon.avg90Price),
       priceDropPercent: opportunity.amazon.priceDropPercent === undefined ? undefined : decimal(opportunity.amazon.priceDropPercent),
       availabilityStatus: opportunity.amazon.availabilityStatus,
-      salesRank: opportunity.amazon.salesRank,
+      salesRank: postgresInt(opportunity.amazon.salesRank),
       rating: opportunity.amazon.rating === undefined ? undefined : decimal(opportunity.amazon.rating),
-      reviewCount: opportunity.amazon.reviewCount,
+      reviewCount: postgresInt(opportunity.amazon.reviewCount),
       rawKeepaJson: opportunity.amazon.raw,
       matchConfidence: decimal(opportunity.amazon.matchConfidence)
     }

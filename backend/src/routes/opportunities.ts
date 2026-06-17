@@ -533,7 +533,11 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         const keepaError = keepaErrorResponse(error);
         return reply.status(keepaError.statusCode).send(keepaError.body);
       }
-      throw error;
+      app.log.error({ error }, 'Amazon discovery run failed');
+      return reply.status(500).send({
+        error: 'Amazon Scout failed while saving results',
+        details: error instanceof Error ? error.message.slice(0, 500) : 'Unexpected Amazon Scout persistence error'
+      });
     }
 
     let comparison;
