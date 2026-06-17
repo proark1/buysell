@@ -1,4 +1,5 @@
-import { evaluateAmazonProductSafety } from './discoveryPolicy.js';
+import { evaluateAmazonProductSafety, getAmazonDiscoveryCategory, getAmazonDiscoveryProfile } from './discoveryPolicy.js';
+import { selectAmazonDiscoveryQueries } from './amazonDiscovery.js';
 import { scoreAmazonDiscoveryCandidate } from './amazonDiscoveryScorer.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 
@@ -63,5 +64,14 @@ const blockedScore = scoreAmazonDiscoveryCandidate(blockedAmazon, {
 }, blockedReview.riskFlags);
 
 assertEqual(blockedScore.total, 0, 'blocked Amazon candidate score');
+
+const scoutProfile = getAmazonDiscoveryProfile('starter-safe');
+const scoutCategory = getAmazonDiscoveryCategory(scoutProfile, 'office-electronics');
+const customQueries = selectAmazonDiscoveryQueries(scoutProfile, scoutCategory, 'thermal label printer', 10);
+assertEqual(customQueries.length, 1, 'custom Amazon Scout query count');
+assertEqual(customQueries[0], 'thermal label printer', 'custom Amazon Scout query');
+
+const seedQueries = selectAmazonDiscoveryQueries(scoutProfile, scoutCategory, undefined, 20);
+assertEqual(seedQueries.length, 2, 'category seed query count scales with limit');
 
 console.log('amazonDiscoveryScorer unit test passed');

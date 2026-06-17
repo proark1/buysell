@@ -57,6 +57,46 @@ const amazonDiscoveryCompareRequestSchema = z.object({
   message: 'runId or candidateIds is required'
 });
 
+function recordValue(value: unknown, key: string): unknown {
+  return value && typeof value === 'object' && key in value ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+function keepaErrorResponse(error: KeepaApiError): {
+  statusCode: number;
+  body: Record<string, unknown>;
+} {
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(error.body);
+  } catch {
+    parsedBody = undefined;
+  }
+
+  const keepaError = recordValue(parsedBody, 'error');
+  const message = typeof recordValue(keepaError, 'message') === 'string'
+    ? String(recordValue(keepaError, 'message'))
+    : undefined;
+  const refillIn = recordValue(parsedBody, 'refillIn');
+  const retryAfterSeconds = typeof refillIn === 'number' && refillIn > 0 ? Math.ceil(refillIn / 1000) : undefined;
+  const upstreamStatusCodes = new Set([401, 402, 403, 429]);
+  const statusCode = upstreamStatusCodes.has(error.status) ? error.status : 502;
+  const rateLimitMessage = retryAfterSeconds
+    ? `Keepa rate limit reached. Try again in ${retryAfterSeconds} seconds.`
+    : 'Keepa rate limit reached. Try again after your token budget refills.';
+
+  return {
+    statusCode,
+    body: {
+      error: error.status === 429 ? rateLimitMessage : 'Keepa rejected the Amazon discovery request',
+      status: error.status,
+      details: message ?? error.body.trim().slice(0, 300),
+      retryAfterSeconds,
+      tokensLeft: recordValue(parsedBody, 'tokensLeft'),
+      refillInMs: refillIn
+    }
+  };
+}
+
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
   app.get('/amazon-discovery/profiles', async () => ({ profiles: amazonDiscoveryProfiles }));
@@ -282,11 +322,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       }, result);
     } catch (error) {
       if (error instanceof KeepaApiError) {
-        return reply.status(502).send({
-          error: 'Keepa rejected the Amazon discovery request',
-          status: error.status,
-          details: error.body.trim().slice(0, 300)
-        });
+        const keepaError = keepaErrorResponse(error);
+        return reply.status(keepaError.statusCode).send(keepaError.body);
       }
       throw error;
     }

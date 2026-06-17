@@ -94,6 +94,20 @@ function safetyPolicy(ruleConfig: ActiveRuleConfig, safeMode: boolean, maxAmazon
   };
 }
 
+export function selectAmazonDiscoveryQueries(
+  profile: ReturnType<typeof getAmazonDiscoveryProfile>,
+  category: ReturnType<typeof getAmazonDiscoveryCategory>,
+  query: string | undefined,
+  limit: number
+): string[] {
+  const trimmed = query?.trim();
+  if (trimmed) return [trimmed];
+
+  const seeds = category.seedQueries.length > 0 ? category.seedQueries : [profile.label];
+  const queryCount = Math.min(seeds.length, Math.max(1, Math.ceil(limit / 10)));
+  return seeds.slice(0, queryCount);
+}
+
 export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRunOptions): Promise<{
   profile: ReturnType<typeof getAmazonDiscoveryProfile>;
   category: ReturnType<typeof getAmazonDiscoveryCategory>;
@@ -110,13 +124,11 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
   const minimumAmazonScore = options.minimumAmazonScore ?? profile.minimumAmazonScore;
   const minPriceDropPercent = options.minPriceDropPercent ?? profile.minPriceDropPercent;
   const query = options.query?.trim();
-  const queries = query
-    ? [query, ...category.seedQueries.filter((seed) => seed.toLowerCase() !== query.toLowerCase())]
-    : category.seedQueries;
+  const queries = selectAmazonDiscoveryQueries(profile, category, query, limit);
   const policy = safetyPolicy(options.ruleConfig, safeMode, maxAmazonCostUsd);
 
   const byAsin = new Map<string, AmazonMatchInput>();
-  for (const seed of queries.length > 0 ? queries : [profile.label]) {
+  for (const seed of queries) {
     const matches = await findAmazonMatches({
       query: seed,
       apiKey: options.keepaApiKey,
