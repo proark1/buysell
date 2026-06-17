@@ -91,6 +91,22 @@ export async function completeAction(options: BackendClientOptions, actionId: st
   }
 }
 
+export async function executeAction(
+  options: BackendClientOptions,
+  actionId: string,
+  result?: Record<string, unknown>
+): Promise<void> {
+  const response = await fetch(`${options.backendUrl}/actions/${actionId}/execute`, {
+    method: 'POST',
+    headers: headers(options.sharedSecret),
+    body: JSON.stringify({ actor: 'local-agent', result })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend action execution failed with status ${response.status}`);
+  }
+}
+
 export async function startAutomationRun(
   options: BackendClientOptions,
   actionId: string,

@@ -37,7 +37,17 @@ export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> 
     }
 
     if (latestPrice > storedPrice) {
-      const action = await db.actionItem.create({
+      const existingAction = await db.actionItem.findFirst({
+        where: {
+          productCandidateId: listing.productCandidateId,
+          amazonMatchId: listing.amazonMatchId,
+          type: 'PAUSE',
+          status: { in: ['PENDING', 'APPROVED'] }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const action = existingAction ?? await db.actionItem.create({
         data: {
           productCandidateId: listing.productCandidateId,
           amazonMatchId: listing.amazonMatchId,
@@ -48,17 +58,16 @@ export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> 
         }
       });
 
-      await db.ebayListing.update({ where: { id: listing.id }, data: { listingStatus: 'PAUSED' } });
       await db.auditLog.create({
         data: {
           entityType: 'EbayListing',
           entityId: listing.id,
-          action: 'AMAZON_PRICE_INCREASE_PAUSED_LISTING',
+          action: existingAction ? 'AMAZON_PRICE_INCREASE_PAUSE_ACTION_ALREADY_EXISTS' : 'AMAZON_PRICE_INCREASE_PAUSE_ACTION_CREATED',
           actor: 'amazon-price-monitor',
           afterJson: { actionItemId: action.id, asin: listing.amazonMatch.asin, storedPrice, latestPrice }
         }
       });
-      results.push({ listingId: listing.id, asin: listing.amazonMatch.asin, status: 'PAUSED', storedPrice, latestPrice, actionItemId: action.id });
+      results.push({ listingId: listing.id, asin: listing.amazonMatch.asin, status: existingAction ? 'PAUSE_ACTION_EXISTS' : 'PAUSE_ACTION_CREATED', storedPrice, latestPrice, actionItemId: action.id });
     } else {
       results.push({ listingId: listing.id, asin: listing.amazonMatch.asin, status: 'OK', storedPrice, latestPrice });
     }

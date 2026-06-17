@@ -1,5 +1,6 @@
-import { spawn } from 'node:child_process';
+import { z } from 'zod';
 import type { ActionItemDto, AutomationMode, AutomationRunStatus, VerificationResultDto } from './backendClient.js';
+import { runJsonCommand } from './jsonCommand.js';
 
 export interface ComputerUseAutomationJob {
   actionId: string;
@@ -29,51 +30,42 @@ export interface ComputerUseAutomationResult {
   verificationResult?: VerificationResultDto;
 }
 
+const verificationObservationSchema = z.object({
+  observedPrice: z.number().positive().optional(),
+  brand: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  condition: z.string().min(1).optional(),
+  buyingFormat: z.string().min(1).optional(),
+  url: z.string().url().optional(),
+  screenshotPath: z.string().min(1).optional(),
+  notes: z.string().min(1).optional()
+}).passthrough();
+
+const verificationResultSchema: z.ZodType<VerificationResultDto> = z.object({
+  status: z.enum(['PASSED', 'FAILED', 'MANUAL_REVIEW']).optional(),
+  amazon: verificationObservationSchema.optional(),
+  ebay: verificationObservationSchema.optional(),
+  evidence: z.record(z.unknown()).optional(),
+  failureReasons: z.array(z.string()).optional(),
+  checkedBy: z.string().optional()
+}).passthrough();
+
+const automationResultSchema: z.ZodType<ComputerUseAutomationResult> = z.object({
+  status: z.enum(['RUNNING', 'NEEDS_HUMAN_CONFIRMATION', 'COMPLETED', 'FAILED', 'REVIEW_REQUIRED', 'CANCELLED']).optional(),
+  summary: z.string().optional(),
+  evidence: z.record(z.unknown()).optional(),
+  artifacts: z.array(z.string()).optional(),
+  actionCompleted: z.boolean().optional(),
+  checkedBy: z.string().optional(),
+  failureReasons: z.array(z.string()).optional(),
+  nextSteps: z.array(z.string()).optional(),
+  verificationResult: verificationResultSchema.optional()
+}).passthrough();
+
 export async function runComputerUseOperator(
   command: string,
   job: ComputerUseAutomationJob,
   timeoutMs: number
 ): Promise<ComputerUseAutomationResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Computer-use operator timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on('data', (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on('error', (error: Error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on('close', (code: number | null) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(new Error(`Computer-use operator exited with ${code ?? 'unknown'}: ${stderr.trim()}`));
-        return;
-      }
-      try {
-        const parsed = JSON.parse(stdout) as unknown;
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          reject(new Error('Computer-use operator returned a non-object JSON value'));
-          return;
-        }
-        resolve(parsed as ComputerUseAutomationResult);
-      } catch (error) {
-        reject(new Error(`Computer-use operator returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`));
-      }
-    });
-
-    child.stdin.write(JSON.stringify(job));
-    child.stdin.end();
-  });
+  return runJsonCommand(command, job, timeoutMs, automationResultSchema, 'Computer-use operator');
 }

@@ -55,9 +55,30 @@ const parseMoney = (value: unknown, depth = 0): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
     if (/free/i.test(value)) return 0;
-    const match = value.replace(/,/g, '').match(/\d+(?:\.\d+)?/);
-    if (!match) return undefined;
-    const parsed = Number(match[0]);
+    const text = value.replace(/\s/g, '').replace(/[^0-9.,-]/g, '');
+    if (!/\d/.test(text)) return undefined;
+    const lastComma = text.lastIndexOf(',');
+    const lastDot = text.lastIndexOf('.');
+    let normalized: string;
+    if (lastComma >= 0 && lastDot >= 0) {
+      const decimal = lastComma > lastDot ? ',' : '.';
+      const thousands = decimal === ',' ? /\./g : /,/g;
+      normalized = text.replace(thousands, '').replace(decimal, '.');
+    } else if (lastComma >= 0) {
+      const decimalDigits = text.length - lastComma - 1;
+      normalized = decimalDigits > 0 && decimalDigits <= 2
+        ? text.replace(/\./g, '').replace(',', '.')
+        : text.replace(/,/g, '');
+    } else if (lastDot >= 0) {
+      const parts = text.split('.');
+      const decimalDigits = text.length - lastDot - 1;
+      normalized = parts.length > 2 || decimalDigits === 3
+        ? text.replace(/\./g, '')
+        : text;
+    } else {
+      normalized = text;
+    }
+    const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   if (!value || typeof value !== 'object' || depth > 3) return undefined;
@@ -70,8 +91,7 @@ const parseMoney = (value: unknown, depth = 0): number | undefined => {
 
   const text = parseText(value);
   if (!text) return undefined;
-  const parsed = Number(text.replace(/,/g, '').replace(/[^0-9.]/g, ''));
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return parseMoney(text);
 };
 
 const parseCategory = (result: Record<string, unknown>): string | undefined => {

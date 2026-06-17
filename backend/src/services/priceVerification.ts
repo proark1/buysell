@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { calculateProfit } from './profitCalculator.js';
+import { conflict, notFound } from '../security/httpErrors.js';
 
 export interface VerificationObservation {
   observedPrice?: number;
@@ -129,11 +130,11 @@ export async function submitPriceVerificationResult(
     }
   });
 
-  if (!action) throw new Error('Verification action not found');
-  if (action.type !== 'VERIFY') throw new Error('Action is not a live verification action');
+  if (!action) throw notFound('Verification action not found', 'VERIFICATION_ACTION_NOT_FOUND');
+  if (action.type !== 'VERIFY') throw conflict('Action is not a live verification action', 'ACTION_NOT_VERIFICATION');
 
   const verification = action.priceVerification;
-  if (!verification) throw new Error('Verification record not found for action');
+  if (!verification) throw notFound('Verification record not found for action', 'PRICE_VERIFICATION_NOT_FOUND');
 
   const expectedAmazonPrice = numberValue(verification.expectedAmazonPrice ?? action.amazonMatch?.buyBoxPrice ?? action.amazonMatch?.currentPrice);
   const expectedEbayPrice = numberValue(verification.expectedEbayPrice ?? action.productCandidate?.ebaySoldPrice);

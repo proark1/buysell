@@ -21,17 +21,19 @@ export async function setCredentialValue(db: PrismaClient, key: string, value: s
 
 /**
  * Decrypt and return a stored credential, or undefined when it is not set or the
- * database is unreachable. Never throws so callers can safely fall back to env.
+ * database is unreachable. Decryption failures are allowed to surface because
+ * they indicate an encryption-key mismatch that should not be silently ignored.
  */
 export async function getCredentialValue(db: PrismaClient, key: string): Promise<string | undefined> {
+  let row: { encryptedValue: string } | null;
   try {
-    const row = await db.credential.findUnique({ where: { key } });
-    if (!row) return undefined;
-    const value = decryptJson<string>(row.encryptedValue);
-    return typeof value === 'string' && value !== '' ? value : undefined;
+    row = await db.credential.findUnique({ where: { key }, select: { encryptedValue: true } });
   } catch {
     return undefined;
   }
+  if (!row) return undefined;
+  const value = decryptJson<string>(row.encryptedValue);
+  return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /** Return the set of credential keys that currently have a stored value. */

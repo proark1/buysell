@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { conflict, notFound } from '../security/httpErrors.js';
 
 export const automationModes = ['VERIFY', 'DRAFT', 'ASSISTED', 'AUTOPILOT'] as const;
 export const automationRunStatuses = ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION', 'COMPLETED', 'FAILED', 'REVIEW_REQUIRED', 'CANCELLED'] as const;
@@ -58,6 +59,20 @@ export function isTerminalAutomationStatus(status: string): boolean {
   return !activeAutomationStatuses.includes(status as (typeof activeAutomationStatuses)[number]);
 }
 
+const prismaErrorCode = (error: unknown): string | undefined => (
+  error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined
+);
+
+const latestActiveRun = (db: PrismaClient, actionItemId: string): Promise<unknown> => db.automationRun.findFirst({
+  where: {
+    actionItemId,
+    status: { in: [...activeAutomationStatuses] }
+  },
+  orderBy: { startedAt: 'desc' }
+});
+
 export async function createAutomationRun(db: PrismaClient, input: CreateAutomationRunInput): Promise<unknown> {
   const action = await db.actionItem.findUnique({
     where: { id: input.actionItemId },
@@ -70,34 +85,43 @@ export async function createAutomationRun(db: PrismaClient, input: CreateAutomat
     }
   });
 
-  if (!action) throw new Error('Action not found');
-  if (action.status !== 'APPROVED') throw new Error('Action must be APPROVED before automation can run');
+  if (!action) throw notFound('Action not found', 'ACTION_NOT_FOUND');
+  if (action.status !== 'APPROVED') throw conflict('Action must be APPROVED before automation can run', 'ACTION_NOT_APPROVED');
 
   const existing = action.automationRuns[0];
   if (existing) return existing;
 
   const riskScore = input.riskScore ?? automationRiskScore(action, input.mode);
-  const run = await db.automationRun.create({
-    data: {
-      actionItemId: action.id,
-      mode: input.mode,
-      agentType: input.agentType ?? 'local-agent',
-      phase: input.phase ?? 'STARTED',
-      riskScore,
-      resultJson: input.metadata ? { metadata: input.metadata } : undefined,
-      events: {
-        create: {
-          eventType: 'AUTOMATION_STARTED',
-          message: `${input.mode} automation started for ${action.type} action`,
-          dataJson: {
-            actionType: action.type,
-            riskScore,
-            metadata: input.metadata
+  let run;
+  try {
+    run = await db.automationRun.create({
+      data: {
+        actionItemId: action.id,
+        mode: input.mode,
+        agentType: input.agentType ?? 'local-agent',
+        phase: input.phase ?? 'STARTED',
+        riskScore,
+        resultJson: input.metadata ? { metadata: input.metadata } : undefined,
+        events: {
+          create: {
+            eventType: 'AUTOMATION_STARTED',
+            message: `${input.mode} automation started for ${action.type} action`,
+            dataJson: {
+              actionType: action.type,
+              riskScore,
+              metadata: input.metadata
+            }
           }
         }
       }
+    });
+  } catch (error) {
+    if (prismaErrorCode(error) === 'P2002') {
+      const active = await latestActiveRun(db, action.id);
+      if (active) return active;
     }
-  });
+    throw error;
+  }
 
   await db.auditLog.create({
     data: {
@@ -118,6 +142,9 @@ export async function createAutomationRun(db: PrismaClient, input: CreateAutomat
 }
 
 export async function addAutomationEvent(db: PrismaClient, input: AddAutomationEventInput): Promise<unknown> {
+  const run = await db.automationRun.findUnique({ where: { id: input.runId } });
+  if (!run) throw notFound('Automation run not found', 'AUTOMATION_RUN_NOT_FOUND');
+
   return db.automationEvent.create({
     data: {
       automationRunId: input.runId,
@@ -130,6 +157,9 @@ export async function addAutomationEvent(db: PrismaClient, input: AddAutomationE
 }
 
 export async function finishAutomationRun(db: PrismaClient, input: FinishAutomationRunInput): Promise<unknown> {
+  const existing = await db.automationRun.findUnique({ where: { id: input.runId } });
+  if (!existing) throw notFound('Automation run not found', 'AUTOMATION_RUN_NOT_FOUND');
+
   const completedAt = isTerminalAutomationStatus(input.status) ? new Date() : undefined;
   const run = await db.automationRun.update({
     where: { id: input.runId },

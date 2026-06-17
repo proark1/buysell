@@ -1,5 +1,5 @@
 import type { ActionItemDto, AutomationMode, AutomationRunStatus, BackendClientOptions, VerificationResultDto } from './backendClient.js';
-import { addAutomationEvent, completeAction, finishAutomationRun, startAutomationRun, submitVerificationResult } from './backendClient.js';
+import { addAutomationEvent, executeAction, finishAutomationRun, startAutomationRun, submitVerificationResult } from './backendClient.js';
 import { runComputerUseOperator, type ComputerUseAutomationJob, type ComputerUseAutomationResult } from './computerUseOperator.js';
 import { runComputerUseVerifier, type ComputerUseVerificationJob } from './computerUseVerifier.js';
 
@@ -302,7 +302,7 @@ async function runOperatorMode(options: BackendClientOptions, action: ActionItem
   });
 
   if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions || result.actionCompleted === true)) {
-    await completeAction(options, action.id);
+    await executeAction(options, action.id, result as Record<string, unknown>);
   }
 }
 

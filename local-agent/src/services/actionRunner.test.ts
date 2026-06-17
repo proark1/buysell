@@ -1,4 +1,5 @@
 import { buildAutomationJob, describeAction, resolveAutomationMode } from './actionRunner.js';
+import { parseCommandLine } from './jsonCommand.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 
 const buyDescription = describeAction({
@@ -93,5 +94,11 @@ const draftJob = buildAutomationJob(baseOptions, {
 assertEqual(draftJob.guardrails.finalSubmitAllowed, false, 'DRAFT mode blocks final submit');
 assertEqual(draftJob.guardrails.requiresHumanConfirmation, true, 'DRAFT mode requires human confirmation');
 assertIncludes(draftJob.instructions.join(' '), 'Do not publish', 'DRAFT instructions stop before publish');
+
+const parsedCommand = parseCommandLine('node "./operator script.js" --mode draft');
+assertEqual(parsedCommand[0], 'node', 'command parser executable');
+assertEqual(parsedCommand[1], './operator script.js', 'command parser quoted path');
+assertEqual(parsedCommand[2], '--mode', 'command parser argument');
+assertEqual(parsedCommand[3], 'draft', 'command parser argument value');
 
 console.log('local-agent actionRunner unit test passed');

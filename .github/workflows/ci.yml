@@ -28,6 +28,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prisma validation
+        run: DATABASE_URL='postgresql://user:pass@localhost:5432/buysell' npm run prisma:validate
+
       - name: Test
         run: npm run test
 

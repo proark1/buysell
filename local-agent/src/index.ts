@@ -38,12 +38,27 @@ async function pollApprovedActions(): Promise<void> {
 
 console.log('Local agent scaffold ready. Amazon checkout automation requires manual confirmation in the MVP.');
 
+let pollInProgress = false;
+
+async function pollApprovedActionsOnce(): Promise<void> {
+  if (pollInProgress) {
+    console.log('Previous local-agent poll is still running; skipping this interval.');
+    return;
+  }
+  pollInProgress = true;
+  try {
+    await pollApprovedActions();
+  } finally {
+    pollInProgress = false;
+  }
+}
+
 if (env.runOnce) {
-  await pollApprovedActions();
+  await pollApprovedActionsOnce();
 } else {
-  await pollApprovedActions();
+  await pollApprovedActionsOnce();
   setInterval(() => {
-    pollApprovedActions().catch((error: unknown) => {
+    pollApprovedActionsOnce().catch((error: unknown) => {
       console.error(error);
     });
   }, env.pollIntervalMs);

@@ -57,6 +57,7 @@ Opportunity search:
 ```bash
 curl -X POST http://localhost:3000/opportunities/search \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"query":"wireless barcode scanner","limit":5,"persist":false}'
 ```
 
@@ -65,6 +66,7 @@ Guided discovery scan:
 ```bash
 curl -X POST http://localhost:3000/opportunities/scan \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"profileKey":"starter-safe","limit":8,"safeMode":true,"minScore":65,"persist":true}'
 ```
 
@@ -82,11 +84,13 @@ Amazon-first scout:
 # Find promising Amazon candidates before spending eBay comparison checks
 curl -X POST http://localhost:3000/amazon-discovery/run \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"profileKey":"starter-safe","categoryKey":"office-electronics","limit":40,"minAmazonScore":62,"safeMode":true}'
 
 # Compare selected Amazon candidates with eBay sold comps
 curl -X POST http://localhost:3000/amazon-discovery/compare \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"candidateIds":["amazon_discovery_candidate_id"],"limit":10}'
 ```
 
@@ -98,11 +102,13 @@ eBay-first discovery:
 # Find sold eBay products first
 curl -X POST http://localhost:3000/ebay-discovery/run \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"profileKey":"starter-safe","categoryKey":"office-electronics","limit":25,"minEbayScore":50,"soldOnly":true,"completedOnly":true}'
 
 # Compare selected eBay sold candidates with Amazon/Keepa matches
 curl -X POST http://localhost:3000/ebay-discovery/compare \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"candidateIds":["ebay_discovery_candidate_id"],"amazonMatchLimit":3}'
 ```
 
@@ -115,12 +121,15 @@ Listing opportunities are not queued directly as `LIST` actions. A profitable `L
 Action list:
 
 ```bash
-curl http://localhost:3000/actions
+curl http://localhost:3000/actions \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
 curl -X PATCH http://localhost:3000/actions/action_id \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"status":"APPROVED","reviewedBy":"operator"}'
 curl -X POST http://localhost:3000/actions/action_id/verification-result \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"status":"PASSED","amazon":{"observedPrice":49.99,"brand":"Acme","condition":"New"},"ebay":{"observedPrice":99.99,"brand":"Acme","condition":"New","buyingFormat":"Buy It Now"}}'
 ```
 
@@ -141,7 +150,7 @@ Set `LOCAL_AGENT_AUTOMATION_MODE` to the maximum mode the local agent may use. T
 
 Manual marketplace actions are left open by default after the agent prepares the workflow or prints the required operator step. Set `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` only when another trusted process has actually completed those manual actions and you want the scaffold to mark them complete.
 
-Set `COMPUTER_USE_VERIFIER_COMMAND`, `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, `COMPUTER_USE_AUTOPILOT_COMMAND`, or fallback `COMPUTER_USE_OPERATOR_COMMAND` to connect Codex Computer Use or another real computer-use provider. The local agent sends a job JSON object on stdin and expects structured JSON on stdout. No Playwright browser automation is used for marketplace account flows.
+Set `COMPUTER_USE_VERIFIER_COMMAND`, `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, `COMPUTER_USE_AUTOPILOT_COMMAND`, or fallback `COMPUTER_USE_OPERATOR_COMMAND` to connect Codex Computer Use or another real computer-use provider. The command is parsed into an executable plus arguments, not run through a shell, so use direct commands such as `node ./operator.js` instead of shell pipelines. The local agent sends a job JSON object on stdin and expects validated structured JSON on stdout. No Playwright browser automation is used for marketplace account flows.
 
 Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted.
 
@@ -149,7 +158,8 @@ Execute approved listing draft action:
 
 ```bash
 curl -X POST http://localhost:3000/actions/action_id/execute \
-  -H 'content-type: application/json'
+  -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
 ```
 
 Manual eBay order intake:
@@ -157,6 +167,7 @@ Manual eBay order intake:
 ```bash
 curl -X POST http://localhost:3000/orders/ebay/manual \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"ebayOrderId":"ORDER-1","ebayItemId":"EBAY-ITEM-1","buyerName":"Buyer","buyerShippingAddress":{"country":"US"},"salePrice":54.99}'
 ```
 
@@ -165,6 +176,7 @@ Record Amazon purchase:
 ```bash
 curl -X POST http://localhost:3000/orders/order_id/amazon-purchase \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"asin":"B000000000","amazonOrderId":"AMZ-1","purchasePrice":31.50,"status":"PURCHASED"}'
 ```
 
@@ -182,7 +194,7 @@ On Railway:
    ```
 
    Use the exact service name shown in your project. If the database service is renamed from `Postgres`, update the namespace in the reference.
-3. Add the remaining production variables from `.env.example` to the app service. At minimum set a stable `BUYSELL_ENCRYPTION_KEY` with 32+ characters so encrypted credentials remain decryptable across deploys.
+3. Add the remaining production variables from `.env.example` to the app service. Set a stable `BUYSELL_ENCRYPTION_KEY` with 32+ characters; production startup now rejects missing or shorter encryption keys so stored credentials cannot be encrypted with a development fallback.
 4. Deploy the app service. On every deploy the start command runs `prisma migrate deploy` against `DATABASE_URL` before booting the server, so the schema is created/updated automatically.
 5. After the first successful deploy, optionally seed default rules:
 
@@ -195,7 +207,7 @@ The dashboard shows a live **Postgres connected / DB disconnected** indicator ba
 Useful Prisma checks:
 
 ```bash
-# Validate schema locally. Requires DATABASE_URL to exist, but does not connect.
+# Validate schema locally. Uses a placeholder DATABASE_URL if one is not set; it does not connect.
 npm run prisma:validate
 
 # Run pending migrations with Railway production variables.
@@ -281,12 +293,14 @@ The **API Keys** tab lets operators manage all API keys and config (SerpApi, Kee
 
 ```bash
 # Read masked status of all managed keys
-curl http://localhost:3000/api/credentials
+curl http://localhost:3000/api/credentials \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
 
 # Save / overwrite a key (empty value clears it)
 curl -X PUT http://localhost:3000/api/credentials/SERPAPI_API_KEY \
   -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"value":"your-serpapi-key"}'
 ```
 
-Both routes are gated by `LOCAL_AGENT_SHARED_SECRET` (when set), matching the rest of the protected API. `DATABASE_URL` and `BUYSELL_ENCRYPTION_KEY` are intentionally **not** manageable here — they are required from the environment to reach and decrypt the credential store. Set `BUYSELL_ENCRYPTION_KEY` to a stable 32+ character value in production so stored secrets remain decryptable across deploys.
+Both routes require a configured local-agent secret, matching the rest of the protected API. `DATABASE_URL` and `BUYSELL_ENCRYPTION_KEY` are intentionally **not** manageable here — they are required from the environment to reach and decrypt the credential store. Set `BUYSELL_ENCRYPTION_KEY` to a stable 32+ character value in production so stored secrets remain decryptable across deploys.

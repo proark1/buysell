@@ -16,6 +16,11 @@ const updateActionBodySchema = z.object({
   reviewedBy: z.string().min(1).optional()
 });
 
+const executeActionBodySchema = z.object({
+  actor: z.string().min(1).optional(),
+  result: z.record(z.unknown()).optional()
+}).default({});
+
 const verificationObservationSchema = z.object({
   observedPrice: z.number().positive().optional(),
   brand: z.string().min(1).optional(),
@@ -55,11 +60,18 @@ export async function registerActionRoutes(app: FastifyInstance): Promise<void> 
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 
     const params = updateActionParamsSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.status(400).send({ error: 'Invalid action execute request', details: params.error.flatten() });
+    const body = executeActionBodySchema.safeParse(request.body ?? {});
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        error: 'Invalid action execute request',
+        details: {
+          params: params.success ? undefined : params.error.flatten(),
+          body: body.success ? undefined : body.error.flatten()
+        }
+      });
     }
 
-    return { result: await executeAction(prisma, params.data.id) };
+    return { result: await executeAction(prisma, params.data.id, body.data) };
   });
 
   app.post('/actions/:id/verification-result', async (request, reply) => {

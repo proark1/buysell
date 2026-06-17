@@ -21,11 +21,46 @@ export interface PersistOpportunityContext {
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
 const decimal = (value: number): string => value.toFixed(3);
 
-export async function persistOpportunity(
+async function existingPersistedOpportunity(
+  db: PrismaClient,
+  context: PersistOpportunityContext
+): Promise<PersistedOpportunityIds | undefined> {
+  const where = context.amazonCandidateId
+    ? { amazonCandidateId: context.amazonCandidateId }
+    : context.ebayCandidateId
+      ? { ebayCandidateId: context.ebayCandidateId }
+      : undefined;
+  if (!where) return undefined;
+
+  const existing = await db.productCandidate.findFirst({
+    where,
+    include: {
+      amazonMatches: { orderBy: { createdAt: 'desc' }, take: 1 },
+      profitSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
+      aiDecisions: { orderBy: { createdAt: 'desc' }, take: 1 }
+    }
+  });
+  const amazonMatch = existing?.amazonMatches[0];
+  const profitSnapshot = existing?.profitSnapshots[0];
+  const aiDecision = existing?.aiDecisions[0];
+  if (!existing || !amazonMatch || !profitSnapshot || !aiDecision) return undefined;
+
+  return {
+    productCandidateId: existing.id,
+    amazonMatchId: amazonMatch.id,
+    profitSnapshotId: profitSnapshot.id,
+    aiDecisionId: aiDecision.id
+  };
+}
+
+async function persistOpportunityRows(
   db: PrismaClient,
   opportunity: ProductOpportunity,
-  context: PersistOpportunityContext = {}
+  context: PersistOpportunityContext
 ): Promise<PersistedOpportunityIds> {
+  const existing = await existingPersistedOpportunity(db, context);
+  if (existing) return existing;
+
   const productCandidate = await db.productCandidate.create({
     data: {
       discoveryRunId: context.discoveryRunId,
@@ -135,6 +170,18 @@ export async function persistOpportunity(
     profitSnapshotId: profitSnapshot.id,
     aiDecisionId: aiDecision.id
   };
+}
+
+export async function persistOpportunity(
+  db: PrismaClient,
+  opportunity: ProductOpportunity,
+  context: PersistOpportunityContext = {}
+): Promise<PersistedOpportunityIds> {
+  const transactionalDb = db as unknown as { $transaction?: <T>(fn: (tx: PrismaClient) => Promise<T>) => Promise<T> };
+  if (typeof transactionalDb.$transaction !== 'function') {
+    return persistOpportunityRows(db, opportunity, context);
+  }
+  return transactionalDb.$transaction((tx) => persistOpportunityRows(tx, opportunity, context));
 }
 
 export async function persistOpportunities(

@@ -2,9 +2,10 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { env } from '../config/env.js';
 
 const algorithm = 'aes-256-gcm';
+const developmentFallbackKey = 'development-only-change-me';
 
 const key = (): Buffer => createHash('sha256')
-  .update(env.BUYSELL_ENCRYPTION_KEY ?? 'development-only-change-me')
+  .update(env.BUYSELL_ENCRYPTION_KEY ?? developmentFallbackKey)
   .digest();
 
 export function encryptJson(value: unknown): string {
@@ -17,6 +18,9 @@ export function encryptJson(value: unknown): string {
 
 export function decryptJson<T>(value: string): T {
   const [ivText, authTagText, encryptedText] = value.split('.');
+  if (!ivText || !authTagText || !encryptedText) {
+    throw new Error('Encrypted value has an invalid format');
+  }
   const decipher = createDecipheriv(algorithm, key(), Buffer.from(ivText, 'base64'));
   decipher.setAuthTag(Buffer.from(authTagText, 'base64'));
   const decrypted = Buffer.concat([decipher.update(Buffer.from(encryptedText, 'base64')), decipher.final()]);

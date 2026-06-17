@@ -185,10 +185,10 @@ export function resolveEbayComparisonSettings(input: Partial<EbayComparisonSetti
     minimumMatchConfidence: input.minimumMatchConfidence ?? preset.minimumMatchConfidence,
     minimumOpportunityScore: input.minimumOpportunityScore ?? preset.minimumOpportunityScore,
     ebayResultLimit: input.ebayResultLimit ?? preset.ebayResultLimit,
-    soldOnly: true,
-    completedOnly: true,
-    buyingFormat: 'BIN',
-    itemCondition: 'NEW',
+    soldOnly: input.soldOnly ?? preset.soldOnly,
+    completedOnly: input.completedOnly ?? preset.completedOnly,
+    buyingFormat: input.buyingFormat ?? preset.buyingFormat,
+    itemCondition: input.itemCondition ?? preset.itemCondition,
     preferredLocation: input.preferredLocation ?? preset.preferredLocation,
     postalCode: input.postalCode
   };

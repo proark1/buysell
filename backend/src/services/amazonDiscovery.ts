@@ -25,6 +25,7 @@ import {
   type DiscoveryMarket,
   type EbayComparisonSettings
 } from './marketplaces.js';
+import { notFound } from '../security/httpErrors.js';
 
 export interface AmazonDiscoveryCandidateResult {
   amazon: AmazonMatchInput;
@@ -673,7 +674,7 @@ export async function considerAmazonDiscoveryCandidate(options: ConsiderAmazonCa
   alreadyConsidered: boolean;
 }> {
   const candidate = await options.db.amazonDiscoveryCandidate.findUnique({ where: { id: options.candidateId } });
-  if (!candidate) throw new Error('Amazon discovery candidate not found');
+  if (!candidate) throw notFound('Amazon discovery candidate not found', 'AMAZON_DISCOVERY_CANDIDATE_NOT_FOUND');
   if (candidate.productCandidateId) {
     return {
       candidateId: candidate.id,
@@ -876,11 +877,11 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         query,
         apiKey: options.serpApiKey,
         ebayDomain: market.ebayDomain,
-        soldOnly: true,
-        completedOnly: true,
+        soldOnly: comparisonSettings.soldOnly,
+        completedOnly: comparisonSettings.completedOnly,
         limit: comparisonSettings.ebayResultLimit,
-        buyingFormat: 'BIN',
-        conditionIds: conditionIdsBySetting.NEW,
+        buyingFormat: comparisonSettings.buyingFormat === 'ANY' ? undefined : comparisonSettings.buyingFormat,
+        conditionIds: conditionIdsBySetting[comparisonSettings.itemCondition],
         preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
         postalCode: comparisonSettings.postalCode
       });

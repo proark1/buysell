@@ -69,7 +69,7 @@ Supported modes:
 
 The local agent leaves manual marketplace actions open by default so the dashboard or API can record completion after the operator or a trusted executor actually finishes the step. `LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS=true` restores scaffold auto-complete behavior only for controlled environments.
 
-`COMPUTER_USE_VERIFIER_COMMAND` is the dedicated verification adapter. `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, and `COMPUTER_USE_AUTOPILOT_COMMAND` are mode-specific operator adapters; `COMPUTER_USE_OPERATOR_COMMAND` is the fallback. Each command receives job JSON on stdin and returns structured JSON plus evidence on stdout.
+`COMPUTER_USE_VERIFIER_COMMAND` is the dedicated verification adapter. `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, and `COMPUTER_USE_AUTOPILOT_COMMAND` are mode-specific operator adapters; `COMPUTER_USE_OPERATOR_COMMAND` is the fallback. Each command is parsed into an executable plus arguments, receives job JSON on stdin, and returns validated structured JSON plus evidence on stdout.
 
 ## Automation Runs
 
@@ -101,7 +101,7 @@ After the operator/local agent completes an Amazon purchase, `POST /orders/:id/a
 
 The backend also starts a scheduler on boot. It reads `amazonPriceCheckIntervalMinutes` from the active `RuleConfig` before each cycle, so changing the setting in the dashboard changes the next monitoring interval without redeploying.
 
-When a `PAUSE` action is executed, the backend now attempts to withdraw the corresponding eBay Inventory offer via eBay's Sell Inventory `withdrawOffer` endpoint if an `ebayOfferId` and eBay OAuth credentials are configured; otherwise it still pauses internally and records why the external withdraw was skipped.
+When Amazon source price rises, the monitor queues a high-priority `PAUSE` action without marking the listing paused prematurely. When a `PAUSE` action is executed, the backend attempts to withdraw the corresponding eBay Inventory offer via eBay's Sell Inventory `withdrawOffer` endpoint if an `ebayOfferId` and eBay OAuth credentials are configured; otherwise it pauses internally and records why the external withdraw was skipped.
 
 The dashboard now includes operator forms for searching opportunities, approving/rejecting/executing actions, creating manual eBay order intake records, and recording Amazon purchases, so the main MVP workflows can be driven from the browser instead of raw curl commands.
 

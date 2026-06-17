@@ -20,6 +20,7 @@ export interface EbayOAuthOptions {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  sandbox?: boolean;
 }
 
 export interface WithdrawEbayOfferOptions {
@@ -41,7 +42,8 @@ export function prepareEbayListingDraft(input: EbayListingDraftInput): EbayListi
 
 export async function getEbayAccessToken(options: EbayOAuthOptions): Promise<string> {
   const credentials = Buffer.from(`${options.clientId}:${options.clientSecret}`).toString('base64');
-  const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+  const host = options.sandbox ? 'api.sandbox.ebay.com' : 'api.ebay.com';
+  const response = await fetch(`https://${host}/identity/v1/oauth2/token`, {
     method: 'POST',
     headers: {
       authorization: `Basic ${credentials}`,

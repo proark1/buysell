@@ -18,6 +18,7 @@ import { scoreAmazonMatch } from './matchScorer.js';
 import { getEbayDiscoveryMarket, type DiscoveryMarket } from './marketplaces.js';
 import { scoreOpportunity } from './opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity } from './productIdentityMatcher.js';
+import { notFound } from '../security/httpErrors.js';
 
 export interface EbayDiscoveryScore {
   total: number;
@@ -372,12 +373,12 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const query = options.query?.trim();
   const queries = selectEbayDiscoveryQueries(profile, category, query, limit);
   const policy = safetyPolicy(options.ruleConfig, safeMode, options.ruleConfig.maxAmazonCostUsd);
-  const itemCondition = 'NEW';
-  const buyingFormat = 'BIN';
+  const itemCondition = options.itemCondition ?? 'NEW';
+  const buyingFormat = options.buyingFormat ?? 'BIN';
   const preferredLocation = options.preferredLocation ?? 'Domestic';
   const categoryId = options.categoryId?.trim() || category.categoryId;
-  const soldOnly = true;
-  const completedOnly = true;
+  const soldOnly = options.soldOnly ?? true;
+  const completedOnly = options.completedOnly ?? true;
 
   const byKey = new Map<string, EbayCandidateInput>();
   for (const seed of queries) {
@@ -387,7 +388,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       ebayDomain: market.ebayDomain,
       soldOnly,
       completedOnly,
-      buyingFormat,
+      buyingFormat: buyingFormat === 'ANY' ? undefined : buyingFormat,
       conditionIds: conditionIdsBySetting[itemCondition],
       preferredLocation: preferredLocation === 'ANY' ? undefined : preferredLocation,
       postalCode: options.postalCode?.trim() || market.defaultPostalCode,
@@ -930,7 +931,7 @@ export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandid
   alreadyConsidered: boolean;
 }> {
   const candidate = await options.db.ebayDiscoveryCandidate.findUnique({ where: { id: options.candidateId } });
-  if (!candidate) throw new Error('eBay discovery candidate not found');
+  if (!candidate) throw notFound('eBay discovery candidate not found', 'EBAY_DISCOVERY_CANDIDATE_NOT_FOUND');
   if (candidate.productCandidateId) {
     return {
       candidateId: candidate.id,
