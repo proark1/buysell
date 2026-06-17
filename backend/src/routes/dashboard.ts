@@ -817,6 +817,7 @@ setInterval(checkDb,30000);
 
 export async function registerDashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
+  app.get('/favicon.ico', async (_request, reply) => reply.status(204).send(null));
   app.get('/api/dashboard', async () => getDashboardData(prisma));
   app.get('/api/health/db', async () => {
     try {

@@ -1,27 +1,39 @@
 import { z } from 'zod';
 import type { AmazonMatchInput } from '../domain/products.js';
 
+const nullableString = z.string().nullable().optional();
+const nullableNumber = z.number().nullable().optional();
+const nullableNumberArray = z.array(z.number()).nullable().optional();
+const keepaReviewsSchema = z.union([
+  z.number(),
+  z.object({
+    reviewCount: nullableNumber,
+    ratingCount: nullableNumber,
+    lastUpdate: nullableNumber
+  }).passthrough()
+]).nullable().optional();
+
 const keepaProductSchema = z.object({
   asin: z.string(),
-  title: z.string().optional(),
-  brand: z.string().optional(),
-  model: z.string().optional(),
-  upcList: z.array(z.string()).optional(),
-  categoryTree: z.array(z.object({ name: z.string().optional() }).passthrough()).optional(),
-  rootCategory: z.number().optional(),
-  salesRankReference: z.number().optional(),
+  title: nullableString,
+  brand: nullableString,
+  model: nullableString,
+  upcList: z.array(z.string()).nullable().optional(),
+  categoryTree: z.array(z.object({ name: nullableString }).passthrough()).nullable().optional(),
+  rootCategory: nullableNumber,
+  salesRankReference: nullableNumber,
   stats: z.object({
-    current: z.array(z.number()).optional(),
-    buyBoxPrice: z.number().optional(),
-    avg30: z.array(z.number()).optional(),
-    avg90: z.array(z.number()).optional()
-  }).optional(),
-  rating: z.number().optional(),
-  reviews: z.number().optional(),
-  reviewCount: z.number().optional(),
-  availabilityAmazon: z.number().optional(),
-  csv: z.array(z.array(z.number()).nullable()).optional(),
-  domainId: z.number().optional()
+    current: nullableNumberArray,
+    buyBoxPrice: nullableNumber,
+    avg30: nullableNumberArray,
+    avg90: nullableNumberArray
+  }).nullable().optional(),
+  rating: nullableNumber,
+  reviews: keepaReviewsSchema,
+  reviewCount: nullableNumber,
+  availabilityAmazon: nullableNumber,
+  csv: z.array(z.array(z.number()).nullable()).nullable().optional(),
+  domainId: nullableNumber
 }).passthrough();
 
 const keepaResponseSchema = z.object({
@@ -41,27 +53,38 @@ export class KeepaApiError extends Error {
 
 interface KeepaProduct {
   asin: string;
-  title?: string;
-  brand?: string;
-  model?: string;
-  upcList?: string[];
-  salesRankReference?: number;
+  title?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  upcList?: string[] | null;
+  salesRankReference?: number | null;
   stats?: {
-    current?: number[];
-    buyBoxPrice?: number;
-    avg30?: number[];
-    avg90?: number[];
-  };
-  categoryTree?: { name?: string }[];
-  rating?: number;
-  reviews?: number;
-  reviewCount?: number;
-  availabilityAmazon?: number;
+    current?: number[] | null;
+    buyBoxPrice?: number | null;
+    avg30?: number[] | null;
+    avg90?: number[] | null;
+  } | null;
+  categoryTree?: { name?: string | null }[] | null;
+  rating?: number | null;
+  reviews?: number | { reviewCount?: number | null; ratingCount?: number | null } | null;
+  reviewCount?: number | null;
+  availabilityAmazon?: number | null;
 }
 
-const keepaCentsToMoney = (value?: number): number | undefined => {
-  if (value === undefined || value < 0) return undefined;
+const keepaCentsToMoney = (value?: number | null): number | undefined => {
+  if (value === undefined || value === null || value < 0) return undefined;
   return Math.round(value) / 100;
+};
+
+const nullableText = (value?: string | null): string | undefined => value ?? undefined;
+
+const keepaReviewCount = (product: KeepaProduct): number | undefined => {
+  if (typeof product.reviewCount === 'number') return product.reviewCount;
+  if (typeof product.reviews === 'number') return product.reviews;
+  if (product.reviews && typeof product.reviews === 'object') {
+    return product.reviews.reviewCount ?? product.reviews.ratingCount ?? undefined;
+  }
+  return undefined;
 };
 
 export interface KeepaSearchOptions {
@@ -104,17 +127,17 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
       asin: product.asin,
       title: product.title ?? product.asin,
       url: `https://www.amazon.com/dp/${product.asin}`,
-      brand: product.brand,
-      model: product.model,
+      brand: nullableText(product.brand),
+      model: nullableText(product.model),
       upc: product.upcList?.[0],
       currentPrice,
       buyBoxPrice,
       avg90Price,
       priceDropPercent,
       availabilityStatus: product.availabilityAmazon === 0 ? 'IN_STOCK' : 'UNKNOWN',
-      salesRank: product.salesRankReference,
-      rating: product.rating,
-      reviewCount: product.reviewCount ?? product.reviews,
+      salesRank: product.salesRankReference ?? undefined,
+      rating: product.rating ?? undefined,
+      reviewCount: keepaReviewCount(product),
       categoryTree,
       rootCategory: categoryTree[0],
       matchConfidence: 0,

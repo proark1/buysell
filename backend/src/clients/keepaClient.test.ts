@@ -11,11 +11,18 @@ globalThis.fetch = (async (input: string | URL | Request) => {
       {
         asin: 'B000TEST',
         title: 'Test barcode scanner',
+        model: null,
+        upcList: null,
         stats: {
           current: [-1, 1499],
           buyBoxPrice: 1299,
           avg90: [-1, 1999]
         },
+        reviews: {
+          ratingCount: 318,
+          reviewCount: null
+        },
+        csv: null,
         availabilityAmazon: 0,
         salesRankReference: 12345
       }
@@ -40,6 +47,7 @@ try {
   assertEqual(url.searchParams.has('offers'), false, 'Keepa search must not include offers');
   assertEqual(matches[0]?.asin, 'B000TEST', 'Keepa parsed ASIN');
   assertEqual(matches[0]?.buyBoxPrice, 12.99, 'Keepa parsed Buy Box price');
+  assertEqual(matches[0]?.reviewCount, 318, 'Keepa parsed review object count');
 } finally {
   globalThis.fetch = originalFetch;
 }
