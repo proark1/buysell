@@ -362,6 +362,7 @@ model RuleConfig {
   ebayDiscoveryAutoRunEnabled     Boolean  @default(false)
   ebayDiscoveryAutoRunIntervalMinutes Int  @default(1)
   ebayDiscoveryAutoRunLimit       Int      @default(5)
+  ebayDiscoveryAutoCompareEnabled Boolean  @default(false)
   createdAt                       DateTime @default(now())
   updatedAt                       DateTime @updatedAt
 }

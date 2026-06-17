@@ -29,6 +29,7 @@ export interface ActiveRuleConfig {
   ebayDiscoveryAutoRunEnabled: boolean;
   ebayDiscoveryAutoRunIntervalMinutes: number;
   ebayDiscoveryAutoRunLimit: number;
+  ebayDiscoveryAutoCompareEnabled: boolean;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -61,7 +62,8 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   amazonPriceCheckIntervalMinutes: 30,
   ebayDiscoveryAutoRunEnabled: false,
   ebayDiscoveryAutoRunIntervalMinutes: 1,
-  ebayDiscoveryAutoRunLimit: 5
+  ebayDiscoveryAutoRunLimit: 5,
+  ebayDiscoveryAutoCompareEnabled: false
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -114,6 +116,7 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes),
     ebayDiscoveryAutoRunEnabled: typeof config.ebayDiscoveryAutoRunEnabled === 'boolean' ? config.ebayDiscoveryAutoRunEnabled : defaultRuleConfig.ebayDiscoveryAutoRunEnabled,
     ebayDiscoveryAutoRunIntervalMinutes: numberValue(config.ebayDiscoveryAutoRunIntervalMinutes, defaultRuleConfig.ebayDiscoveryAutoRunIntervalMinutes),
-    ebayDiscoveryAutoRunLimit: numberValue(config.ebayDiscoveryAutoRunLimit, defaultRuleConfig.ebayDiscoveryAutoRunLimit)
+    ebayDiscoveryAutoRunLimit: numberValue(config.ebayDiscoveryAutoRunLimit, defaultRuleConfig.ebayDiscoveryAutoRunLimit),
+    ebayDiscoveryAutoCompareEnabled: typeof config.ebayDiscoveryAutoCompareEnabled === 'boolean' ? config.ebayDiscoveryAutoCompareEnabled : defaultRuleConfig.ebayDiscoveryAutoCompareEnabled
   };
 }

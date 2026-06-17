@@ -478,6 +478,7 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run every interval</label></div>
                 <div class="field"><label>Interval Minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
                 <div class="field"><label>Products Per Run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoCompareEnabled" type="checkbox"> Auto compare with Amazon</label></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save Auto Run</button></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAutoNow()">Run Auto Now</button></div>
               </div>
@@ -1327,6 +1328,7 @@ function render(){
   if(rc.ebayDiscoveryAutoRunEnabled!==undefined)document.getElementById('ebayAutoRunEnabled').checked=!!rc.ebayDiscoveryAutoRunEnabled;
   if(rc.ebayDiscoveryAutoRunIntervalMinutes)document.getElementById('ebayAutoRunInterval').value=rc.ebayDiscoveryAutoRunIntervalMinutes;
   if(rc.ebayDiscoveryAutoRunLimit)document.getElementById('ebayAutoRunLimit').value=rc.ebayDiscoveryAutoRunLimit;
+  if(rc.ebayDiscoveryAutoCompareEnabled!==undefined)document.getElementById('ebayAutoCompareEnabled').checked=!!rc.ebayDiscoveryAutoCompareEnabled;
   document.getElementById('settingsSafeMode').checked=!!rc.safeMode;
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
@@ -1438,10 +1440,11 @@ function saveEbayAutoRun(){
   var body={
     ebayDiscoveryAutoRunEnabled:document.getElementById('ebayAutoRunEnabled').checked,
     ebayDiscoveryAutoRunIntervalMinutes:interval,
-    ebayDiscoveryAutoRunLimit:limit
+    ebayDiscoveryAutoRunLimit:limit,
+    ebayDiscoveryAutoCompareEnabled:document.getElementById('ebayAutoCompareEnabled').checked
   };
   apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){
-    toast('eBay auto-run saved',(body.ebayDiscoveryAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' products','ok');
+    toast('eBay auto-run saved',(body.ebayDiscoveryAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' products · '+(body.ebayDiscoveryAutoCompareEnabled?'compare on':'eBay only'),'ok');
     load();
   }).catch(function(e){toast('Save failed',e.message,'err')});
 }
@@ -1449,7 +1452,6 @@ function runEbayAutoNow(){
   toast('Running scheduled eBay discovery','Using auto-run settings');
   jpost('/api/ebay-discovery/auto-run/run',{}).then(function(res){
     toast('Scheduled eBay discovery complete',res,'ok');
-    loadKeepaTokenStatus();
     load();
   }).catch(function(e){toast('Scheduled run failed',e.message,'err')});
 }

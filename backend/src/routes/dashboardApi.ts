@@ -34,7 +34,8 @@ const settingsSchema = z.object({
   amazonPriceCheckIntervalMinutes: z.number().int().positive().optional(),
   ebayDiscoveryAutoRunEnabled: z.boolean().optional(),
   ebayDiscoveryAutoRunIntervalMinutes: z.number().int().positive().max(1440).optional(),
-  ebayDiscoveryAutoRunLimit: z.number().int().positive().max(25).optional()
+  ebayDiscoveryAutoRunLimit: z.number().int().positive().max(25).optional(),
+  ebayDiscoveryAutoCompareEnabled: z.boolean().optional()
 });
 
 export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<void> {
