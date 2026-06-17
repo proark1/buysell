@@ -158,6 +158,12 @@ const dashboardHtml = `<!doctype html>
     .section-label span{color:var(--muted);font-weight:700;text-transform:none;letter-spacing:0}
     .mini-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;padding:8px 0}
     .placeholder-check{width:20px;flex:0 0 20px}
+    .comparison-box{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.48);padding:10px;display:grid;gap:7px}
+    .comparison-box.locked{border-color:rgba(248,113,113,.28);background:rgba(127,29,29,.1)}
+    .comparison-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--text)}
+    .comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+    .metric{border:1px solid var(--border);border-radius:8px;padding:7px 8px;background:rgba(2,6,23,.35)}
+    .metric .mk{color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.4px}.metric .mv{font-size:13px;font-weight:800;margin-top:1px}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
     .kv .k{color:var(--muted)}.kv .v{font-weight:600;text-align:right}
@@ -579,15 +585,23 @@ function amazonCandidateDrop(c){return c.priceDropPercent||(c.amazon&&c.amazon.p
 function amazonCandidateUrl(c){return c.amazonUrl||(c.amazon&&c.amazon.url)}
 function amazonSafetyStatus(c){return c.safetyStatus||(c.safety&&c.safety.status)}
 function amazonCandidateStatus(c){return c.comparisonStatus||amazonSafetyStatus(c)||'PASS'}
+function amazonComparison(c){
+  var scoreData=amazonCandidateScoreData(c);
+  var comparison=scoreData&&scoreData.ebayComparison;
+  return comparison&&typeof comparison==='object'?comparison:null;
+}
 function amazonRiskFlags(c){var out=[];addStrings(out,c.riskFlags);if(c.safety)addStrings(out,c.safety.riskFlags);return unique(out)}
 function amazonPositiveReasons(c){var scoreData=amazonCandidateScoreData(c);var out=[];addStrings(out,scoreData.reasons);return unique(out)}
 function amazonCandidateReasons(c){
   var scoreData=amazonCandidateScoreData(c);
+  var comparison=amazonComparison(c);
   var out=[];
+  if(comparison&&(c.comparisonStatus==='REJECTED'||c.comparisonStatus==='ERROR'||comparison.status==='REJECTED'||comparison.status==='NO_EBAY_RESULTS'||comparison.status==='NO_PRICED_EBAY_RESULTS'||comparison.status==='ERROR'))addStrings(out,comparison.reasons);
   addStrings(out,scoreData.rejectionReasons);
   addStrings(out,c.rejectionReasons);
   if(c.safety)addStrings(out,c.safety.reasons);
   if(!out.length&&(c.comparisonStatus==='REJECTED'||amazonSafetyStatus(c)==='REJECT'))addStrings(out,amazonRiskFlags(c));
+  if(!out.length&&c.comparisonStatus==='REJECTED'&&amazonSafetyStatus(c)!=='REJECT')out.push('Rejected by an earlier eBay comparison. Run a fresh comparison to capture exact eBay pricing reasons.');
   if(!out.length&&(c.comparisonStatus==='REJECTED'||amazonSafetyStatus(c)==='REJECT'))out.push('Below Amazon Scout filters');
   return unique(out);
 }
@@ -614,6 +628,28 @@ function renderRejectionBreakdown(rejected){
   var rows=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a]||a.localeCompare(b)}).slice(0,6);
   return '<div class="mini-summary"><span>Top rejection reasons</span>'+rows.map(function(reason){return '<span class="chip">'+esc(reason)+' · '+counts[reason]+'</span>'}).join('')+'</div>';
 }
+function pct(v){return v===undefined||v===null?'—':Number(v).toFixed(0)+'%'}
+function metric(label,value){return '<div class="metric"><div class="mk">'+esc(label)+'</div><div class="mv">'+esc(value)+'</div></div>'}
+function renderEbayComparison(c,rejected){
+  var comparison=amazonComparison(c);
+  if(!comparison)return '';
+  var best=comparison.best||{};
+  var reasons=unique(comparison.reasons||[]).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
+  var title=best.title?'<div class="result-meta">Best eBay: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
+  var metrics=[
+    metric('eBay results',String(comparison.ebayResultCount||0)),
+    metric('Priced',String(comparison.pricedResultCount||0)),
+    metric('Best sold',money(best.soldPrice)),
+    metric('Profit',money(best.expectedProfit)),
+    metric('ROI',best.roiPercent===undefined?'—':Number(best.roiPercent).toFixed(1)+'%'),
+    metric('Match',pct(best.matchConfidence!==undefined?Number(best.matchConfidence)*100:undefined))
+  ].join('');
+  var lock=rejected?'<span class="chip">Locked after eBay comparison</span>':'<span class="chip">'+esc(comparison.status||'Compared')+'</span>';
+  return '<div class="comparison-box '+(rejected?'locked':'')+'"><div class="comparison-title">eBay comparison '+lock+'</div>'+
+    '<div class="result-meta">Search: <span class="mono">'+esc(comparison.query||'—')+'</span></div>'+title+
+    '<div class="comparison-grid">'+metrics+'</div>'+
+    (reasons?'<div class="chips">'+reasons+'</div>':'')+'</div>';
+}
 function renderAmazonCandidateCard(c){
   var rejected=isRejectedAmazonCandidate(c);
   var selectable=isSelectableAmazonCandidate(c);
@@ -628,11 +664,14 @@ function renderAmazonCandidateCard(c){
   var url=amazonCandidateUrl(c);
   var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(amazonCandidateTitle(c))+'</a>':esc(amazonCandidateTitle(c));
   var check=selectable?'<label class="check"><input type="checkbox" data-amazon-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleAmazonCandidate(this)"></label>':'<span class="placeholder-check"></span>';
+  var comparison=amazonComparison(c);
+  var rejectedLabel=comparison?'Rejected by eBay comparison':'Rejected because';
   return '<div class="result-card '+(rejected?'rejected':'')+'"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
     '<div class="result-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(c))+'</span> · Amazon '+money(amazonCandidatePrice(c))+' · Avg90 '+money(amazonCandidateAvg90(c))+' · Rank '+txt(amazonCandidateRank(c))+dropText+'</div>'+
     '</div>'+badge(amazonCandidateStatus(c))+'</div>'+
-    (rejected?'<div class="result-meta"><b>Rejected because</b></div><div class="chips">'+(rejection||'<span class="chip">Below Amazon Scout filters</span>')+'</div>':'<div class="chips">'+(positive||'<span class="chip">Accepted by Amazon Scout filters</span>')+'</div>')+
+    (rejected?'<div class="result-meta"><b>'+rejectedLabel+'</b></div><div class="chips">'+(rejection||'<span class="chip">Below Amazon Scout filters</span>')+'</div>':'<div class="chips">'+(positive||'<span class="chip">Accepted by Amazon Scout filters</span>')+'</div>')+
+    renderEbayComparison(c,rejected)+
     (risks?'<div class="chips">'+risks+'</div>':'')+'</div>';
 }
 function renderAmazonScoutReport(candidates,rejectedExtra,preserveSelection){

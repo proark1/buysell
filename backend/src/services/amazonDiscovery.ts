@@ -51,8 +51,54 @@ export interface CompareAmazonCandidatesOptions {
   limit?: number;
 }
 
+export interface EbayComparisonReport {
+  status: 'OPPORTUNITY' | 'REJECTED' | 'NO_EBAY_RESULTS' | 'NO_PRICED_EBAY_RESULTS' | 'ERROR';
+  query: string;
+  ebayResultCount: number;
+  pricedResultCount: number;
+  evaluatedCount: number;
+  amazonCost?: number;
+  best?: {
+    title: string;
+    url?: string;
+    soldPrice?: number;
+    shippingPrice?: number;
+    condition?: string;
+    matchConfidence?: number;
+    expectedProfit?: number;
+    roiPercent?: number;
+    opportunityScore?: number;
+    decision?: string;
+    riskFlags?: string[];
+    reasoningSummary?: string;
+  };
+  topMatches: Array<{
+    title: string;
+    url?: string;
+    soldPrice?: number;
+    shippingPrice?: number;
+    condition?: string;
+    matchConfidence?: number;
+    expectedProfit?: number;
+    roiPercent?: number;
+    opportunityScore?: number;
+    decision?: string;
+    riskFlags?: string[];
+  }>;
+  reasons: string[];
+  thresholds: {
+    minimumProfitUsd: number;
+    minimumRoiPercent: number;
+    minimumMatchConfidence: number;
+    minimumOpportunityScore: number;
+  };
+  comparedAt: string;
+}
+
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
 const decimal = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(3);
+const percent = (value: number | undefined): string => value === undefined ? 'unknown' : `${value.toFixed(1)}%`;
+const dollars = (value: number | undefined): string => value === undefined ? 'unknown' : `$${value.toFixed(2)}`;
 const numberValue = (value: unknown): number | undefined => {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -250,65 +296,234 @@ function searchQueryForAmazonProduct(amazon: AmazonMatchInput): string {
   return [...new Set(parts)].join(' ').slice(0, 160);
 }
 
-function bestOpportunityForAmazonProduct(
+function comparisonSnapshot(opportunity: ProductOpportunity): NonNullable<EbayComparisonReport['best']> {
+  return {
+    title: opportunity.ebay.title,
+    url: opportunity.ebay.url,
+    soldPrice: opportunity.ebay.soldPrice,
+    shippingPrice: opportunity.ebay.shippingPrice,
+    condition: opportunity.ebay.condition,
+    matchConfidence: opportunity.amazon.matchConfidence,
+    expectedProfit: opportunity.profit.expectedProfit,
+    roiPercent: opportunity.profit.roiPercent,
+    opportunityScore: opportunity.score?.total,
+    decision: opportunity.decision.decision,
+    riskFlags: opportunity.decision.riskFlags,
+    reasoningSummary: opportunity.decision.reasoningSummary
+  };
+}
+
+function uniqueReasons(reasons: string[]): string[] {
+  return [...new Set(reasons.filter(Boolean))];
+}
+
+function comparisonRejectionReasons(
+  opportunity: ProductOpportunity,
+  ruleConfig: ActiveRuleConfig
+): string[] {
+  const amazonCost = opportunity.amazon.buyBoxPrice ?? opportunity.amazon.currentPrice;
+  const soldPrice = opportunity.ebay.soldPrice;
+  const reasons: string[] = [];
+
+  if (soldPrice !== undefined && amazonCost !== undefined && soldPrice <= amazonCost) {
+    reasons.push(`Best eBay sold price ${dollars(soldPrice)} is not above Amazon cost ${dollars(amazonCost)} before fees, tax, and buffers.`);
+  }
+  if (opportunity.decision.riskFlags.includes('LOW_PROFIT')) {
+    reasons.push(`Expected profit ${dollars(opportunity.profit.expectedProfit)} is below the ${dollars(ruleConfig.thresholds.minimumProfitUsd)} minimum.`);
+  }
+  if (opportunity.decision.riskFlags.includes('LOW_ROI')) {
+    reasons.push(`ROI ${percent(opportunity.profit.roiPercent)} is below the ${percent(ruleConfig.thresholds.minimumRoiPercent)} target.`);
+  }
+  if (opportunity.decision.riskFlags.includes('LOW_MATCH_CONFIDENCE')) {
+    reasons.push(`Best eBay match confidence ${percent((opportunity.amazon.matchConfidence ?? 0) * 100)} is below the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum, so it may not be the same product.`);
+  }
+  if (opportunity.decision.riskFlags.includes('MISSING_EBAY_PRICE')) {
+    reasons.push('The best eBay result did not include a usable sold price.');
+  }
+  if (opportunity.decision.riskFlags.includes('MISSING_AMAZON_PRICE')) {
+    reasons.push('Amazon price is missing, so profit cannot be calculated safely.');
+  }
+  if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) {
+    reasons.push('Amazon stock status is not confirmed as in stock.');
+  }
+  if (opportunity.decision.riskFlags.includes('LOW_OPPORTUNITY_SCORE') && opportunity.score) {
+    reasons.push(`Overall comparison score ${opportunity.score.total} is below the ${ruleConfig.minimumOpportunityScore} minimum after profit, ROI, demand, match, and risk scoring.`);
+  }
+  if (opportunity.safety?.reasons.length) reasons.push(...opportunity.safety.reasons);
+  if (!reasons.length && opportunity.decision.reasoningSummary) reasons.push(opportunity.decision.reasoningSummary);
+
+  return uniqueReasons(reasons);
+}
+
+function scoreEbayCandidateAgainstAmazon(
   amazon: AmazonMatchInput,
-  ebayCandidates: EbayCandidateInput[],
+  ebay: EbayCandidateInput,
   ruleConfig: ActiveRuleConfig
 ): ProductOpportunity | undefined {
-  const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
-  const scored = ebayCandidates.flatMap((ebay) => {
-    const matchConfidence = scoreAmazonMatch(ebay, amazon);
-    const matchedAmazon = { ...amazon, matchConfidence };
-    const amazonCost = matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice;
-    if (!ebay.soldPrice || !amazonCost) return [];
+  const matchConfidence = scoreAmazonMatch(ebay, amazon);
+  const matchedAmazon = { ...amazon, matchConfidence };
+  const amazonCost = matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice;
+  if (!ebay.soldPrice || !amazonCost) return undefined;
 
-    const profit = calculateProfit({
-      ebaySalePrice: ebay.soldPrice,
-      amazonItemCost: amazonCost,
-      estimatedSalesTaxRate: ruleConfig.estimatedSalesTaxRate,
-      returnRiskBuffer: ruleConfig.returnRiskBuffer,
-      priceChangeBuffer: ruleConfig.priceChangeBuffer
-    });
-    const safety = evaluateProductSafety(ebay, matchedAmazon, policy);
-    const baseDecision = safety.status === 'REJECT'
-      ? {
-        decision: 'REJECT' as const,
-        confidence: 0.95,
-        riskFlags: safety.riskFlags,
-        reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
-      }
-      : decideOpportunity(ebay, matchedAmazon, profit, ruleConfig.thresholds);
-    const opportunity: ProductOpportunity = {
-      ebay,
-      amazon: matchedAmazon,
-      profit,
-      decision: baseDecision,
-      safety,
-      discoveryProfile: 'amazon-first'
-    };
-    const score = scoreOpportunity(opportunity, {
-      minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
-      minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
-      minimumOpportunityScore: ruleConfig.minimumOpportunityScore
-    }, [...new Set([...safety.riskFlags, ...baseDecision.riskFlags])]);
-    const decision = baseDecision.decision !== 'REJECT' && score.total < ruleConfig.minimumOpportunityScore
-      ? {
-        decision: 'REJECT' as const,
-        confidence: 0.8,
-        riskFlags: [...new Set([...baseDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
-        reasoningSummary: `Rejected because opportunity score ${score.total} is below ${ruleConfig.minimumOpportunityScore}.`
-      }
-      : baseDecision;
-    return [{ ...opportunity, decision, score }];
+  const profit = calculateProfit({
+    ebaySalePrice: ebay.soldPrice,
+    amazonItemCost: amazonCost,
+    estimatedSalesTaxRate: ruleConfig.estimatedSalesTaxRate,
+    returnRiskBuffer: ruleConfig.returnRiskBuffer,
+    priceChangeBuffer: ruleConfig.priceChangeBuffer
   });
+  const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
+  const safety = evaluateProductSafety(ebay, matchedAmazon, policy);
+  const baseDecision = safety.status === 'REJECT'
+    ? {
+      decision: 'REJECT' as const,
+      confidence: 0.95,
+      riskFlags: safety.riskFlags,
+      reasoningSummary: `Rejected by safety policy: ${safety.reasons.join(' ')}`
+    }
+    : decideOpportunity(ebay, matchedAmazon, profit, ruleConfig.thresholds);
+  const opportunity: ProductOpportunity = {
+    ebay,
+    amazon: matchedAmazon,
+    profit,
+    decision: baseDecision,
+    safety,
+    discoveryProfile: 'amazon-first'
+  };
+  const score = scoreOpportunity(opportunity, {
+    minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
+    minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
+    minimumOpportunityScore: ruleConfig.minimumOpportunityScore
+  }, [...new Set([...safety.riskFlags, ...baseDecision.riskFlags])]);
+  const decision = baseDecision.decision !== 'REJECT' && score.total < ruleConfig.minimumOpportunityScore
+    ? {
+      decision: 'REJECT' as const,
+      confidence: 0.8,
+      riskFlags: [...new Set([...baseDecision.riskFlags, 'LOW_OPPORTUNITY_SCORE'])],
+      reasoningSummary: `Rejected because opportunity score ${score.total} is below ${ruleConfig.minimumOpportunityScore}.`
+    }
+    : baseDecision;
+  return { ...opportunity, decision, score };
+}
 
-  return scored.sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0))[0];
+export function analyzeAmazonEbayComparison(
+  amazon: AmazonMatchInput,
+  ebayCandidates: EbayCandidateInput[],
+  ruleConfig: ActiveRuleConfig,
+  query: string
+): {
+  best?: ProductOpportunity;
+  report: EbayComparisonReport;
+} {
+  const amazonCost = amazon.buyBoxPrice ?? amazon.currentPrice;
+  const pricedResultCount = ebayCandidates.filter((ebay) => ebay.soldPrice !== undefined).length;
+  const thresholds = {
+    minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
+    minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
+    minimumMatchConfidence: ruleConfig.thresholds.minimumMatchConfidence,
+    minimumOpportunityScore: ruleConfig.minimumOpportunityScore
+  };
+  const baseReport = {
+    query,
+    ebayResultCount: ebayCandidates.length,
+    pricedResultCount,
+    amazonCost,
+    thresholds,
+    comparedAt: new Date().toISOString()
+  };
+
+  if (ebayCandidates.length === 0) {
+    return {
+      report: {
+        ...baseReport,
+        status: 'NO_EBAY_RESULTS',
+        evaluatedCount: 0,
+        topMatches: [],
+        reasons: ['No completed/sold eBay listings were found for this Amazon product search.']
+      }
+    };
+  }
+
+  if (!amazonCost) {
+    return {
+      report: {
+        ...baseReport,
+        status: 'REJECTED',
+        evaluatedCount: 0,
+        topMatches: [],
+        reasons: ['Amazon price is missing, so eBay profit cannot be calculated safely.']
+      }
+    };
+  }
+
+  const scored = ebayCandidates
+    .flatMap((ebay) => {
+      const opportunity = scoreEbayCandidateAgainstAmazon(amazon, ebay, ruleConfig);
+      return opportunity ? [opportunity] : [];
+    })
+    .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
+
+  if (scored.length === 0) {
+    return {
+      report: {
+        ...baseReport,
+        status: pricedResultCount === 0 ? 'NO_PRICED_EBAY_RESULTS' : 'REJECTED',
+        evaluatedCount: 0,
+        topMatches: [],
+        reasons: pricedResultCount === 0
+          ? ['eBay returned results, but none included a usable sold price.']
+          : ['No eBay result could be evaluated against the Amazon price.']
+      }
+    };
+  }
+
+  const accepted = scored.filter((opportunity) => opportunity.decision.decision !== 'REJECT');
+  const best = accepted[0] ?? scored[0];
+  const topMatches = scored.slice(0, 3).map(comparisonSnapshot);
+  const status = best.decision.decision === 'REJECT' ? 'REJECTED' : 'OPPORTUNITY';
+  const reasons = status === 'REJECTED'
+    ? comparisonRejectionReasons(best, ruleConfig)
+    : uniqueReasons([
+      `Best eBay sold price ${dollars(best.ebay.soldPrice)} leaves ${dollars(best.profit.expectedProfit)} expected profit.`,
+      `ROI ${percent(best.profit.roiPercent)} clears the ${percent(ruleConfig.thresholds.minimumRoiPercent)} target.`,
+      `Match confidence ${percent((best.amazon.matchConfidence ?? 0) * 100)} clears the ${percent(ruleConfig.thresholds.minimumMatchConfidence * 100)} minimum.`
+    ]);
+
+  return {
+    best,
+    report: {
+      ...baseReport,
+      status,
+      evaluatedCount: scored.length,
+      best: comparisonSnapshot(best),
+      topMatches,
+      reasons
+    }
+  };
+}
+
+function scoreBreakdownWithComparison(existing: unknown, report: EbayComparisonReport): Record<string, unknown> {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? { ...(existing as Record<string, unknown>) }
+    : {};
+  return { ...base, ebayComparison: jsonReady(report) };
+}
+
+function jsonReady(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(jsonReady);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, jsonReady(item)])
+  );
 }
 
 export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCandidatesOptions): Promise<{
   compared: number;
   opportunities: ProductOpportunity[];
   rejected: ProductOpportunity[];
+  reports: EbayComparisonReport[];
 }> {
   const where = options.candidateIds?.length
     ? { id: { in: options.candidateIds } }
@@ -328,24 +543,40 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
 
   const opportunities: ProductOpportunity[] = [];
   const rejected: ProductOpportunity[] = [];
+  const reports: EbayComparisonReport[] = [];
 
   for (const candidate of candidates) {
     const amazon = amazonFromRecord(candidate as Record<string, unknown>);
     await options.db.amazonDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
     try {
+      const query = searchQueryForAmazonProduct(amazon);
       const ebayCandidates = await searchEbayCandidates({
-        query: searchQueryForAmazonProduct(amazon),
+        query,
         apiKey: options.serpApiKey,
         limit: 8
       });
-      const best = bestOpportunityForAmazonProduct(amazon, ebayCandidates, options.ruleConfig);
+      const comparison = analyzeAmazonEbayComparison(amazon, ebayCandidates, options.ruleConfig, query);
+      reports.push(comparison.report);
+      const best = comparison.best;
       if (!best) {
-        await options.db.amazonDiscoveryCandidate.update({ where: { id: candidate.id }, data: { comparisonStatus: 'REJECTED' } });
+        await options.db.amazonDiscoveryCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            comparisonStatus: 'REJECTED',
+            scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
+          }
+        });
         continue;
       }
       if (best.decision.decision === 'REJECT') {
         rejected.push(best);
-        await options.db.amazonDiscoveryCandidate.update({ where: { id: candidate.id }, data: { comparisonStatus: 'REJECTED' } });
+        await options.db.amazonDiscoveryCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            comparisonStatus: 'REJECTED',
+            scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
+          }
+        });
         continue;
       }
 
@@ -359,13 +590,34 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         data: {
           comparisonStatus: 'OPPORTUNITY',
           productCandidateId: persisted.productCandidateId,
-          amazonMatchId: persisted.amazonMatchId
+          amazonMatchId: persisted.amazonMatchId,
+          scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
         }
       });
     } catch (error) {
+      const report: EbayComparisonReport = {
+        status: 'ERROR',
+        query: searchQueryForAmazonProduct(amazon),
+        ebayResultCount: 0,
+        pricedResultCount: 0,
+        evaluatedCount: 0,
+        amazonCost: amazon.buyBoxPrice ?? amazon.currentPrice,
+        topMatches: [],
+        reasons: [error instanceof Error ? error.message : 'eBay comparison failed.'],
+        thresholds: {
+          minimumProfitUsd: options.ruleConfig.thresholds.minimumProfitUsd,
+          minimumRoiPercent: options.ruleConfig.thresholds.minimumRoiPercent,
+          minimumMatchConfidence: options.ruleConfig.thresholds.minimumMatchConfidence,
+          minimumOpportunityScore: options.ruleConfig.minimumOpportunityScore
+        },
+        comparedAt: new Date().toISOString()
+      };
       await options.db.amazonDiscoveryCandidate.update({
         where: { id: candidate.id },
-        data: { comparisonStatus: 'ERROR' }
+        data: {
+          comparisonStatus: 'ERROR',
+          scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
+        }
       });
       throw error;
     }
@@ -381,5 +633,5 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
     });
   }
 
-  return { compared: candidates.length, opportunities, rejected };
+  return { compared: candidates.length, opportunities, rejected, reports };
 }
