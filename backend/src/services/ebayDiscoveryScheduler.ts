@@ -346,7 +346,8 @@ export async function runScheduledEbayDiscovery(): Promise<ScheduledEbayDiscover
 
 async function runScheduledEbayAmazonComparisonUnlocked(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
   const ruleConfig = await getActiveRuleConfig(prisma);
-  if (!ruleConfig.ebayAmazonCompareAutoRunEnabled) {
+  const mode = options.mode ?? 'AUTO';
+  if (mode === 'AUTO' && !ruleConfig.ebayAmazonCompareAutoRunEnabled) {
     return {
       enabled: false,
       selected: [],
@@ -358,7 +359,7 @@ async function runScheduledEbayAmazonComparisonUnlocked(options: EbayAmazonCompa
     };
   }
 
-  const run = await startAmazonComparisonRun(options.mode ?? 'AUTO');
+  const run = await startAmazonComparisonRun(mode);
   const finish = async (
     result: EbayAmazonComparisonRunResult,
     status: 'COMPLETED' | 'SKIPPED' | 'FAILED' = result.compared > 0 ? 'COMPLETED' : 'SKIPPED'
