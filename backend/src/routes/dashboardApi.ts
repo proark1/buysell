@@ -167,6 +167,13 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     return runScheduledEbayAmazonComparison({ mode: 'MANUAL' });
   });
 
+  app.post('/api/ebay-discovery/amazon-compare-auto-run/start', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const ruleConfig = await patchRuleConfig({ ebayAmazonCompareAutoRunEnabled: true });
+    const firstRun = await runScheduledEbayAmazonComparison({ mode: 'MANUAL' });
+    return { started: true, ruleConfig, firstRun };
+  });
+
   app.post('/api/ebay-discovery/amazon-compare-auto-run/stop', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     const ruleConfig = await patchRuleConfig({ ebayAmazonCompareAutoRunEnabled: false });

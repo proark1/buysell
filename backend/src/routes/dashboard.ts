@@ -433,7 +433,7 @@ const dashboardHtml = `<!doctype html>
               <div class="subtle-box">
                 <div class="setup-title">Amazon comparison queue</div>
                 <div class="setup-copy">Compares highest-score queued eBay products with Amazon source matches.</div>
-                <div class="actions-row"><button class="btn primary" onclick="runEbayAmazonCompareNow()">Run Now</button><button class="btn" onclick="navigate('settings')">Schedule Settings</button></div>
+                <div class="actions-row"><button class="btn primary" onclick="startEbayAmazonCompareQueue()">Start Queue</button><button class="btn" onclick="navigate('settings')">Schedule Settings</button></div>
               </div>
             </div>
           </div>
@@ -441,6 +441,10 @@ const dashboardHtml = `<!doctype html>
         <div class="panel">
           <div class="panel-head"><h2>Automation Runs</h2><span class="hint">Browser and computer-use operator history</span></div>
           <div class="panel-body"><div class="table-wrap"><div id="automationRunsTable"></div></div></div>
+        </div>
+        <div class="panel hidden" id="automationComparisonRunsPanel">
+          <div class="panel-head"><h2>Amazon Comparison Jobs</h2><span class="hint">Manual and scheduled eBay-to-Amazon comparison history</span></div>
+          <div class="panel-body"><div class="table-wrap"><div id="automationComparisonRunsTable"></div></div></div>
         </div>
       </section>
 
@@ -739,7 +743,7 @@ const dashboardHtml = `<!doctype html>
                     <div class="field"><label>Every minutes</label><input id="ebayAmazonCompareInterval" type="number" min="1" max="1440" value="1"></div>
                     <div class="field"><label>Products per run</label><input id="ebayAmazonCompareLimit" type="number" min="1" max="25" value="1"></div>
                   </div>
-                  <div class="actions-row"><button class="btn primary" onclick="saveEbayAmazonCompareAutoRun()">Save</button><button class="btn" onclick="runEbayAmazonCompareNow()">Run Now</button><button class="btn" onclick="stopEbayAmazonCompareAutoRun()">Stop</button><button class="btn danger" onclick="deleteEbayAmazonCompareAutoRun()">Delete</button></div>
+                  <div class="actions-row"><button class="btn primary" onclick="saveEbayAmazonCompareAutoRun()">Save</button><button class="btn" onclick="runEbayAmazonCompareNow()">Run Batch Now</button><button class="btn" onclick="stopEbayAmazonCompareAutoRun()">Stop</button><button class="btn danger" onclick="deleteEbayAmazonCompareAutoRun()">Delete</button></div>
                 </div>
               </div>
             </details>
@@ -978,8 +982,6 @@ function buildTopJobActivity(){
     running.push({label:'Scheduler lock: '+lock.name,detail:'Owner '+(lock.owner||'—')+' · lease '+when(lock.leasedUntil),status:'RUNNING'});
   });
   var paused=[];
-  if(d.ruleConfig&&!rc.ebayAmazonCompareAutoRunEnabled)paused.push({label:'Amazon comparison timer paused',detail:'Enable it in Settings to run automatically.',status:'PAUSED'});
-  if(d.ruleConfig&&!rc.ebayDiscoveryAutoRunEnabled)paused.push({label:'eBay discovery timer paused',detail:'Enable it in Settings to run automatically.',status:'PAUSED'});
   (d.ebayAmazonComparisonRuns||[]).filter(isKeepaPause).slice(0,2).forEach(function(run){
     paused.push({label:'Amazon comparison waiting for Keepa',detail:comparisonRunMeta(run),status:'PAUSED'});
   });
@@ -1012,6 +1014,38 @@ function renderJobActivity(){
   }
 }
 
+function comparisonRunSummary(res){
+  res=res||{};
+  var parts=[];
+  if(res.selected&&res.selected.length!==undefined)parts.push('selected '+res.selected.length);
+  if(res.compared!==undefined)parts.push('compared '+res.compared);
+  if(res.opportunities!==undefined)parts.push('opportunities '+res.opportunities);
+  if(res.manualReviews!==undefined)parts.push('review '+res.manualReviews);
+  if(res.rejected!==undefined)parts.push('rejected '+res.rejected);
+  if(res.keepa){
+    var keepa=[];
+    if(res.keepa.tokensLeft!==undefined&&res.keepa.tokensLeft!==null)keepa.push('left '+res.keepa.tokensLeft);
+    if(res.keepa.requestedTokens!==undefined&&res.keepa.requestedTokens!==null)keepa.push('needed '+res.keepa.requestedTokens);
+    if(res.keepa.retryAfterSeconds!==undefined&&res.keepa.retryAfterSeconds!==null)keepa.push('retry '+res.keepa.retryAfterSeconds+'s');
+    if(keepa.length)parts.push('Keepa '+keepa.join(', '));
+  }
+  if(res.reason)parts.push(res.reason);
+  return parts.join(' · ')||'No comparison details returned.';
+}
+function comparisonRunToast(res){
+  if(!res||res.enabled===false)return {title:'Amazon comparison not running',kind:'warn',message:(res&&res.reason)||'Enable it in Settings to run on schedule.'};
+  if((res.compared||0)>0)return {title:'Amazon comparison complete',kind:'ok',message:comparisonRunSummary(res)};
+  if(res.selected&&res.selected.length)return {title:'Amazon comparison skipped',kind:'warn',message:comparisonRunSummary(res)};
+  return {title:'No Amazon comparison work',kind:'warn',message:comparisonRunSummary(res)};
+}
+function comparisonStartSummary(res){
+  var first=(res&&res.firstRun)||{};
+  var rc=(res&&res.ruleConfig)||{};
+  var interval=rc.ebayAmazonCompareAutoRunIntervalMinutes||'configured';
+  var limit=rc.ebayAmazonCompareAutoRunLimit||'configured';
+  return 'Schedule on · every '+interval+' min · '+limit+' product'+(Number(limit)===1?'':'s')+'/run · '+comparisonRunSummary(first);
+}
+
 function table(rows,cols,opts){
   opts=opts||{};
   if(!rows||!rows.length)return '<div class="empty">No records yet.</div>';
@@ -1026,6 +1060,35 @@ function table(rows,cols,opts){
   }).join('')+'</tbody>';
   return '<table>'+head+body+'</table>';
 }
+
+function amazonComparisonRunColumns(){
+  return [
+    {key:'mode',label:'Mode',fmt:badge},
+    {key:'status',label:'Status',fmt:badge},
+    {key:'selectedCount',label:'Selected',fmt:function(v,r){
+      var selected=Array.isArray(r.selectedCandidates)?r.selectedCandidates:[];
+      var first=selected[0]&&selected[0].title?String(selected[0].title):'';
+      return esc(v||0)+(first?' · <span class="truncate" title="'+esc(first)+'">'+esc(first)+'</span>':'');
+    }},
+    {key:'comparedCount',label:'Compared'},
+    {key:'opportunityCount',label:'Opps'},
+    {key:'manualReviewCount',label:'Review'},
+    {key:'rejectedCount',label:'Rejected'},
+    {key:'keepaTokensLeft',label:'Keepa',fmt:function(v,r){
+      var parts=[];
+      if(v!==null&&v!==undefined)parts.push('left '+esc(v));
+      if(r.keepaRequestedTokens!==null&&r.keepaRequestedTokens!==undefined)parts.push('need '+esc(r.keepaRequestedTokens));
+      if(r.keepaRetryAfterSeconds!==null&&r.keepaRetryAfterSeconds!==undefined)parts.push('retry '+esc(r.keepaRetryAfterSeconds)+'s');
+      return parts.length?parts.join(' · '):'—';
+    }},
+    {key:'reason',label:'Reason',fmt:function(v,r){var msg=r.error||v;return msg?'<span class="truncate" title="'+esc(msg)+'">'+esc(msg)+'</span>':'—'}},
+    {key:'startedAt',label:'Started',fmt:when}
+  ];
+}
+function amazonComparisonRunsTable(key,rows){
+  return pagedTable(key,rows,amazonComparisonRunColumns(),{noun:'jobs'});
+}
+
 function pagerButtonsHtml(key,page,totalRows,size,setterName,noun){
   if(totalRows<=size)return '';
   var totalPages=Math.max(1,Math.ceil(totalRows/size));
@@ -1928,7 +1991,7 @@ function renderPipeline(){
   var actionsEl=document.getElementById('pipelineActions');
   if(actionsEl)actionsEl.innerHTML=[
     '<button class="btn primary" onclick="runEbayAutoNow()">Run eBay Scan</button>',
-    '<button class="btn primary" onclick="runEbayAmazonCompareNow()">Run Amazon Compare</button>',
+    '<button class="btn primary" onclick="runEbayAmazonCompareNow()">Run Amazon Batch</button>',
     '<button class="btn" onclick="navigate(&quot;actions&quot;)">Review Actions</button>',
     '<span class="hint">Human confirmation '+esc(f.humanConfirmation||0)+' · automation issues '+esc(f.automationFailures||0)+'</span>'
   ].join('');
@@ -1998,6 +2061,8 @@ function render(){
     {key:'events',label:'Latest Event',cls:'truncate',fmt:function(_v,r){var e=latestEventText(r);return '<span class="truncate" title="'+esc(e)+'">'+esc(e)+'</span>'}},
     {key:'startedAt',label:'Started',fmt:when}
   ],{noun:'runs'});
+  document.getElementById('automationComparisonRunsTable').innerHTML=amazonComparisonRunsTable('automationComparisonRuns',d.ebayAmazonComparisonRuns||[]);
+  showPanel('automationComparisonRunsPanel',!!(d.ebayAmazonComparisonRuns&&d.ebayAmazonComparisonRuns.length));
 
   var listCols=[
     {key:'id',label:'ID',fmt:shortId},
@@ -2061,28 +2126,7 @@ function render(){
     {key:'startedAt',label:'Started',fmt:when}
   ],{noun:'runs'});
   showPanel('ebayRunsPanel',!!(d.ebayDiscoveryRuns&&d.ebayDiscoveryRuns.length));
-  document.getElementById('ebayAmazonComparisonRunsTable').innerHTML=pagedTable('ebayAmazonComparisonRuns',d.ebayAmazonComparisonRuns,[
-    {key:'mode',label:'Mode',fmt:badge},
-    {key:'status',label:'Status',fmt:badge},
-    {key:'selectedCount',label:'Selected',fmt:function(v,r){
-      var selected=Array.isArray(r.selectedCandidates)?r.selectedCandidates:[];
-      var first=selected[0]&&selected[0].title?String(selected[0].title):'';
-      return esc(v||0)+(first?' · <span class="truncate" title="'+esc(first)+'">'+esc(first)+'</span>':'');
-    }},
-    {key:'comparedCount',label:'Compared'},
-    {key:'opportunityCount',label:'Opps'},
-    {key:'manualReviewCount',label:'Review'},
-    {key:'rejectedCount',label:'Rejected'},
-    {key:'keepaTokensLeft',label:'Keepa',fmt:function(v,r){
-      var parts=[];
-      if(v!==null&&v!==undefined)parts.push('left '+esc(v));
-      if(r.keepaRequestedTokens!==null&&r.keepaRequestedTokens!==undefined)parts.push('need '+esc(r.keepaRequestedTokens));
-      if(r.keepaRetryAfterSeconds!==null&&r.keepaRetryAfterSeconds!==undefined)parts.push('retry '+esc(r.keepaRetryAfterSeconds)+'s');
-      return parts.length?parts.join(' · '):'—';
-    }},
-    {key:'reason',label:'Reason',fmt:function(v,r){var msg=r.error||v;return msg?'<span class="truncate" title="'+esc(msg)+'">'+esc(msg)+'</span>':'—'}},
-    {key:'startedAt',label:'Started',fmt:when}
-  ],{noun:'jobs'});
+  document.getElementById('ebayAmazonComparisonRunsTable').innerHTML=amazonComparisonRunsTable('ebayAmazonComparisonRuns',d.ebayAmazonComparisonRuns||[]);
   showPanel('ebayCompareRunsPanel',!!(d.ebayAmazonComparisonRuns&&d.ebayAmazonComparisonRuns.length));
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
   renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
@@ -2290,11 +2334,22 @@ function runEbayAmazonCompareNow(){
   beginLocalJob('ebayAmazonCompareNow','Amazon comparison running','Using the highest-score queued eBay products','comparison');
   toast('Running Amazon comparison','Using the highest-score queued eBay products');
   jpost('/api/ebay-discovery/amazon-compare-auto-run/run',{}).then(function(res){
-    toast('Amazon comparison run complete',res,'ok');
+    var resultToast=comparisonRunToast(res);
+    toast(resultToast.title,resultToast.message,resultToast.kind);
     loadKeepaTokenStatus();
     endLocalJob('ebayAmazonCompareNow');
     load();
   }).catch(function(e){endLocalJob('ebayAmazonCompareNow');toast('Comparison run failed',e.message,'err')});
+}
+function startEbayAmazonCompareQueue(){
+  beginLocalJob('ebayAmazonCompareStart','Amazon comparison queue starting','Enabling schedule and running the first batch','comparison');
+  toast('Starting Amazon comparison queue','Enabling the schedule and running the first batch');
+  jpost('/api/ebay-discovery/amazon-compare-auto-run/start',{}).then(function(res){
+    toast('Amazon comparison queue started',comparisonStartSummary(res),'ok');
+    loadKeepaTokenStatus();
+    endLocalJob('ebayAmazonCompareStart');
+    load();
+  }).catch(function(e){endLocalJob('ebayAmazonCompareStart');toast('Start queue failed',e.message,'err')});
 }
 function saveSafety(){
   var body={
