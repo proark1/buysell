@@ -102,6 +102,7 @@ const dashboardHtml = `<!doctype html>
     .panel-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)}
     .panel-head h2{margin:0;font-size:15px;font-weight:700}
     .panel-head .hint{color:var(--muted);font-size:12px;font-weight:500}
+    .list-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
     .panel-body{padding:16px 18px}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
     @media(max-width:960px){
@@ -544,7 +545,7 @@ const dashboardHtml = `<!doctype html>
           <div class="panel-body"><div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span></div>
+          <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',false)">Collapse all</button></span></div>
           <div class="panel-body">
             <div class="list-controls">
               <div class="field"><label>Search</label><input id="ebayCompactSearch" placeholder="title, family, category, source" oninput="updateEbayCompactFilters()"></div>
@@ -557,7 +558,7 @@ const dashboardHtml = `<!doctype html>
           </div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span></div>
+          <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',false)">Collapse all</button></span></div>
           <div class="panel-body">
             <div class="list-controls">
               <div class="field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
@@ -638,7 +639,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null,ebayCompactPage:1,ebayComparePage:1};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null,ebayCompactPage:1,ebayComparePage:1,expandedLists:{}};
 var pageSize=20;
 var META={
   overview:['Overview','Live snapshot of your arbitrage pipeline'],
@@ -668,6 +669,17 @@ var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'
   function apiJson(url,options){return apiFetch(url,options).then(responseJson)}
   function jpost(url,body){var h=Object.assign({'content-type':'application/json'},authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(responseJson)}
   function confirmAction(title,detail){return window.confirm(title+(detail?'\\n\\n'+detail:''))}
+  function applyListRowsExpanded(id){
+    var el=document.getElementById(id);
+    if(!el||!state.expandedLists)return;
+    var expanded=state.expandedLists[id];
+    if(expanded===undefined)return;
+    el.querySelectorAll('details').forEach(function(row){row.open=!!expanded});
+  }
+  function setListRowsExpanded(id,expanded){
+    state.expandedLists[id]=!!expanded;
+    applyListRowsExpanded(id);
+  }
 
 function toast(title,msg,kind){
   var box=document.getElementById('toasts');
@@ -1362,6 +1374,7 @@ function renderEbayCompactProducts(candidates){
       comparison+actions+
       '</div></details>';
   }).join('');
+  applyListRowsExpanded('ebayCompactProducts');
   renderPager('ebayCompactPager',state.ebayCompactPage,rows.length,'setEbayCompactPage');
 }
 function comparisonSortWeight(c){
@@ -1440,6 +1453,7 @@ function renderEbayAmazonComparisonRows(candidates){
       actions+
       '</div></details>';
   }).join('');
+  applyListRowsExpanded('ebayAmazonComparisonRows');
   renderPager('ebayComparePager',state.ebayComparePage,rows.length,'setEbayComparePage');
 }
 function setEbayCompactPage(page){
