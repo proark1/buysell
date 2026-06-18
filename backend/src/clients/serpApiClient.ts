@@ -167,7 +167,12 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   if (options.completedOnly ?? true) {
     params.set('LH_Complete', '1');
   }
-  if (options.buyingFormat) params.set('buying_format', options.buyingFormat);
+  if (options.buyingFormat) {
+    params.set('buying_format', options.buyingFormat);
+    if (options.buyingFormat === 'BIN') params.set('LH_BIN', '1');
+    if (options.buyingFormat === 'Auction') params.set('LH_Auction', '1');
+    if (options.buyingFormat === 'BO') params.set('LH_BO', '1');
+  }
   if (options.conditionIds?.length) params.set('LH_ItemCondition', options.conditionIds.join('|'));
   if (options.categoryId?.trim()) params.set('category_id', options.categoryId.trim());
   if (options.minPrice !== undefined) params.set('_udlo', String(options.minPrice));

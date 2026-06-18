@@ -19,6 +19,7 @@ import { applyIdentityDecision, evaluateProductIdentity } from './productIdentit
 import { profitInputsFromRuleConfig } from './profitInputs.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from './marketMetrics.js';
+import { filterEbaySourceCandidates, type EbaySourceDropStats } from './ebaySourceFilters.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { recordDiscoveryCandidateLearning } from '../repositories/learningRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
@@ -71,12 +72,13 @@ export interface CompareAmazonCandidatesOptions {
 }
 
 export interface EbayComparisonReport {
-  status: 'OPPORTUNITY' | 'MANUAL_REVIEW' | 'REJECTED' | 'NO_EBAY_RESULTS' | 'NO_PRICED_EBAY_RESULTS' | 'ERROR';
+  status: 'OPPORTUNITY' | 'MANUAL_REVIEW' | 'REJECTED' | 'NO_EBAY_RESULTS' | 'NO_FIXED_PRICE_EBAY_RESULTS' | 'NO_PRICED_EBAY_RESULTS' | 'ERROR';
   query: string;
   ebayResultCount: number;
   pricedResultCount: number;
   evaluatedCount: number;
   amazonCost?: number;
+  sourceDrops?: EbaySourceDropStats;
   market?: {
     key: string;
     label: string;
@@ -590,6 +592,7 @@ export function analyzeAmazonEbayComparison(
     market?: DiscoveryMarket;
     comparisonSettings?: EbayComparisonSettings;
     activeEbayCandidates?: EbayCandidateInput[];
+    sourceDrops?: EbaySourceDropStats;
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -611,6 +614,7 @@ export function analyzeAmazonEbayComparison(
     market: context.market ? reportMarket(context.market) : undefined,
     settings: context.comparisonSettings ? reportSettings(context.comparisonSettings) : undefined,
     thresholds,
+    sourceDrops: context.sourceDrops,
     comparedAt: new Date().toISOString()
   };
 
@@ -618,10 +622,12 @@ export function analyzeAmazonEbayComparison(
     return {
       report: {
         ...baseReport,
-        status: 'NO_EBAY_RESULTS',
+        status: context.sourceDrops?.total ? 'NO_FIXED_PRICE_EBAY_RESULTS' : 'NO_EBAY_RESULTS',
         evaluatedCount: 0,
         topMatches: [],
-        reasons: ['No completed/sold eBay listings were found for this Amazon product search.']
+        reasons: context.sourceDrops?.total
+          ? ['eBay returned source rows, but all were auctions, missing sold price, or not new fixed-price sold items.']
+          : ['No completed/sold eBay listings were found for this Amazon product search.']
       }
     };
   }
@@ -965,7 +971,7 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
     await options.db.amazonDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
     try {
       const query = searchQueryForAmazonProduct(amazon);
-      const ebayCandidates = await searchEbayCandidates({
+      const rawEbayCandidates = await searchEbayCandidates({
         query,
         apiKey: options.serpApiKey,
         ebayDomain: market.ebayDomain,
@@ -977,7 +983,8 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
         postalCode: comparisonSettings.postalCode
       });
-      const activeEbayCandidates = await searchEbayCandidates({
+      const ebaySource = filterEbaySourceCandidates(rawEbayCandidates, query);
+      const rawActiveEbayCandidates = await searchEbayCandidates({
         query,
         apiKey: options.serpApiKey,
         ebayDomain: market.ebayDomain,
@@ -989,10 +996,12 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         preferredLocation: comparisonSettings.preferredLocation === 'ANY' ? undefined : comparisonSettings.preferredLocation,
         postalCode: comparisonSettings.postalCode
       });
-      const comparison = analyzeAmazonEbayComparison(amazon, ebayCandidates, options.ruleConfig, query, {
+      const activeEbaySource = filterEbaySourceCandidates(rawActiveEbayCandidates, { sourceQuery: query, requireSoldPrice: false });
+      const comparison = analyzeAmazonEbayComparison(amazon, ebaySource.candidates, options.ruleConfig, query, {
         market,
         comparisonSettings,
-        activeEbayCandidates
+        activeEbayCandidates: activeEbaySource.candidates,
+        sourceDrops: ebaySource.dropped
       });
       reports.push(comparison.report);
       const best = comparison.best;

@@ -658,7 +658,7 @@ var BADGE={
   DRAFT:'blue',ASSISTED:'amber',AUTOPILOT:'red',
   NEEDS_HUMAN_CONFIRMATION:'amber',FAILED:'red',REVIEW_REQUIRED:'amber',SKIPPED:'slate',
   PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
-  ,NO_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red'
+  ,NO_EBAY_RESULTS:'red',NO_FIXED_PRICE_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red',SKIPPED_EBAY_SOURCE_FORMAT:'red',SKIPPED_EBAY_SOURCE_DATA:'red'
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
 
@@ -952,7 +952,7 @@ function amazonCandidateReasons(c){
   var scoreData=amazonCandidateScoreData(c);
   var comparison=amazonComparison(c);
   var out=[];
-  if(comparison&&(c.comparisonStatus==='REJECTED'||c.comparisonStatus==='ERROR'||c.comparisonStatus==='MANUAL_REVIEW'||comparison.status==='REJECTED'||comparison.status==='MANUAL_REVIEW'||comparison.status==='NO_EBAY_RESULTS'||comparison.status==='NO_PRICED_EBAY_RESULTS'||comparison.status==='ERROR'))addStrings(out,comparison.reasons);
+  if(comparison&&(c.comparisonStatus==='REJECTED'||c.comparisonStatus==='ERROR'||c.comparisonStatus==='MANUAL_REVIEW'||comparison.status==='REJECTED'||comparison.status==='MANUAL_REVIEW'||comparison.status==='NO_EBAY_RESULTS'||comparison.status==='NO_FIXED_PRICE_EBAY_RESULTS'||comparison.status==='NO_PRICED_EBAY_RESULTS'||comparison.status==='ERROR'))addStrings(out,comparison.reasons);
   addStrings(out,scoreData.rejectionReasons);
   addStrings(out,c.rejectionReasons);
   if(c.safety)addStrings(out,c.safety.reasons);
@@ -1119,7 +1119,7 @@ function ebayCandidateReasons(c){
   var scoreData=ebayCandidateScoreData(c);
   var comparison=ebayComparison(c);
   var out=[];
-  if(comparison&&(c.comparisonStatus==='REJECTED'||c.comparisonStatus==='ERROR'||c.comparisonStatus==='MANUAL_REVIEW'||comparison.status==='REJECTED'||comparison.status==='MANUAL_REVIEW'||comparison.status==='NO_AMAZON_RESULTS'||comparison.status==='NO_PRICED_AMAZON_RESULTS'||comparison.status==='ERROR'))addStrings(out,comparison.reasons);
+  if(comparison&&(c.comparisonStatus==='REJECTED'||c.comparisonStatus==='ERROR'||c.comparisonStatus==='MANUAL_REVIEW'||comparison.status==='REJECTED'||comparison.status==='MANUAL_REVIEW'||comparison.status==='SKIPPED_EBAY_SOURCE_FORMAT'||comparison.status==='SKIPPED_EBAY_SOURCE_DATA'||comparison.status==='NO_AMAZON_RESULTS'||comparison.status==='NO_PRICED_AMAZON_RESULTS'||comparison.status==='ERROR'))addStrings(out,comparison.reasons);
   addStrings(out,scoreData.rejectionReasons);
   addStrings(out,c.rejectionReasons);
   if(c.safety)addStrings(out,c.safety.reasons);
@@ -1994,7 +1994,7 @@ function runEbayDiscovery(){
     state.ebayDiscoveryRunId=res.run&&res.run.id;
     state.selectedEbay={};
     renderEbayDiscoveryReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
-    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source rejected '+(res.summary.sourceRejected||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source dropped '+(res.summary.sourceDropped||0)+' · auctions '+(res.summary.auctionDropped||0)+' · no price '+(res.summary.missingPriceDropped||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
     renderEbayCompactProducts((res.run&&res.run.candidates)||[]);
     toast('eBay Discovery complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();

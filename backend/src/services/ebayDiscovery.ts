@@ -26,6 +26,12 @@ import { profitInputsFromRuleConfig } from './profitInputs.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from './marketMetrics.js';
 import { productFamilyKeyForEbayCandidate } from './productFamily.js';
+import {
+  emptyEbaySourceDropStats,
+  filterEbaySourceCandidates,
+  mergeEbaySourceDropStats,
+  type EbaySourceDropStats
+} from './ebaySourceFilters.js';
 
 export { productFamilyKeyForEbayCandidate } from './productFamily.js';
 
@@ -105,12 +111,13 @@ export interface CompareEbayCandidatesOptions {
 }
 
 export interface AmazonComparisonReport {
-  status: 'OPPORTUNITY' | 'MANUAL_REVIEW' | 'REJECTED' | 'NO_AMAZON_RESULTS' | 'NO_PRICED_AMAZON_RESULTS' | 'ERROR';
+  status: 'OPPORTUNITY' | 'MANUAL_REVIEW' | 'REJECTED' | 'SKIPPED_EBAY_SOURCE_FORMAT' | 'SKIPPED_EBAY_SOURCE_DATA' | 'NO_AMAZON_RESULTS' | 'NO_PRICED_AMAZON_RESULTS' | 'ERROR';
   query: string;
   amazonResultCount: number;
   pricedResultCount: number;
   evaluatedCount: number;
   ebaySoldPrice?: number;
+  sourceDrops?: EbaySourceDropStats;
   market?: {
     key: string;
     label: string;
@@ -286,17 +293,6 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
   }
 
-  if (policy.safeMode && policy.allowedCategories.length > 0 && categoryText) {
-    const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
-    if (!allowedCategory) {
-      riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
-      reasons.push('eBay category is outside the safe-mode allow list.');
-    }
-  } else if (policy.safeMode && policy.allowedCategories.length > 0 && !categoryText) {
-    riskFlags.push('CATEGORY_UNKNOWN');
-    reasons.push('eBay category is missing, so safe-mode category fit needs review.');
-  }
-
   if (!ebay.soldPrice) {
     riskFlags.push('MISSING_EBAY_PRICE');
     reasons.push('Missing eBay sold price.');
@@ -377,8 +373,7 @@ function scoreEbayDiscoveryCandidate(
     if (flag === 'DAMAGED_OR_PARTS') return penalty + 25;
     if (flag === 'SOLD_PRICE_BELOW_MIN') return penalty + 18;
     if (flag === 'SOLD_PRICE_ABOVE_MAX') return penalty + 10;
-    if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 3;
-    if (flag === 'CATEGORY_UNKNOWN') return penalty + 2;
+    if (flag === 'OUTSIDE_ALLOWED_CATEGORY' || flag === 'CATEGORY_UNKNOWN') return penalty;
     return penalty + 4;
   }, 0);
 
@@ -495,6 +490,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   queries: string[];
   candidates: EbayDiscoveryCandidateResult[];
   rejected: EbayDiscoveryCandidateResult[];
+  sourceDrops: EbaySourceDropStats;
   skippedExisting: number;
   filters: Record<string, unknown>;
 }> {
@@ -520,10 +516,11 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const existingFamilyKeys = asSet(options.existingProductFamilyKeys);
   const existingItemIds = asSet(options.existingEbayItemIds);
   const rawResultMultiplier = queryBreadth === 'WIDE' ? 4 : queryBreadth === 'BALANCED' ? 3 : 2;
+  const sourceDrops = emptyEbaySourceDropStats();
 
   const byKey = new Map<string, { ebay: EbayCandidateInput; sourceQuery: string }>();
   for (const seed of queries) {
-    const ebayCandidates = await searchEbayCandidates({
+    const rawEbayCandidates = await searchEbayCandidates({
       query: seed,
       apiKey: options.serpApiKey,
       ebayDomain: market.ebayDomain,
@@ -538,8 +535,10 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       maxPrice: maxSoldPrice,
       limit: Math.max(5, Math.ceil((limit * rawResultMultiplier) / Math.max(queries.length, 1)))
     });
+    const ebaySource = filterEbaySourceCandidates(rawEbayCandidates, seed);
+    mergeEbaySourceDropStats(sourceDrops, ebaySource.dropped);
 
-    for (const ebay of ebayCandidates) {
+    for (const ebay of ebaySource.candidates) {
       const key = ebay.itemId ?? `${ebay.title.toLowerCase()}|${ebay.soldPrice ?? ''}`;
       if (!byKey.has(key)) byKey.set(key, { ebay, sourceQuery: seed });
     }
@@ -592,6 +591,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
     queries,
     candidates,
     rejected,
+    sourceDrops,
     skippedExisting,
     filters: {
       profileKey: profile.key,
@@ -615,7 +615,8 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       postalCode: options.postalCode?.trim() || market.defaultPostalCode,
       categoryId,
       skipExistingProducts,
-      skippedExisting
+      skippedExisting,
+      sourceDrops
     }
   };
 }
@@ -637,7 +638,7 @@ export async function persistEbayDiscoveryRun(
         mode: options.mode ?? 'MANUAL',
         status: 'COMPLETED',
         filtersJson: result.filters,
-        scannedCount: result.candidates.length + result.rejected.length,
+        scannedCount: result.candidates.length + result.rejected.length + result.sourceDrops.total,
         acceptedCount: result.candidates.length,
         rejectedCount: result.rejected.length,
         completedAt: new Date()
@@ -727,6 +728,43 @@ function reportMarket(market: DiscoveryMarket): NonNullable<AmazonComparisonRepo
 
 function reportSettings(amazonMatchLimit: number): NonNullable<AmazonComparisonReport['settings']> {
   return { amazonMatchLimit };
+}
+
+function skippedSourceReport(
+  ebay: EbayCandidateInput,
+  query: string,
+  market: DiscoveryMarket,
+  amazonMatchLimit: number,
+  ruleConfig: ActiveRuleConfig,
+  sourceDrops: EbaySourceDropStats
+): AmazonComparisonReport {
+  const firstReason = sourceDrops.examples[0]?.reason;
+  const sourceFormat = firstReason === 'AUCTION_FORMAT' || firstReason === 'NON_NEW_CONDITION';
+  const reason = firstReason === 'AUCTION_FORMAT'
+    ? 'eBay source row is an auction or bidding listing, so Amazon comparison was skipped.'
+    : firstReason === 'MISSING_SOLD_PRICE'
+      ? 'eBay source row has no usable sold price, so Amazon comparison was skipped.'
+      : 'eBay source row is not a new fixed-price sold listing, so Amazon comparison was skipped.';
+  return {
+    status: sourceFormat ? 'SKIPPED_EBAY_SOURCE_FORMAT' : 'SKIPPED_EBAY_SOURCE_DATA',
+    query,
+    amazonResultCount: 0,
+    pricedResultCount: 0,
+    evaluatedCount: 0,
+    ebaySoldPrice: ebay.soldPrice,
+    market: reportMarket(market),
+    settings: reportSettings(amazonMatchLimit),
+    thresholds: {
+      minimumProfitUsd: ruleConfig.thresholds.minimumProfitUsd,
+      minimumRoiPercent: ruleConfig.thresholds.minimumRoiPercent,
+      minimumMatchConfidence: ruleConfig.thresholds.minimumMatchConfidence,
+      minimumOpportunityScore: ruleConfig.minimumOpportunityScore
+    },
+    sourceDrops,
+    topMatches: [],
+    reasons: [reason],
+    comparedAt: new Date().toISOString()
+  };
 }
 
 function comparisonSnapshot(opportunity: ProductOpportunity): NonNullable<AmazonComparisonReport['best']> {
@@ -1065,23 +1103,40 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
   const manualReviews: ProductOpportunity[] = [];
   const rejected: ProductOpportunity[] = [];
   const reports: AmazonComparisonReport[] = [];
+  let compared = 0;
 
   for (const candidate of candidates) {
     const ebay = ebayFromRecord(candidate as Record<string, unknown>);
+    const query = searchQueryForEbayProduct(ebay);
+    const sourceCheck = filterEbaySourceCandidates([ebay], { sourceQuery: query, requireSoldPrice: true });
+    if (sourceCheck.dropped.total > 0) {
+      const report = skippedSourceReport(ebay, query, market, amazonMatchLimit, options.ruleConfig, sourceCheck.dropped);
+      reports.push(report);
+      await options.db.ebayDiscoveryCandidate.update({
+        where: { id: candidate.id },
+        data: {
+          selected: true,
+          comparisonStatus: 'REJECTED',
+          scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
+        }
+      });
+      continue;
+    }
+
     await options.db.ebayDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
     try {
-      const query = searchQueryForEbayProduct(ebay);
       const amazonMatches = await findAmazonMatches({
         query,
         apiKey: options.keepaApiKey,
         domain: market.amazonDomainId,
         limit: amazonMatchLimit
       });
+      compared += 1;
       let activeMarketCandidates: EbayCandidateInput[] | undefined;
       let activeMarketWarning: string | undefined;
       if (options.serpApiKey) {
         try {
-          activeMarketCandidates = await searchEbayCandidates({
+          const rawActiveMarketCandidates = await searchEbayCandidates({
             query,
             apiKey: options.serpApiKey,
             ebayDomain: market.ebayDomain,
@@ -1093,6 +1148,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
             postalCode: market.defaultPostalCode,
             limit: 25
           });
+          activeMarketCandidates = filterEbaySourceCandidates(rawActiveMarketCandidates, { sourceQuery: query, requireSoldPrice: false }).candidates;
         } catch (error) {
           if (!(error instanceof SerpApiError)) throw error;
           activeMarketWarning = 'Live eBay market check was skipped because SerpAPI is currently unavailable or out of quota.';
@@ -1196,7 +1252,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
     });
   }
 
-  return { compared: candidates.length, opportunities, manualReviews, rejected, reports };
+  return { compared, opportunities, manualReviews, rejected, reports };
 }
 
 export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandidateOptions): Promise<{

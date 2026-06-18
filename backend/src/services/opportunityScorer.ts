@@ -63,8 +63,7 @@ function riskPenalty(riskFlags: string[]): number {
     if (flag === 'HIGH_SOLD_PRICE_SPREAD') return penalty + 8;
     if (flag === 'TARGET_PRICE_ABOVE_MARKET') return penalty + 8;
     if (flag === 'NO_SOLD_MARKET_SAMPLE') return penalty + 10;
-    if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 6;
-    if (flag === 'CATEGORY_UNKNOWN') return penalty + 4;
+    if (flag === 'OUTSIDE_ALLOWED_CATEGORY' || flag === 'CATEGORY_UNKNOWN') return penalty;
     return penalty + 4;
   }, 0);
 }

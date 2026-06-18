@@ -25,6 +25,22 @@ const noResults = analyzeAmazonEbayComparison(amazon, [], defaultRuleConfig, 'Te
 assertEqual(noResults.report.status, 'NO_EBAY_RESULTS', 'comparison no eBay results status');
 assertEqual(noResults.report.reasons[0], 'No completed/sold eBay listings were found for this Amazon product search.', 'comparison no eBay results reason');
 
+const noFixedPriceResults = analyzeAmazonEbayComparison(amazon, [], defaultRuleConfig, 'Tera Wireless Barcode Scanner', {
+  sourceDrops: {
+    total: 1,
+    auctionFormat: 1,
+    missingSoldPrice: 0,
+    nonNewCondition: 0,
+    examples: [{
+      reason: 'AUCTION_FORMAT',
+      title: 'Tera Wireless Barcode Scanner Auction',
+      soldPrice: 120,
+      condition: 'New'
+    }]
+  }
+});
+assertEqual(noFixedPriceResults.report.status, 'NO_FIXED_PRICE_EBAY_RESULTS', 'comparison only dropped eBay source rows status');
+
 const cheapEbay: EbayCandidateInput[] = [{
   title: 'Tera Wireless Barcode Scanner',
   soldPrice: 35,

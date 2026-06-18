@@ -599,19 +599,6 @@ export function evaluateProductSafety(
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
   }
 
-  if (policy.safeMode && policy.allowedCategories.length > 0) {
-    if (!categoryText) {
-      riskFlags.push('CATEGORY_UNKNOWN');
-      reasons.push('Category is missing, so safe-mode category fit needs review.');
-    } else {
-      const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
-      if (!allowedCategory) {
-        riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
-        reasons.push('Category is outside the safe-mode allow list.');
-      }
-    }
-  }
-
   if (amazonCost !== undefined && amazonCost > policy.maxAmazonCostUsd) {
     const effectiveLimit = effectiveAmazonCostLimit(policy, ebay.soldPrice);
     if (amazonCost <= effectiveLimit) {
@@ -675,19 +662,6 @@ export function evaluateAmazonProductSafety(
   if (blockedKeyword) {
     riskFlags.push('BLOCKED_KEYWORD');
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
-  }
-
-  if (policy.safeMode && policy.allowedCategories.length > 0) {
-    if (!categoryText) {
-      riskFlags.push('CATEGORY_UNKNOWN');
-      reasons.push('Category is missing, so safe-mode category fit needs review.');
-    } else {
-      const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
-      if (!allowedCategory) {
-        riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
-        reasons.push('Category is outside the safe-mode allow list.');
-      }
-    }
   }
 
   if (amazonCost !== undefined && amazonCost > policy.maxAmazonCostUsd) {

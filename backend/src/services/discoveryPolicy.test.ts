@@ -69,8 +69,8 @@ const unknownCategory = evaluateProductSafety(
   basePolicy
 );
 
-assertEqual(unknownCategory.status, 'WARN', 'missing category should not hard reject');
-assertIncludes(unknownCategory.riskFlags, 'CATEGORY_UNKNOWN', 'missing category flag');
+assertEqual(unknownCategory.status, 'PASS', 'missing category should not reject or warn when product identity can prove the match');
+if (unknownCategory.riskFlags.includes('CATEGORY_UNKNOWN')) throw new Error('missing category should not create a risk flag');
 
 const stockUnknown = evaluateProductSafety(
   { title: 'Thermal label printer', soldPrice: 129.99, category: 'Office Products' },

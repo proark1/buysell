@@ -139,6 +139,20 @@ globalThis.fetch = (async () => new Response(JSON.stringify({
       price: { raw: '$155.00' },
       condition: 'New',
       category: 'Office Products'
+    },
+    {
+      item_id: 'auction-1',
+      title: 'Tera X100 Wireless Barcode Scanner Auction',
+      link: 'https://www.ebay.com/itm/auction-1',
+      price: { raw: '$80.00' },
+      condition: 'New',
+      extensions: ['3 bids']
+    },
+    {
+      item_id: 'missing-price-1',
+      title: 'Tera X100 Wireless Barcode Scanner No Price',
+      link: 'https://www.ebay.com/itm/missing-price-1',
+      condition: 'New'
     }
   ]
 }), { status: 200 })) as typeof fetch;
@@ -155,6 +169,8 @@ try {
     itemCondition: 'ANY'
   });
   assertEqual(grouped.candidates.length, 2, 'eBay discovery groups duplicate product families');
+  assertEqual(grouped.sourceDrops.auctionFormat, 1, 'eBay discovery drops auction rows before persistence');
+  assertEqual(grouped.sourceDrops.missingSoldPrice, 1, 'eBay discovery drops rows without sold price before persistence');
   const groupedScanner = grouped.candidates.find((candidate) => candidate.family.key === 'tera:x100');
   assertEqual(groupedScanner?.family.soldCount, 2, 'eBay discovery grouped sold count');
 

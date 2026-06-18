@@ -70,6 +70,7 @@ try {
   assertEqual(url.searchParams.get('LH_Sold'), '1', 'SerpAPI sold filter');
   assertEqual(url.searchParams.get('LH_Complete'), '1', 'SerpAPI completed filter');
   assertEqual(url.searchParams.get('buying_format'), 'BIN', 'SerpAPI buying format filter');
+  assertEqual(url.searchParams.get('LH_BIN'), '1', 'SerpAPI fixed price filter');
   assertEqual(url.searchParams.get('LH_ItemCondition'), '1000', 'SerpAPI condition filter');
   assertEqual(url.searchParams.get('category_id'), '58058', 'SerpAPI category filter');
   assertEqual(url.searchParams.get('_udlo'), '20', 'SerpAPI min price filter');

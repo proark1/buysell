@@ -9,6 +9,7 @@ import { scoreOpportunity } from '../services/opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity } from '../services/productIdentityMatcher.js';
 import { buildOpportunityEvidence } from '../services/opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from '../services/marketMetrics.js';
+import { filterEbaySourceCandidates } from '../services/ebaySourceFilters.js';
 
 export interface BuildOpportunitiesOptions {
   query: string;
@@ -46,11 +47,12 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
 
   const candidatesByKey = new Map<string, ProductOpportunity['ebay']>();
   for (const query of queryList) {
-    const ebayCandidates = await searchEbayCandidates({
+    const rawEbayCandidates = await searchEbayCandidates({
       query,
       apiKey: options.serpApiKey,
       limit: Math.max(3, Math.ceil((options.limit ?? 10) / queryList.length))
     });
+    const ebayCandidates = filterEbaySourceCandidates(rawEbayCandidates, query).candidates;
 
     for (const candidate of ebayCandidates) {
       const key = `${candidate.title.toLowerCase()}|${candidate.soldPrice ?? ''}`;
