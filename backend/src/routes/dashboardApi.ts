@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
 import { getDashboardData } from '../repositories/dashboardRepository.js';
-import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { defaultRuleConfig, getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
 import { runScheduledEbayAmazonComparison, runScheduledEbayDiscovery } from '../services/ebayDiscoveryScheduler.js';
@@ -41,6 +41,45 @@ const settingsSchema = z.object({
   ebayAmazonCompareAutoRunLimit: z.number().int().positive().max(25).optional()
 });
 
+type RuleConfigPatchValue = string | number | boolean | string[] | undefined;
+type RuleConfigPatch = Record<string, RuleConfigPatchValue>;
+
+type EbayAmazonComparisonRunRouteDelegate = {
+  updateMany(args: {
+    where: { mode: 'AUTO'; status: 'RUNNING' };
+    data: {
+      status: 'CANCELLED';
+      reason: string;
+      completedAt: Date;
+    };
+  }): Promise<{ count: number }>;
+};
+
+const routeDb = prisma as typeof prisma & { ebayAmazonComparisonRun: EbayAmazonComparisonRunRouteDelegate };
+
+async function patchRuleConfig(data: RuleConfigPatch): Promise<unknown> {
+  const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
+  return existing
+    ? prisma.ruleConfig.update({ where: { id: existing.id }, data })
+    : prisma.ruleConfig.create({ data: { id: 'default-rule-config', name: 'default', active: true, ...data } });
+}
+
+async function cancelRunningEbayDiscoveryAutoRuns(reason: string): Promise<number> {
+  const result = await prisma.ebayDiscoveryRun.updateMany({
+    where: { mode: 'AUTO', status: 'RUNNING' },
+    data: { status: 'CANCELLED', error: reason, completedAt: new Date() }
+  });
+  return result.count;
+}
+
+async function cancelRunningAmazonComparisonAutoRuns(reason: string): Promise<number> {
+  const result = await routeDb.ebayAmazonComparisonRun.updateMany({
+    where: { mode: 'AUTO', status: 'RUNNING' },
+    data: { status: 'CANCELLED', reason, completedAt: new Date() }
+  });
+  return result.count;
+}
+
 export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health/db', async () => {
     try {
@@ -66,7 +105,6 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
 
     const parsed = settingsSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid settings payload', details: parsed.error.flatten() });
-    const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
     const decimalKeys = new Set([
       'minimumProfitUsd',
       'minimumRoiPercent',
@@ -86,10 +124,8 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
       'maxDailyPurchaseAmountUsd',
       'maxAmazonCostUsd'
     ]);
-    const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value]));
-    const ruleConfig = existing
-      ? await prisma.ruleConfig.update({ where: { id: existing.id }, data })
-      : await prisma.ruleConfig.create({ data: { id: 'default-rule-config', name: 'default', active: true, ...data } });
+    const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value])) as RuleConfigPatch;
+    const ruleConfig = await patchRuleConfig(data);
     return { ruleConfig };
   });
 
@@ -103,8 +139,44 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     return runScheduledEbayDiscovery();
   });
 
+  app.post('/api/ebay-discovery/auto-run/stop', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const ruleConfig = await patchRuleConfig({ ebayDiscoveryAutoRunEnabled: false });
+    const cancelledRuns = await cancelRunningEbayDiscoveryAutoRuns('eBay auto-run stopped by user.');
+    return { stopped: true, deleted: false, cancelledRuns, ruleConfig };
+  });
+
+  app.post('/api/ebay-discovery/auto-run/delete', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const ruleConfig = await patchRuleConfig({
+      ebayDiscoveryAutoRunEnabled: false,
+      ebayDiscoveryAutoRunIntervalMinutes: defaultRuleConfig.ebayDiscoveryAutoRunIntervalMinutes,
+      ebayDiscoveryAutoRunLimit: defaultRuleConfig.ebayDiscoveryAutoRunLimit
+    });
+    const cancelledRuns = await cancelRunningEbayDiscoveryAutoRuns('eBay auto-run deleted by user.');
+    return { stopped: true, deleted: true, cancelledRuns, ruleConfig };
+  });
+
   app.post('/api/ebay-discovery/amazon-compare-auto-run/run', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return runScheduledEbayAmazonComparison({ mode: 'MANUAL' });
+  });
+
+  app.post('/api/ebay-discovery/amazon-compare-auto-run/stop', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const ruleConfig = await patchRuleConfig({ ebayAmazonCompareAutoRunEnabled: false });
+    const cancelledRuns = await cancelRunningAmazonComparisonAutoRuns('Amazon comparison auto-run stopped by user.');
+    return { stopped: true, deleted: false, cancelledRuns, ruleConfig };
+  });
+
+  app.post('/api/ebay-discovery/amazon-compare-auto-run/delete', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const ruleConfig = await patchRuleConfig({
+      ebayAmazonCompareAutoRunEnabled: false,
+      ebayAmazonCompareAutoRunIntervalMinutes: defaultRuleConfig.ebayAmazonCompareAutoRunIntervalMinutes,
+      ebayAmazonCompareAutoRunLimit: defaultRuleConfig.ebayAmazonCompareAutoRunLimit
+    });
+    const cancelledRuns = await cancelRunningAmazonComparisonAutoRuns('Amazon comparison auto-run deleted by user.');
+    return { stopped: true, deleted: true, cancelledRuns, ruleConfig };
   });
 }

@@ -482,16 +482,20 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run every interval</label></div>
                 <div class="field"><label>Interval Minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
                 <div class="field"><label>Products Per Run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save Auto Run</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save / Change Job</button></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAutoNow()">Run Auto Now</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="stopEbayAutoRun()">Stop Job</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn danger" onclick="deleteEbayAutoRun()">Delete Job</button></div>
               </div>
               <div class="subsection-title">Automatic Amazon comparison</div>
               <div class="form-grid compact">
                 <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAmazonCompareEnabled" type="checkbox"> Compare every interval</label></div>
                 <div class="field"><label>Interval Minutes</label><input id="ebayAmazonCompareInterval" type="number" min="1" max="1440" value="1"></div>
                 <div class="field"><label>Products Per Run</label><input id="ebayAmazonCompareLimit" type="number" min="1" max="25" value="1"></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAmazonCompareAutoRun()">Save Compare Run</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAmazonCompareAutoRun()">Save / Change Job</button></div>
                 <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAmazonCompareNow()">Run Compare Now</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="stopEbayAmazonCompareAutoRun()">Stop Job</button></div>
+                <div class="field"><label>&nbsp;</label><button class="btn danger" onclick="deleteEbayAmazonCompareAutoRun()">Delete Job</button></div>
               </div>
             </details>
             <div class="actions-row">
@@ -1685,6 +1689,20 @@ function saveEbayAutoRun(){
     load();
   }).catch(function(e){toast('Save failed',e.message,'err')});
 }
+function stopEbayAutoRun(){
+  if(!confirmAction('Stop eBay auto-run?','This disables future scheduled eBay discovery runs but keeps the current interval and product count.'))return;
+  apiJson('/api/ebay-discovery/auto-run/stop',{method:'POST'}).then(function(res){
+    toast('eBay auto-run stopped',res,'ok');
+    load();
+  }).catch(function(e){toast('Stop failed',e.message,'err')});
+}
+function deleteEbayAutoRun(){
+  if(!confirmAction('Delete eBay auto-run job?','This disables the scheduled eBay job and resets its interval and product count to defaults. Product data and past completed runs are kept.'))return;
+  apiJson('/api/ebay-discovery/auto-run/delete',{method:'POST'}).then(function(res){
+    toast('eBay auto-run deleted',res,'ok');
+    load();
+  }).catch(function(e){toast('Delete failed',e.message,'err')});
+}
 function saveEbayAmazonCompareAutoRun(){
   var interval=Number(document.getElementById('ebayAmazonCompareInterval').value||1);
   var limit=Number(document.getElementById('ebayAmazonCompareLimit').value||1);
@@ -1699,6 +1717,20 @@ function saveEbayAmazonCompareAutoRun(){
     toast('Amazon comparison auto-run saved',(body.ebayAmazonCompareAutoRunEnabled?'Enabled':'Disabled')+' · '+interval+' min · '+limit+' product'+(limit===1?'':'s'),'ok');
     load();
   }).catch(function(e){toast('Save failed',e.message,'err')});
+}
+function stopEbayAmazonCompareAutoRun(){
+  if(!confirmAction('Stop Amazon comparison auto-run?','This disables future scheduled Amazon comparisons but keeps the current interval and product count.'))return;
+  apiJson('/api/ebay-discovery/amazon-compare-auto-run/stop',{method:'POST'}).then(function(res){
+    toast('Amazon comparison auto-run stopped',res,'ok');
+    load();
+  }).catch(function(e){toast('Stop failed',e.message,'err')});
+}
+function deleteEbayAmazonCompareAutoRun(){
+  if(!confirmAction('Delete Amazon comparison auto-run job?','This disables the scheduled Amazon comparison job and resets its interval and product count to defaults. Product data and past completed runs are kept.'))return;
+  apiJson('/api/ebay-discovery/amazon-compare-auto-run/delete',{method:'POST'}).then(function(res){
+    toast('Amazon comparison auto-run deleted',res,'ok');
+    load();
+  }).catch(function(e){toast('Delete failed',e.message,'err')});
 }
 function runEbayAutoNow(){
   toast('Running scheduled eBay discovery','Using auto-run settings');
