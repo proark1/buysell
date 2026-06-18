@@ -517,11 +517,27 @@ async function runScheduledEbayAmazonComparisonUnlocked(options: EbayAmazonCompa
 }
 
 export async function runScheduledEbayAmazonComparison(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
+  const mode = options.mode ?? 'AUTO';
+  if (mode === 'AUTO') {
+    const ruleConfig = await getActiveRuleConfig(prisma);
+    if (!ruleConfig.ebayAmazonCompareAutoRunEnabled) {
+      return {
+        enabled: false,
+        selected: [],
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        reason: 'Amazon comparison auto-run is disabled.'
+      };
+    }
+  }
+
   const locked = await withSchedulerLock(prisma, {
     name: 'ebay-amazon-comparison-auto-run',
     ttlMs: minutesToMs(scheduledComparisonTimeoutMinutes + 1),
-    metadata: { job: 'ebay-amazon-comparison-auto-run', mode: options.mode ?? 'AUTO' }
-  }, () => runScheduledEbayAmazonComparisonUnlocked(options));
+    metadata: { job: 'ebay-amazon-comparison-auto-run', mode }
+  }, () => runScheduledEbayAmazonComparisonUnlocked({ ...options, mode }));
 
   return locked.acquired
     ? locked.result

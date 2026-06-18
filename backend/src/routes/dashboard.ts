@@ -890,7 +890,11 @@ function comparisonRunMeta(run){
 function isKeepaPause(run){
   var status=String((run&&run.status)||'');
   var msg=String((run&&run.reason)||(run&&run.error)||'').toLowerCase();
-  return status==='SKIPPED'&&(msg.indexOf('keepa')>=0||msg.indexOf('rate limit')>=0||msg.indexOf('token')>=0||msg.indexOf('retry')>=0);
+  if(!(status==='SKIPPED'&&(msg.indexOf('keepa')>=0||msg.indexOf('rate limit')>=0||msg.indexOf('token')>=0||msg.indexOf('retry')>=0)))return false;
+  var retry=Number(run&&run.keepaRetryAfterSeconds||0);
+  var base=new Date((run&&run.completedAt)||(run&&run.startedAt)||0).getTime();
+  if(!retry||!base)return false;
+  return Date.now()<=base+(retry*1000)+5000;
 }
 function comparisonJobBuckets(){
   var d=state.data||{};
@@ -940,6 +944,15 @@ function liveSchedulerLocks(){
   var locks=((state.data&&state.data.pipeline&&state.data.pipeline.schedulerLocks)||[]);
   return locks.filter(function(lock){return new Date(lock.leasedUntil).getTime()>Date.now()});
 }
+function visibleSchedulerLocks(rc){
+  rc=rc||{};
+  return liveSchedulerLocks().filter(function(lock){
+    var meta=lock&&lock.metadataJson&&typeof lock.metadataJson==='object'?lock.metadataJson:{};
+    if(meta.job==='ebay-amazon-comparison-auto-run'&&meta.mode==='AUTO'&&rc.ebayAmazonCompareAutoRunEnabled===false)return false;
+    if(meta.job==='ebay-discovery-auto-run'&&rc.ebayDiscoveryAutoRunEnabled===false)return false;
+    return true;
+  });
+}
 function pushActiveRuns(target,rows,label,detailFn,statuses){
   var active={};
   statuses.forEach(function(status){active[status]=true});
@@ -961,7 +974,7 @@ function buildTopJobActivity(){
   if((f.ebayComparing||0)>0&&!running.some(function(job){return job.label.indexOf('comparison')>=0||job.label.indexOf('comparing')>=0})){
     running.push({label:f.ebayComparing+' Amazon comparison row'+(f.ebayComparing===1?'':'s'),detail:'Products are marked COMPARING',status:'RUNNING'});
   }
-  liveSchedulerLocks().forEach(function(lock){
+  visibleSchedulerLocks(rc).forEach(function(lock){
     running.push({label:'Scheduler lock: '+lock.name,detail:'Owner '+(lock.owner||'—')+' · lease '+when(lock.leasedUntil),status:'RUNNING'});
   });
   var paused=[];
