@@ -84,6 +84,18 @@ const dashboardHtml = `<!doctype html>
       background:var(--gl,rgba(99,102,241,.16));border:1px solid var(--border)}
     .stat .label{color:var(--muted);font-size:12px;font-weight:600;margin-top:14px;text-transform:uppercase;letter-spacing:.5px}
     .stat .count{font-size:32px;font-weight:800;margin-top:2px;letter-spacing:-.5px}
+    .pipeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
+    .stage{border:1px solid var(--border);background:rgba(2,6,23,.28);border-radius:12px;padding:12px;min-height:86px;display:grid;align-content:space-between}
+    .stage-value{font-size:26px;font-weight:800;line-height:1}
+    .stage-label{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-top:8px}
+    .stage-note{font-size:11px;color:var(--faint);margin-top:4px}
+    .rank-list{display:grid;gap:9px}
+    .rank-row{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:10px;align-items:center;border-bottom:1px solid var(--border);padding:8px 0}
+    .rank-row:last-child{border-bottom:none}
+    .rank-score{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;font-weight:800;background:rgba(52,211,153,.18);color:var(--green);border:1px solid rgba(52,211,153,.28)}
+    .rank-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rank-meta{color:var(--muted);font-size:12px;margin-top:2px}
+    .pipeline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     /* Panels */
     .panel{background:linear-gradient(180deg,var(--panel),var(--bg-2));border:1px solid var(--border);
       border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
@@ -251,6 +263,27 @@ const dashboardHtml = `<!doctype html>
       <!-- OVERVIEW -->
       <section class="view active" id="view-overview">
         <div class="stats" id="stats"></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Opportunity Pipeline</h2><span class="hint">eBay demand to Amazon source comparison</span><span class="spacer"></span><button class="btn sm" onclick="navigate('ebayDiscovery')">Open Discovery</button></div>
+          <div class="panel-body">
+            <div class="pipeline" id="pipelineFunnel"></div>
+            <div class="pipeline-actions" id="pipelineActions"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-head"><h2>Top Opportunities</h2><span class="hint">Highest score candidates</span></div>
+            <div class="panel-body"><div id="topOpportunities" class="rank-list"></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Learning &amp; Reliability</h2><span class="hint">Feedback, locks, evidence, and realized P/L</span></div>
+            <div class="panel-body">
+              <div class="pipeline" id="learningMetrics"></div>
+              <div class="subsection-title">Scheduler Locks</div>
+              <div id="schedulerLocks" class="rank-list"></div>
+            </div>
+          </div>
+        </div>
         <div class="grid-2">
           <div class="panel">
             <div class="panel-head"><h2>Priority Actions</h2><span class="hint">Top pending items</span></div>
@@ -1444,6 +1477,66 @@ function clearEbayCompareFilters(){
   updateEbayCompareFilters();
 }
 
+function stage(label,value,note,color){
+  var c=color||'var(--blue)';
+  return '<div class="stage" style="border-color:'+c+'40"><div><div class="stage-value" style="color:'+c+'">'+esc(value===undefined||value===null?0:value)+'</div><div class="stage-label">'+esc(label)+'</div></div><div class="stage-note">'+esc(note||'')+'</div></div>';
+}
+function renderPipeline(){
+  var p=(state.data&&state.data.pipeline)||{};
+  var f=p.funnel||{};
+  var o=p.observability||{};
+  var funnel=[
+    stage('Queued',f.ebayQueued,'sold eBay products waiting for Amazon comparison',COLORS.slate),
+    stage('Comparing',f.ebayComparing,'active Amazon match jobs',COLORS.blue),
+    stage('Opportunities',f.ebayOpportunities,'passed demand, match, and margin checks',COLORS.green),
+    stage('Manual Review',f.ebayManualReview,'promising but needs human verification',COLORS.amber),
+    stage('Verify Queue',f.verifyActions,'live price checks before listing',COLORS.amber),
+    stage('Active Listings',f.activeListings,'currently live on eBay',COLORS.teal),
+    stage('Rejected',f.ebayRejected,'filtered out by risk, price, or matching',COLORS.red),
+    stage('Errors',f.ebayErrors,'retryable comparison failures',COLORS.red)
+  ].join('');
+  var funnelEl=document.getElementById('pipelineFunnel');
+  if(funnelEl)funnelEl.innerHTML=funnel;
+  var actionsEl=document.getElementById('pipelineActions');
+  if(actionsEl)actionsEl.innerHTML=[
+    '<button class="btn primary" onclick="runEbayAutoNow()">Run eBay Scan</button>',
+    '<button class="btn primary" onclick="runEbayAmazonCompareNow()">Run Amazon Compare</button>',
+    '<button class="btn" onclick="navigate(&quot;actions&quot;)">Review Actions</button>',
+    '<span class="hint">Human confirmation '+esc(f.humanConfirmation||0)+' · automation issues '+esc(f.automationFailures||0)+'</span>'
+  ].join('');
+
+  var learningEl=document.getElementById('learningMetrics');
+  if(learningEl)learningEl.innerHTML=[
+    stage('Families',o.productFamilies,'canonical product groups learned',COLORS.blue),
+    stage('Price Checks',o.priceObservations,'captured Amazon/eBay observations',COLORS.teal),
+    stage('Inventory Watch',o.inventoryWatching,'source records tracked',COLORS.amber),
+    stage('Realized P/L',money(o.realizedProfit||0),'from ledger entries',COLORS.green)
+  ].join('');
+
+  var locks=p.schedulerLocks||[];
+  var locksEl=document.getElementById('schedulerLocks');
+  if(locksEl)locksEl.innerHTML=locks.length?locks.map(function(lock){
+    var live=new Date(lock.leasedUntil).getTime()>Date.now();
+    return '<div class="rank-row"><div class="rank-score" style="color:'+(live?COLORS.green:COLORS.slate)+'">'+(live?'ON':'ID')+'</div><div><div class="rank-title">'+esc(lock.name)+'</div><div class="rank-meta">Owner '+esc(lock.owner||'—')+' · lease '+when(lock.leasedUntil)+'</div></div>'+badge(live?'RUNNING':'SKIPPED')+'</div>';
+  }).join(''):'<div class="empty">No scheduler leases recorded yet.</div>';
+
+  var top=p.topOpportunities||[];
+  var topEl=document.getElementById('topOpportunities');
+  if(topEl)topEl.innerHTML=top.length?top.map(function(item){
+    var score=item.opportunityScore===null||item.opportunityScore===undefined?'—':item.opportunityScore;
+    var match=(item.amazonMatches&&item.amazonMatches[0])||{};
+    var profit=(item.profitSnapshots&&item.profitSnapshots[0])||{};
+    var decision=(item.aiDecisions&&item.aiDecisions[0])||{};
+    var meta=[
+      'eBay '+money(item.ebaySoldPrice),
+      'Amazon '+money(match.buyBoxPrice||match.currentPrice),
+      'Profit '+money(profit.expectedProfit),
+      'ROI '+(profit.roiPercent===undefined||profit.roiPercent===null?'—':Number(profit.roiPercent).toFixed(1)+'%')
+    ].join(' · ');
+    return '<div class="rank-row"><div class="rank-score">'+esc(score)+'</div><div><div class="rank-title" title="'+esc(item.ebayTitle||'')+'">'+esc(item.ebayTitle||'Untitled opportunity')+'</div><div class="rank-meta">'+esc(meta)+'</div></div>'+badge(decision.decision||item.safetyStatus||'PENDING')+'</div>';
+  }).join(''):'<div class="empty">No scored opportunities yet. Start eBay Discovery to build the queue.</div>';
+}
+
 function render(){
   var d=state.data;if(!d)return;
   var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],ebayAmazonComparisons:['A>','rgba(34,211,238,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
@@ -1452,6 +1545,7 @@ function render(){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
   }).join('');
+  renderPipeline();
 
   var actCols=[
     {key:'id',label:'ID',fmt:function(v){return shortId(v)}},

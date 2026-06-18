@@ -1,4 +1,5 @@
 import {
+  automationArtifactsFromResult,
   automationRiskScore,
   defaultAutomationModeForAction,
   isTerminalAutomationStatus
@@ -20,5 +21,19 @@ assertEqual(isTerminalAutomationStatus('COMPLETED'), true, 'COMPLETED is termina
 assertEqual(isTerminalAutomationStatus('FAILED'), true, 'FAILED is terminal');
 assertEqual(isTerminalAutomationStatus('RUNNING'), false, 'RUNNING is active');
 assertEqual(isTerminalAutomationStatus('NEEDS_HUMAN_CONFIRMATION'), false, 'NEEDS_HUMAN_CONFIRMATION is active');
+
+const artifacts = automationArtifactsFromResult({
+  evidence: {
+    amazonScreenshotPath: '/tmp/amazon.png',
+    ebayScreenshotUrl: 'https://example.test/ebay.png'
+  },
+  artifacts: [
+    { kind: 'TRACE', path: '/tmp/trace.json', sha256: 'abc' },
+    { kind: 'TRACE', path: '/tmp/trace.json', sha256: 'abc' }
+  ]
+});
+assertEqual(artifacts.length, 3, 'automation artifact extraction dedupes explicit artifacts');
+assertEqual(artifacts.some((artifact) => artifact.path === '/tmp/amazon.png'), true, 'extracts screenshot path');
+assertEqual(artifacts.some((artifact) => artifact.url === 'https://example.test/ebay.png'), true, 'extracts screenshot URL');
 
 console.log('automation unit test passed');

@@ -5,6 +5,7 @@ import { SerpApiError } from '../clients/serpApiClient.js';
 import { ebayDiscoveryProfiles } from './discoveryPolicy.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { getSecret } from './secrets.js';
+import { withSchedulerLock } from './schedulerLocks.js';
 import {
   buildEbayDiscoveryCandidates,
   compareEbayDiscoveryCandidates,
@@ -236,7 +237,7 @@ async function nextSchedulerTarget(): Promise<EbayDiscoverySchedulerTarget | und
   return targets[completedRuns % targets.length];
 }
 
-export async function runScheduledEbayDiscovery(): Promise<{
+type ScheduledEbayDiscoveryResult = {
   enabled: boolean;
   scanned?: number;
   accepted?: number;
@@ -252,7 +253,9 @@ export async function runScheduledEbayDiscovery(): Promise<{
   };
   target?: EbayDiscoverySchedulerTarget;
   reason?: string;
-}> {
+};
+
+async function runScheduledEbayDiscoveryUnlocked(): Promise<ScheduledEbayDiscoveryResult> {
   const ruleConfig = await getActiveRuleConfig(prisma);
   if (!ruleConfig.ebayDiscoveryAutoRunEnabled) {
     return { enabled: false, reason: 'eBay discovery auto-run is disabled.' };
@@ -319,7 +322,29 @@ export async function runScheduledEbayDiscovery(): Promise<{
   };
 }
 
-export async function runScheduledEbayAmazonComparison(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
+export async function runScheduledEbayDiscovery(): Promise<ScheduledEbayDiscoveryResult> {
+  const locked = await withSchedulerLock(prisma, {
+    name: 'ebay-discovery-auto-run',
+    ttlMs: minutesToMs(scheduledDiscoveryTimeoutMinutes + 1),
+    metadata: { job: 'ebay-discovery-auto-run' }
+  }, () => runScheduledEbayDiscoveryUnlocked());
+
+  return locked.acquired
+    ? locked.result
+    : {
+      enabled: true,
+      scanned: 0,
+      accepted: 0,
+      rejected: 0,
+      skippedExisting: 0,
+      compared: 0,
+      opportunities: 0,
+      comparisonSkippedReason: 'Amazon comparison is handled by the separate comparison auto-run.',
+      reason: 'eBay discovery auto-run is already running on another worker.'
+    };
+}
+
+async function runScheduledEbayAmazonComparisonUnlocked(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
   const ruleConfig = await getActiveRuleConfig(prisma);
   if (!ruleConfig.ebayAmazonCompareAutoRunEnabled) {
     return {
@@ -488,6 +513,26 @@ export async function runScheduledEbayAmazonComparison(options: EbayAmazonCompar
     }, error);
     throw error;
   }
+}
+
+export async function runScheduledEbayAmazonComparison(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
+  const locked = await withSchedulerLock(prisma, {
+    name: 'ebay-amazon-comparison-auto-run',
+    ttlMs: minutesToMs(scheduledComparisonTimeoutMinutes + 1),
+    metadata: { job: 'ebay-amazon-comparison-auto-run', mode: options.mode ?? 'AUTO' }
+  }, () => runScheduledEbayAmazonComparisonUnlocked(options));
+
+  return locked.acquired
+    ? locked.result
+    : {
+      enabled: true,
+      selected: [],
+      compared: 0,
+      opportunities: 0,
+      manualReviews: 0,
+      rejected: 0,
+      reason: 'Amazon comparison auto-run is already running on another worker.'
+    };
 }
 
 let schedulerRunning = false;

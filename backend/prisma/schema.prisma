@@ -54,6 +54,7 @@ enum ActionStatus {
 
 model ProductCandidate {
   id                 String                    @id @default(cuid())
+  productFamilyId    String?
   discoveryRunId     String?
   amazonCandidateId  String?
   ebayCandidateId    String?
@@ -80,10 +81,17 @@ model ProductCandidate {
   ebayListings       EbayListing[]
   actionItems        ActionItem[]
   priceVerifications PriceVerification[]
+  opportunityFeedback OpportunityFeedback[]
+  priceObservations   PriceObservation[]
+  listingLifecycleEvents ListingLifecycleEvent[]
+  sourceInventoryRecords SourceInventoryRecord[]
+  profitLedgerEntries ProfitLedgerEntry[]
+  productFamily      ProductFamily?            @relation(fields: [productFamilyId], references: [id], onDelete: SetNull)
   discoveryRun       DiscoveryScanRun?         @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
   amazonCandidate    AmazonDiscoveryCandidate? @relation(fields: [amazonCandidateId], references: [id], onDelete: SetNull)
   ebayCandidate      EbayDiscoveryCandidate?   @relation(fields: [ebayCandidateId], references: [id], onDelete: SetNull)
 
+  @@index([productFamilyId])
   @@index([discoveryRunId])
   @@index([amazonCandidateId])
   @@index([ebayCandidateId])
@@ -118,6 +126,9 @@ model AmazonMatch {
   ebayListings       EbayListing[]
   actionItems        ActionItem[]
   priceVerifications PriceVerification[]
+  opportunityFeedback OpportunityFeedback[]
+  priceObservations   PriceObservation[]
+  sourceInventoryRecords SourceInventoryRecord[]
 
   @@index([asin])
   @@index([productCandidateId])
@@ -188,6 +199,8 @@ model EbayListing {
   productCandidate   ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
   amazonMatch        AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Restrict)
   orders             Order[]
+  listingLifecycleEvents ListingLifecycleEvent[]
+  profitLedgerEntries    ProfitLedgerEntry[]
 }
 
 model Order {
@@ -205,6 +218,7 @@ model Order {
   ebayListing                   EbayListing      @relation(fields: [ebayListingId], references: [id], onDelete: Restrict)
   amazonPurchases               AmazonPurchase[]
   actionItems                   ActionItem[]
+  profitLedgerEntries           ProfitLedgerEntry[]
 }
 
 model AmazonPurchase {
@@ -254,6 +268,7 @@ model ActionItem {
   order              Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
   priceVerification  PriceVerification?
   automationRuns     AutomationRun[]
+  automationArtifacts AutomationArtifact[]
 
   @@index([status, type])
   @@index([productCandidateId])
@@ -275,6 +290,7 @@ model AutomationRun {
   updatedAt      DateTime          @updatedAt
   actionItem     ActionItem        @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
   events         AutomationEvent[]
+  artifacts      AutomationArtifact[]
 
   @@index([actionItemId])
   @@index([status, startedAt])
@@ -521,6 +537,8 @@ model EbayDiscoveryCandidate {
   updatedAt          DateTime           @updatedAt
   run                EbayDiscoveryRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
   productCandidates  ProductCandidate[]
+  opportunityFeedback OpportunityFeedback[]
+  priceObservations   PriceObservation[]
 
   @@index([runId, ebayScore])
   @@index([ebayItemId])
@@ -534,4 +552,169 @@ model Credential {
   encryptedValue String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model SchedulerLock {
+  name         String   @id
+  owner        String
+  leasedUntil  DateTime
+  heartbeatAt  DateTime @default(now())
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([leasedUntil])
+}
+
+model ProductFamily {
+  id                 String   @id @default(cuid())
+  familyKey          String   @unique
+  canonicalTitle     String
+  brand              String?
+  modelTokens        Json?
+  identifiers        Json?
+  opportunityCount   Int      @default(0)
+  manualReviewCount  Int      @default(0)
+  rejectedCount      Int      @default(0)
+  listedCount        Int      @default(0)
+  realizedProfit     Decimal  @default(0.00) @db.Decimal(12, 2)
+  lastDecision       String?
+  lastRiskFlags      Json?
+  firstSeenAt        DateTime @default(now())
+  lastSeenAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  productCandidates  ProductCandidate[]
+
+  @@index([lastSeenAt])
+  @@index([opportunityCount])
+}
+
+model OpportunityFeedback {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  amazonMatchId      String?
+  ebayCandidateId    String?
+  feedbackType       String
+  reasonCode         String?
+  reasonText         String?
+  source             String            @default("system")
+  weight             Int               @default(1)
+  metadataJson       Json?
+  createdAt          DateTime          @default(now())
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch        AmazonMatch?      @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  ebayCandidate      EbayDiscoveryCandidate? @relation(fields: [ebayCandidateId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId])
+  @@index([amazonMatchId])
+  @@index([ebayCandidateId])
+  @@index([feedbackType, createdAt])
+  @@index([reasonCode])
+}
+
+model PriceObservation {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  amazonMatchId      String?
+  ebayCandidateId    String?
+  marketplace        String
+  source             String
+  observedPrice      Decimal           @db.Decimal(10, 2)
+  shippingPrice      Decimal?          @db.Decimal(10, 2)
+  currency           String            @default("USD")
+  availabilityStatus String?
+  rawJson            Json?
+  capturedAt         DateTime          @default(now())
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch        AmazonMatch?      @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+  ebayCandidate      EbayDiscoveryCandidate? @relation(fields: [ebayCandidateId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId, capturedAt])
+  @@index([amazonMatchId, capturedAt])
+  @@index([ebayCandidateId, capturedAt])
+  @@index([marketplace, capturedAt])
+}
+
+model ListingLifecycleEvent {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  ebayListingId      String?
+  eventType          String
+  status             String?
+  dataJson           Json?
+  createdAt          DateTime          @default(now())
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  ebayListing        EbayListing?      @relation(fields: [ebayListingId], references: [id], onDelete: Cascade)
+
+  @@index([productCandidateId, createdAt])
+  @@index([ebayListingId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model SourceInventoryRecord {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  amazonMatchId      String?
+  supplierName       String            @default("Amazon")
+  asin               String?
+  sourceUrl          String?
+  unitCost           Decimal?          @db.Decimal(10, 2)
+  quantityOnHand     Int               @default(0)
+  quantityReserved   Int               @default(0)
+  status             String            @default("WATCHING")
+  metadataJson       Json?
+  lastCheckedAt      DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
+  amazonMatch        AmazonMatch?      @relation(fields: [amazonMatchId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId])
+  @@index([amazonMatchId])
+  @@index([asin])
+  @@index([status])
+}
+
+model ProfitLedgerEntry {
+  id                 String            @id @default(cuid())
+  productCandidateId String?
+  ebayListingId      String?
+  orderId            String?
+  revenue            Decimal           @default(0.00) @db.Decimal(12, 2)
+  sourceCost         Decimal           @default(0.00) @db.Decimal(12, 2)
+  marketplaceFees    Decimal           @default(0.00) @db.Decimal(12, 2)
+  shippingCost       Decimal           @default(0.00) @db.Decimal(12, 2)
+  refunds            Decimal           @default(0.00) @db.Decimal(12, 2)
+  netProfit          Decimal           @default(0.00) @db.Decimal(12, 2)
+  currency           String            @default("USD")
+  notes              String?
+  realizedAt         DateTime          @default(now())
+  createdAt          DateTime          @default(now())
+  productCandidate   ProductCandidate? @relation(fields: [productCandidateId], references: [id], onDelete: SetNull)
+  ebayListing        EbayListing?      @relation(fields: [ebayListingId], references: [id], onDelete: SetNull)
+  order              Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([productCandidateId])
+  @@index([ebayListingId])
+  @@index([orderId])
+  @@index([realizedAt])
+}
+
+model AutomationArtifact {
+  id              String         @id @default(cuid())
+  automationRunId String?
+  actionItemId    String?
+  kind            String
+  path            String?
+  url             String?
+  sha256          String?
+  metadataJson    Json?
+  createdAt       DateTime       @default(now())
+  automationRun   AutomationRun? @relation(fields: [automationRunId], references: [id], onDelete: Cascade)
+  actionItem      ActionItem?    @relation(fields: [actionItemId], references: [id], onDelete: SetNull)
+
+  @@index([automationRunId])
+  @@index([actionItemId])
+  @@index([kind])
 }

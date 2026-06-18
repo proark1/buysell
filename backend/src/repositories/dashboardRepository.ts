@@ -67,6 +67,102 @@ const ebayDiscoveryCandidateSelect = {
   updatedAt: true
 };
 
+const numberValue = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (value && typeof value === 'object' && 'toNumber' in value && typeof value.toNumber === 'function') return value.toNumber();
+  return 0;
+};
+
+export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
+  const dashboardDb = db as DashboardPrismaClient;
+  const [
+    ebayQueued,
+    ebayComparing,
+    ebayOpportunities,
+    ebayManualReview,
+    ebayRejected,
+    ebayErrors,
+    verifyActions,
+    listingActions,
+    activeListings,
+    humanConfirmation,
+    automationFailures,
+    priceObservations,
+    inventoryWatching,
+    familyCount,
+    realizedProfit,
+    topOpportunities,
+    topFamilies,
+    schedulerLocks,
+    recentFeedback,
+    recentComparisonRuns
+  ] = await Promise.all([
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'NOT_COMPARED' } }),
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'COMPARING' } }),
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'OPPORTUNITY' } }),
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'MANUAL_REVIEW' } }),
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'REJECTED' } }),
+    db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'ERROR' } }),
+    db.actionItem.count({ where: { type: 'VERIFY', status: { in: ['PENDING', 'APPROVED'] } } }),
+    db.actionItem.count({ where: { type: 'LIST', status: { in: ['PENDING', 'APPROVED'] } } }),
+    db.ebayListing.count({ where: { listingStatus: 'ACTIVE' } }),
+    db.automationRun.count({ where: { status: 'NEEDS_HUMAN_CONFIRMATION' } }),
+    db.automationRun.count({ where: { status: { in: ['FAILED', 'REVIEW_REQUIRED'] } } }),
+    db.priceObservation.count(),
+    db.sourceInventoryRecord.count({ where: { status: 'WATCHING' } }),
+    db.productFamily.count(),
+    db.profitLedgerEntry.aggregate({ _sum: { netProfit: true } }),
+    db.productCandidate.findMany({
+      orderBy: [{ opportunityScore: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+      include: {
+        amazonMatches: { orderBy: { createdAt: 'desc' }, take: 1 },
+        profitSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
+        aiDecisions: { orderBy: { createdAt: 'desc' }, take: 1 },
+        productFamily: true
+      }
+    }),
+    db.productFamily.findMany({
+      orderBy: [{ opportunityCount: 'desc' }, { lastSeenAt: 'desc' }],
+      take: 10
+    }),
+    db.schedulerLock.findMany({ orderBy: { leasedUntil: 'desc' }, take: 10 }),
+    db.opportunityFeedback.findMany({ orderBy: { createdAt: 'desc' }, take: 15 }),
+    dashboardDb.ebayAmazonComparisonRun.findMany({ orderBy: { startedAt: 'desc' }, take: 5 })
+  ]);
+
+  return {
+    funnel: {
+      ebayQueued,
+      ebayComparing,
+      ebayOpportunities,
+      ebayManualReview,
+      ebayRejected,
+      ebayErrors,
+      verifyActions,
+      listingActions,
+      activeListings,
+      humanConfirmation,
+      automationFailures
+    },
+    observability: {
+      priceObservations,
+      inventoryWatching,
+      productFamilies: familyCount,
+      realizedProfit: numberValue(realizedProfit._sum.netProfit)
+    },
+    topOpportunities,
+    topFamilies,
+    schedulerLocks,
+    recentFeedback,
+    recentComparisonRuns
+  };
+}
+
 export async function getDashboardData(db: PrismaClient): Promise<unknown> {
   const dashboardDb = db as DashboardPrismaClient;
   const [
@@ -82,7 +178,8 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     ebayAmazonComparisonRuns,
     allEbayDiscoveryCandidates,
     automationRuns,
-    ruleConfig
+    ruleConfig,
+    pipeline
   ] = await Promise.all([
     db.productCandidate.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
     db.amazonMatch.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -138,10 +235,15 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
         events: {
           orderBy: { createdAt: 'desc' },
           take: 3
+        },
+        artifacts: {
+          orderBy: { createdAt: 'desc' },
+          take: 5
         }
       }
     }),
-    db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } })
+    db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } }),
+    getPipelineSummary(db)
   ]);
   const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];
   const ebayDiscoveryCandidates = ebayDiscoveryRuns[0]?.candidates ?? [];
@@ -176,6 +278,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     ebayDiscoveryCandidates,
     allEbayDiscoveryCandidates,
     automationRuns,
-    ruleConfig
+    ruleConfig,
+    pipeline
   };
 }

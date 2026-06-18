@@ -11,6 +11,10 @@ const automationModeFromEnv = (value: string | undefined): 'VERIFY' | 'DRAFT' | 
   return 'ASSISTED';
 };
 
+const arrayFromEnv = (value: string | undefined): string[] => value
+  ? value.split(',').map((item) => item.trim()).filter(Boolean)
+  : [];
+
 export const env = {
   backendUrl: process.env.BACKEND_URL ?? 'http://localhost:3000',
   sharedSecret: process.env.LOCAL_AGENT_SHARED_SECRET,
@@ -22,6 +26,7 @@ export const env = {
   automationMode: automationModeFromEnv(process.env.LOCAL_AGENT_AUTOMATION_MODE),
   computerUseTimeoutMs: numberFromEnv(process.env.COMPUTER_USE_TIMEOUT_MS, 10 * 60 * 1000),
   autoCompleteManualActions: process.env.LOCAL_AGENT_AUTOCOMPLETE_MANUAL_ACTIONS === 'true',
+  allowedDomains: arrayFromEnv(process.env.LOCAL_AGENT_ALLOWED_DOMAINS),
   pollIntervalMs: numberFromEnv(process.env.LOCAL_AGENT_POLL_INTERVAL_MS, 30_000),
   runOnce: process.env.LOCAL_AGENT_RUN_ONCE === 'true'
 };

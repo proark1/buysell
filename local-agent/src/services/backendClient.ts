@@ -60,6 +60,7 @@ export interface BackendClientOptions {
   automationMode?: AutomationMode;
   computerUseTimeoutMs?: number;
   autoCompleteManualActions?: boolean;
+  allowedDomains?: string[];
 }
 
 const bodyHash = (body?: string): string => createHash('sha256').update(body ?? '').digest('hex');

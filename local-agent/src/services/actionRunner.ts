@@ -67,7 +67,23 @@ function buildVerificationJob(action: ActionItemDto): ComputerUseVerificationJob
 }
 
 function allowedDomains(options: BackendClientOptions): string[] {
-  const domains = new Set(['amazon.com', 'amazon.de', 'ebay.com', 'ebay.de']);
+  const domains = new Set([
+    'amazon.com',
+    'amazon.de',
+    'amazon.co.uk',
+    'amazon.fr',
+    'amazon.ca',
+    'amazon.it',
+    'amazon.es',
+    'ebay.com',
+    'ebay.de',
+    'ebay.co.uk',
+    'ebay.fr',
+    'ebay.ca',
+    'ebay.it',
+    'ebay.es',
+    ...(options.allowedDomains ?? [])
+  ]);
   try {
     domains.add(new URL(options.backendUrl).host);
   } catch {

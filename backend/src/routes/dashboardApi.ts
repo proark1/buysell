@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
-import { getDashboardData } from '../repositories/dashboardRepository.js';
+import { getDashboardData, getPipelineSummary } from '../repositories/dashboardRepository.js';
 import { defaultRuleConfig, getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
@@ -93,6 +93,11 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
   app.get('/api/dashboard', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return getDashboardData(prisma);
+  });
+
+  app.get('/api/pipeline', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return getPipelineSummary(prisma);
   });
 
   app.get('/api/settings', async (request, reply) => {
