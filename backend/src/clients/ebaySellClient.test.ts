@@ -1,9 +1,14 @@
 import {
+  contentLanguageForEbayMarketplace,
   createEbayOffer,
   createOrReplaceEbayInventoryItem,
+  currencyForEbayMarketplace,
+  getEbayCategorySuggestions,
   getEbayAccessToken,
+  getEbayOfferListingFees,
   prepareEbayListingDraft,
   publishEbayOffer,
+  searchEbayBrowseItems,
   updateEbayOfferPriceQuantity,
   withdrawEbayOffer
 } from './ebaySellClient.js';
@@ -21,6 +26,10 @@ const draft = prepareEbayListingDraft({
 assertEqual(draft.title.length, 80, 'draft title length');
 assertEqual(draft.price, 12.35, 'draft rounded price');
 assertEqual(draft.status, 'PREPARED', 'draft status');
+assertEqual(currencyForEbayMarketplace('EBAY_GB'), 'GBP', 'GB currency');
+assertEqual(currencyForEbayMarketplace('EBAY_CA'), 'CAD', 'CA currency');
+assertEqual(currencyForEbayMarketplace('EBAY_FR'), 'EUR', 'FR currency');
+assertEqual(contentLanguageForEbayMarketplace('EBAY_DE'), 'de-DE', 'DE content language');
 
 let capturedUrl = '';
 let capturedMethod = '';
@@ -74,7 +83,7 @@ const offer = await createEbayOffer({
   sku: 'sku-1',
   accessToken: 'token',
   sandbox: true,
-  marketplaceId: 'EBAY_US',
+  marketplaceId: 'EBAY_FR',
   price: 19.995,
   quantity: 1,
   categoryId: '123',
@@ -87,6 +96,7 @@ const offer = await createEbayOffer({
 assertEqual(offer.offerId, 'offer-1', 'offer id');
 assertEqual(capturedUrl, 'https://api.sandbox.ebay.com/sell/inventory/v1/offer', 'offer URL');
 if (!capturedBody.includes('"value":"20.00"')) throw new Error('offer body should round price');
+if (!capturedBody.includes('"currency":"EUR"')) throw new Error('offer body should use marketplace currency');
 
 globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
   capturedUrl = String(url);
@@ -111,15 +121,68 @@ await updateEbayOfferPriceQuantity({
   offerId: 'offer-1',
   accessToken: 'token',
   sandbox: true,
-  marketplaceId: 'EBAY_US',
+  marketplaceId: 'EBAY_CA',
   price: 23.456,
   quantity: 1
 });
 assertEqual(capturedUrl, 'https://api.sandbox.ebay.com/sell/inventory/v1/bulk_update_price_quantity', 'bulk price URL');
 assertEqual(capturedMethod, 'POST', 'bulk price method');
 if (!capturedBody.includes('"value":"23.46"')) throw new Error('bulk price body should round price');
+if (!capturedBody.includes('"currency":"CAD"')) throw new Error('bulk price body should use marketplace currency');
 if (!capturedBody.includes('"offers":[{"offerId":"offer-1"')) throw new Error('bulk price body should update by offerId');
 if (!capturedBody.includes('"availableQuantity":1')) throw new Error('bulk price body should include available quantity');
+
+globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+  capturedUrl = String(url);
+  capturedMethod = init?.method ?? 'GET';
+  return new Response(JSON.stringify({
+    itemSummaries: [{
+      itemId: 'v1|123|0',
+      title: 'Acme Scanner',
+      itemWebUrl: 'https://www.ebay.com/itm/123',
+      price: { value: '49.99', currency: 'USD' },
+      buyingOptions: ['FIXED_PRICE']
+    }]
+  }), { status: 200 });
+}) as typeof fetch;
+
+const browseItems = await searchEbayBrowseItems({
+  accessToken: 'token',
+  sandbox: true,
+  marketplaceId: 'EBAY_US',
+  query: 'acme scanner',
+  minPrice: 10,
+  maxPrice: 100,
+  buyingOptions: ['FIXED_PRICE'],
+  limit: 5
+});
+assertEqual(capturedMethod, 'GET', 'browse method');
+if (!capturedUrl.includes('/buy/browse/v1/item_summary/search?')) throw new Error('browse URL should call item summary search');
+if (!capturedUrl.includes('q=acme+scanner')) throw new Error('browse URL should include query');
+assertEqual(browseItems[0]?.itemId, 'v1|123|0', 'browse item id');
+
+globalThis.fetch = (async (url: string | URL | Request) => {
+  capturedUrl = String(url);
+  return new Response(JSON.stringify({ categorySuggestions: [] }), { status: 200 });
+}) as typeof fetch;
+
+await getEbayCategorySuggestions({
+  accessToken: 'token',
+  sandbox: true,
+  marketplaceId: 'EBAY_DE',
+  query: 'barcode scanner'
+});
+if (!capturedUrl.includes('/commerce/taxonomy/v1/category_tree/77/get_category_suggestions?')) throw new Error('category suggestion URL should use DE tree id');
+
+globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+  capturedUrl = String(url);
+  capturedMethod = init?.method ?? 'GET';
+  return new Response(JSON.stringify({ fees: [] }), { status: 200 });
+}) as typeof fetch;
+
+await getEbayOfferListingFees({ offerId: 'offer/fees', accessToken: 'token', sandbox: true });
+assertEqual(capturedMethod, 'POST', 'listing fees method');
+assertEqual(capturedUrl, 'https://api.sandbox.ebay.com/sell/inventory/v1/offer/offer%2Ffees/get_listing_fees', 'listing fees URL');
 
 globalThis.fetch = (async (url: string | URL | Request) => {
   capturedUrl = String(url);

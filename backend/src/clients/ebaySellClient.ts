@@ -21,6 +21,7 @@ export interface EbayOAuthOptions {
   clientSecret: string;
   refreshToken: string;
   sandbox?: boolean;
+  scopes?: string[];
 }
 
 export interface WithdrawEbayOfferOptions {
@@ -33,6 +34,7 @@ export interface EbayInventoryItemOptions {
   sku: string;
   accessToken: string;
   sandbox?: boolean;
+  marketplaceId?: string;
   title: string;
   description: string;
   quantity: number;
@@ -73,6 +75,71 @@ export interface UpdateEbayOfferPriceQuantityOptions {
   quantity?: number;
 }
 
+export interface EbayBrowseSearchOptions {
+  accessToken: string;
+  sandbox?: boolean;
+  marketplaceId: string;
+  query: string;
+  categoryIds?: string[];
+  gtin?: string;
+  limit?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  conditions?: string[];
+  buyingOptions?: Array<'FIXED_PRICE' | 'AUCTION' | 'BEST_OFFER'>;
+}
+
+export interface EbayBrowseItemSummary {
+  itemId: string;
+  title: string;
+  itemWebUrl?: string;
+  price?: {
+    value: string;
+    currency: string;
+  };
+  itemLocation?: unknown;
+  condition?: string;
+  buyingOptions?: string[];
+  categories?: unknown[];
+  raw: unknown;
+}
+
+export interface EbayCategorySuggestionOptions {
+  accessToken: string;
+  sandbox?: boolean;
+  marketplaceId: string;
+  query: string;
+  categoryTreeId?: string;
+}
+
+export interface EbayOfferListingFeesOptions {
+  offerId: string;
+  accessToken: string;
+  sandbox?: boolean;
+}
+
+const marketplaceConfig: Record<string, { currency: string; contentLanguage: string; categoryTreeId: string }> = {
+  EBAY_US: { currency: 'USD', contentLanguage: 'en-US', categoryTreeId: '0' },
+  EBAY_CA: { currency: 'CAD', contentLanguage: 'en-CA', categoryTreeId: '2' },
+  EBAY_GB: { currency: 'GBP', contentLanguage: 'en-GB', categoryTreeId: '3' },
+  EBAY_DE: { currency: 'EUR', contentLanguage: 'de-DE', categoryTreeId: '77' },
+  EBAY_FR: { currency: 'EUR', contentLanguage: 'fr-FR', categoryTreeId: '71' },
+  EBAY_IT: { currency: 'EUR', contentLanguage: 'it-IT', categoryTreeId: '101' },
+  EBAY_ES: { currency: 'EUR', contentLanguage: 'es-ES', categoryTreeId: '186' }
+};
+
+export function currencyForEbayMarketplace(marketplaceId: string): string {
+  return marketplaceConfig[marketplaceId]?.currency ?? 'USD';
+}
+
+export function contentLanguageForEbayMarketplace(marketplaceId: string): string {
+  return marketplaceConfig[marketplaceId]?.contentLanguage ?? 'en-US';
+}
+
+function categoryTreeIdForMarketplace(marketplaceId: string): string {
+  return marketplaceConfig[marketplaceId]?.categoryTreeId ?? marketplaceConfig.EBAY_US.categoryTreeId;
+}
+
 export function prepareEbayListingDraft(input: EbayListingDraftInput): EbayListingDraftResult {
   return {
     sku: input.sku,
@@ -96,7 +163,7 @@ export async function getEbayAccessToken(options: EbayOAuthOptions): Promise<str
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: options.refreshToken,
-      scope: 'https://api.ebay.com/oauth/api_scope/sell.inventory'
+      scope: (options.scopes ?? ['https://api.ebay.com/oauth/api_scope/sell.inventory']).join(' ')
     })
   });
 
@@ -125,7 +192,7 @@ export async function createOrReplaceEbayInventoryItem(options: EbayInventoryIte
     headers: {
       authorization: `Bearer ${options.accessToken}`,
       'content-type': 'application/json',
-      'content-language': 'en-US'
+      'content-language': contentLanguageForEbayMarketplace(options.marketplaceId ?? 'EBAY_US')
     },
     body: JSON.stringify({
       availability: {
@@ -154,7 +221,7 @@ export async function createEbayOffer(options: EbayOfferOptions): Promise<{ offe
     headers: {
       authorization: `Bearer ${options.accessToken}`,
       'content-type': 'application/json',
-      'content-language': 'en-US'
+      'content-language': contentLanguageForEbayMarketplace(options.marketplaceId)
     },
     body: JSON.stringify({
       sku: options.sku,
@@ -172,7 +239,7 @@ export async function createEbayOffer(options: EbayOfferOptions): Promise<{ offe
       pricingSummary: {
         price: {
           value: options.price.toFixed(2),
-          currency: options.marketplaceId === 'EBAY_GB' ? 'GBP' : options.marketplaceId.startsWith('EBAY_DE') ? 'EUR' : 'USD'
+          currency: currencyForEbayMarketplace(options.marketplaceId)
         }
       }
     })
@@ -210,7 +277,7 @@ export async function updateEbayOfferPriceQuantity(options: UpdateEbayOfferPrice
           offerId: options.offerId,
           price: {
             value: options.price.toFixed(2),
-            currency: options.marketplaceId === 'EBAY_GB' ? 'GBP' : options.marketplaceId.startsWith('EBAY_DE') ? 'EUR' : 'USD'
+            currency: currencyForEbayMarketplace(options.marketplaceId)
           },
           availableQuantity: options.quantity
         }]
@@ -233,4 +300,81 @@ export async function withdrawEbayOffer(options: WithdrawEbayOfferOptions): Prom
   if (!response.ok) throw new Error(`eBay offer withdraw failed with status ${response.status}`);
   if (response.status === 204) return { offerId: options.offerId, withdrawn: true };
   return await response.json();
+}
+
+function browseFilter(options: EbayBrowseSearchOptions): string | undefined {
+  const filters: string[] = [];
+  if (options.minPrice !== undefined || options.maxPrice !== undefined) {
+    const min = options.minPrice?.toFixed(2) ?? '';
+    const max = options.maxPrice?.toFixed(2) ?? '';
+    filters.push(`price:[${min}..${max}]`);
+    filters.push(`priceCurrency:${currencyForEbayMarketplace(options.marketplaceId)}`);
+  }
+  if (options.conditions?.length) filters.push(`conditions:{${options.conditions.join('|')}}`);
+  if (options.buyingOptions?.length) filters.push(`buyingOptions:{${options.buyingOptions.join('|')}}`);
+  return filters.length ? filters.join(',') : undefined;
+}
+
+export async function searchEbayBrowseItems(options: EbayBrowseSearchOptions): Promise<EbayBrowseItemSummary[]> {
+  const params = new URLSearchParams({
+    q: options.query,
+    limit: String(Math.min(Math.max(options.limit ?? 20, 1), 200))
+  });
+  if (options.categoryIds?.length) params.set('category_ids', options.categoryIds.join(','));
+  if (options.gtin) params.set('gtin', options.gtin);
+  const filter = browseFilter(options);
+  if (filter) params.set('filter', filter);
+
+  const response = await fetch(`https://${ebayApiHost(options.sandbox)}/buy/browse/v1/item_summary/search?${params.toString()}`, {
+    headers: {
+      authorization: `Bearer ${options.accessToken}`,
+      'x-ebay-c-marketplace-id': options.marketplaceId
+    }
+  });
+  const raw = await parseEbayResponse(response);
+  if (!response.ok) throw new Error(`eBay Browse search failed with status ${response.status}: ${JSON.stringify(raw)}`);
+  const itemSummaries = raw && typeof raw === 'object' && 'itemSummaries' in raw && Array.isArray(raw.itemSummaries)
+    ? raw.itemSummaries
+    : [];
+  return itemSummaries.map((item) => {
+    const record = item as Record<string, unknown>;
+    const price = record.price && typeof record.price === 'object' && !Array.isArray(record.price)
+      ? record.price as EbayBrowseItemSummary['price']
+      : undefined;
+    return {
+      itemId: String(record.itemId ?? ''),
+      title: String(record.title ?? ''),
+      itemWebUrl: typeof record.itemWebUrl === 'string' ? record.itemWebUrl : undefined,
+      price,
+      itemLocation: record.itemLocation,
+      condition: typeof record.condition === 'string' ? record.condition : undefined,
+      buyingOptions: Array.isArray(record.buyingOptions) ? record.buyingOptions.filter((value): value is string => typeof value === 'string') : undefined,
+      categories: Array.isArray(record.categories) ? record.categories : undefined,
+      raw: item
+    };
+  }).filter((item) => item.itemId && item.title);
+}
+
+export async function getEbayCategorySuggestions(options: EbayCategorySuggestionOptions): Promise<unknown> {
+  const categoryTreeId = options.categoryTreeId ?? categoryTreeIdForMarketplace(options.marketplaceId);
+  const params = new URLSearchParams({ q: options.query });
+  const response = await fetch(`https://${ebayApiHost(options.sandbox)}/commerce/taxonomy/v1/category_tree/${encodeURIComponent(categoryTreeId)}/get_category_suggestions?${params.toString()}`, {
+    headers: {
+      authorization: `Bearer ${options.accessToken}`,
+      'x-ebay-c-marketplace-id': options.marketplaceId
+    }
+  });
+  const raw = await parseEbayResponse(response);
+  if (!response.ok) throw new Error(`eBay category suggestions failed with status ${response.status}: ${JSON.stringify(raw)}`);
+  return raw;
+}
+
+export async function getEbayOfferListingFees(options: EbayOfferListingFeesOptions): Promise<unknown> {
+  const response = await fetch(`https://${ebayApiHost(options.sandbox)}/sell/inventory/v1/offer/${encodeURIComponent(options.offerId)}/get_listing_fees`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${options.accessToken}` }
+  });
+  const raw = await parseEbayResponse(response);
+  if (!response.ok) throw new Error(`eBay listing fees failed with status ${response.status}: ${JSON.stringify(raw)}`);
+  return raw;
 }

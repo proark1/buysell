@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { ProductOpportunity } from '../domain/products.js';
 import { createActionForDecision } from './actionRepository.js';
 import { postgresInt } from '../utils/postgres.js';
+import { recordOpportunityLearning } from './learningRepository.js';
 
 export interface PersistedOpportunityIds {
   productCandidateId: string;
@@ -166,6 +167,14 @@ async function persistOpportunityRows(
     decision: opportunity.decision
   });
 
+  const persistedIds = {
+    productCandidateId: productCandidate.id,
+    amazonMatchId: amazonMatch.id,
+    profitSnapshotId: profitSnapshot.id,
+    aiDecisionId: aiDecision.id
+  };
+  await recordOpportunityLearning(db, opportunity, persistedIds, context);
+
   await db.auditLog.create({
     data: {
       entityType: 'ProductOpportunity',
@@ -183,12 +192,7 @@ async function persistOpportunityRows(
     }
   });
 
-  return {
-    productCandidateId: productCandidate.id,
-    amazonMatchId: amazonMatch.id,
-    profitSnapshotId: profitSnapshot.id,
-    aiDecisionId: aiDecision.id
-  };
+  return persistedIds;
 }
 
 export async function persistOpportunity(

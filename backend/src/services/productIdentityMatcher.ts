@@ -104,7 +104,9 @@ const variantWords = new Set([
   'mini',
   'pro',
   'plus',
-  'max'
+  'max',
+  'ultra',
+  'lite'
 ]);
 
 const normalize = (value: string | undefined): string | undefined => {
@@ -152,8 +154,15 @@ function collectRawFieldValues(value: unknown, targetKeys: Set<string>, out: str
   for (const [key, item] of Object.entries(record)) {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (targetKeys.has(normalizedKey)) {
-      const parsed = textFromUnknown(item);
-      if (parsed) out.push(parsed);
+      if (Array.isArray(item)) {
+        for (const nested of item) {
+          const parsed = textFromUnknown(nested);
+          if (parsed) out.push(parsed);
+        }
+      } else {
+        const parsed = textFromUnknown(item);
+        if (parsed) out.push(parsed);
+      }
     }
     collectRawFieldValues(item, targetKeys, out, depth + 1);
   }
@@ -210,30 +219,57 @@ function identifierValues(raw: unknown, direct: Array<string | undefined> = []):
     ...direct,
     ...collectRawFieldValues(raw, new Set([
       'upc',
+      'upcs',
+      'upclist',
       'ean',
+      'eans',
+      'eanlist',
       'gtin',
+      'gtins',
       'isbn',
       'mpn',
+      'mpns',
       'manufacturerpartnumber',
       'partnumber',
+      'partnumbers',
+      'itempartnumber',
       'model',
-      'modelnumber'
+      'modelnumber',
+      'itemmodelnumber',
+      'epid',
+      'productid'
     ]))
   ];
-  return unique(values.map(normalizedIdentifier));
+  return unique(values
+    .flatMap((value) => value?.split(/[,;|\s]+/) ?? [])
+    .map(normalizedIdentifier));
 }
 
 function packCount(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const text = value.toLowerCase();
-  const match = text.match(/\b(\d+)\s*(?:pcs?|pieces?|pack|packs|count|ct|x)\b|\bpack\s*of\s*(\d+)\b|\b(\d+)\s*x\s/i);
+  const match = text.match(/\b(\d+)\s*(?:pcs?|pieces?|pack|packs|count|ct|x|units?)\b|\bpack\s*of\s*(\d+)\b|\b(\d+)\s*x\s/i);
   const count = Number(match?.[1] ?? match?.[2] ?? match?.[3]);
   return Number.isFinite(count) && count > 1 ? count : undefined;
 }
 
+function packCountFromRaw(raw: unknown): number | undefined {
+  const values = collectRawFieldValues(raw, new Set([
+    'packcount',
+    'packagequantity',
+    'itempackagequantity',
+    'numberofitems',
+    'unitcount',
+    'count'
+  ]));
+  return values.map(packCount).find((value): value is number => value !== undefined);
+}
+
 function variantTokens(value: string | undefined): string[] {
   const words = (normalize(value) ?? '').split(' ').filter(Boolean);
-  return unique(words.filter((word) => variantWords.has(word)));
+  const storage = words.filter((word) => /^\d+(?:gb|tb|mb)$/.test(word));
+  const size = words.filter((word) => /^\d+(?:mm|cm|inch|in|oz|ml|l)$/.test(word));
+  return unique([...words.filter((word) => variantWords.has(word)), ...storage, ...size]);
 }
 
 function intersection(left: string[], right: string[]): string[] {
@@ -301,8 +337,8 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
     riskFlags.push('MODEL_NOT_VERIFIED');
   }
 
-  const ebayPack = packCount(ebay.title);
-  const amazonPack = packCount(amazon.title);
+  const ebayPack = packCount(ebay.title) ?? packCountFromRaw(ebay.raw);
+  const amazonPack = packCount(amazon.title) ?? packCountFromRaw(amazon.raw);
   if (ebayPack && amazonPack && ebayPack !== amazonPack) {
     conflicts.push(`Pack count mismatch: eBay appears to be ${ebayPack}, Amazon appears to be ${amazonPack}.`);
     riskFlags.push('BUNDLE_OR_QUANTITY_MISMATCH');
@@ -335,9 +371,10 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
     status = 'REJECT';
     confidence = 0.05;
     if (!riskFlags.includes('PRODUCT_IDENTITY_CONFLICT')) riskFlags.push('PRODUCT_IDENTITY_CONFLICT');
-  } else if (sharedIdentifiers.length > 0 && hasBrandEvidence) {
+  } else if (sharedIdentifiers.length > 0 && !brandConflict && !modelConflict) {
     status = 'EXACT';
-    confidence = 0.98;
+    confidence = hasBrandEvidence ? 0.98 : 0.95;
+    if (!hasBrandEvidence) evidence.push('Shared identifier matched across marketplaces.');
   } else if (hasBrandEvidence && hasModelEvidence) {
     status = 'STRONG';
     confidence = 0.9;
@@ -353,19 +390,30 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
     if (!conflicts.length) conflicts.push('Exact product identity is not proven by brand plus model or identifier evidence.');
   }
 
+  const finalRiskFlags = status === 'EXACT' && sharedIdentifiers.length > 0
+    ? riskFlags.filter((flag) => flag !== 'BRAND_NOT_VERIFIED' && flag !== 'MODEL_NOT_VERIFIED' && flag !== 'PRODUCT_IDENTITY_UNVERIFIED')
+    : riskFlags;
+  const finalConflicts = status === 'EXACT' && sharedIdentifiers.length > 0
+    ? conflicts.filter((conflict) => !/not verified|not proven|cannot be verified/i.test(conflict))
+    : conflicts;
+
   return {
     status,
     confidence,
     evidence: unique(evidence),
-    conflicts: unique(conflicts),
-    riskFlags: unique(riskFlags),
+    conflicts: unique(finalConflicts),
+    riskFlags: unique(finalRiskFlags),
     normalized: {
       ebayBrand: normalizedEbayBrand,
       amazonBrand: normalizedAmazonBrand,
       ebayModelTokens,
       amazonModelTokens,
       ebayIdentifiers,
-      amazonIdentifiers
+      amazonIdentifiers,
+      ebayVariantTokens: ebayVariants,
+      amazonVariantTokens: amazonVariants,
+      ebayPackCount: ebayPack,
+      amazonPackCount: amazonPack
     }
   };
 }

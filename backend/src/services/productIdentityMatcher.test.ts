@@ -30,6 +30,31 @@ const ebayUpc: EbayCandidateInput = {
 const exact = evaluateProductIdentity(ebayUpc, amazonExact);
 assertEqual(exact.status, 'EXACT', 'shared UPC identity status');
 
+const rawIdentifierExact = evaluateProductIdentity(
+  {
+    title: 'Tera X100 Wireless Barcode Scanner Black',
+    soldPrice: 119.99,
+    raw: { item_specifics: { EAN: ['123456789012'], Color: 'Black' } }
+  },
+  {
+    ...amazonExact,
+    brand: undefined,
+    raw: { eanList: ['123456789012'], itemPackageQuantity: 1 }
+  }
+);
+assertEqual(rawIdentifierExact.status, 'EXACT', 'shared raw identifier array status');
+
+const packMismatch = evaluateProductIdentity(
+  {
+    title: 'Tera X100 Wireless Barcode Scanner 2 Pack',
+    soldPrice: 199.99,
+    raw: { item_specifics: { Brand: 'Tera' } }
+  },
+  amazonExact
+);
+assertEqual(packMismatch.status, 'REJECT', 'pack mismatch rejects identity');
+assertIncludes(packMismatch.riskFlags, 'BUNDLE_OR_QUANTITY_MISMATCH', 'pack mismatch flag');
+
 const brandMismatch = evaluateProductIdentity(
   { title: 'Eyoyo X100 Wireless Barcode Scanner', soldPrice: 120 },
   amazonExact

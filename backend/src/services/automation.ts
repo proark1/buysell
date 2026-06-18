@@ -36,6 +36,14 @@ export interface FinishAutomationRunInput {
   message?: string;
 }
 
+interface AutomationArtifactInput {
+  kind: string;
+  path?: string;
+  url?: string;
+  sha256?: string;
+  metadataJson?: Record<string, unknown>;
+}
+
 const activeAutomationStatuses = ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION'] as const;
 
 interface ActionTypeOnly {
@@ -72,6 +80,80 @@ const latestActiveRun = (db: PrismaClient, actionItemId: string): Promise<unknow
   },
   orderBy: { startedAt: 'desc' }
 });
+
+const stringValue = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
+
+function artifactFromRecord(record: Record<string, unknown>, fallbackKind: string): AutomationArtifactInput | undefined {
+  const path = stringValue(record.path) ?? stringValue(record.filePath) ?? stringValue(record.screenshotPath);
+  const url = stringValue(record.url);
+  if (!path && !url) return undefined;
+  return {
+    kind: stringValue(record.kind) ?? fallbackKind,
+    path,
+    url,
+    sha256: stringValue(record.sha256),
+    metadataJson: {
+      label: stringValue(record.label) ?? stringValue(record.name),
+      source: stringValue(record.source)
+    }
+  };
+}
+
+function collectAutomationArtifacts(value: unknown, out: AutomationArtifactInput[] = [], path: string[] = []): AutomationArtifactInput[] {
+  if (!value || typeof value !== 'object') return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectAutomationArtifacts(item, out, path);
+    return out;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.artifacts)) {
+    for (const artifact of record.artifacts) {
+      const parsed = artifact && typeof artifact === 'object' && !Array.isArray(artifact)
+        ? artifactFromRecord(artifact as Record<string, unknown>, 'ARTIFACT')
+        : undefined;
+      if (parsed) out.push(parsed);
+    }
+  }
+
+  for (const [key, item] of Object.entries(record)) {
+    const lowerKey = key.toLowerCase();
+    const kind = [...path, key].join('.').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    if ((lowerKey.endsWith('screenshotpath') || lowerKey.endsWith('artifactpath')) && typeof item === 'string') {
+      out.push({ kind, path: item, metadataJson: { jsonPath: [...path, key].join('.') } });
+      continue;
+    }
+    if ((lowerKey.endsWith('screenshoturl') || lowerKey.endsWith('artifacturl')) && typeof item === 'string') {
+      out.push({ kind, url: item, metadataJson: { jsonPath: [...path, key].join('.') } });
+      continue;
+    }
+    collectAutomationArtifacts(item, out, [...path, key]);
+  }
+
+  return out;
+}
+
+export function automationArtifactsFromResult(result: Record<string, unknown> | undefined): AutomationArtifactInput[] {
+  return collectAutomationArtifacts(result)
+    .filter((artifact, index, all) => all.findIndex((item) => item.path === artifact.path && item.url === artifact.url && item.kind === artifact.kind) === index);
+}
+
+async function persistAutomationArtifacts(db: PrismaClient, runId: string, actionItemId: string, result: Record<string, unknown> | undefined): Promise<void> {
+  const artifacts = automationArtifactsFromResult(result);
+  if (!artifacts.length) return;
+
+  await db.automationArtifact.createMany({
+    data: artifacts.map((artifact) => ({
+      automationRunId: runId,
+      actionItemId,
+      kind: artifact.kind,
+      path: artifact.path,
+      url: artifact.url,
+      sha256: artifact.sha256,
+      metadataJson: artifact.metadataJson
+    }))
+  });
+}
 
 export async function createAutomationRun(db: PrismaClient, input: CreateAutomationRunInput): Promise<unknown> {
   const action = await db.actionItem.findUnique({
@@ -183,6 +265,8 @@ export async function finishAutomationRun(db: PrismaClient, input: FinishAutomat
     include: { actionItem: true }
   });
 
+  await persistAutomationArtifacts(db, run.id, run.actionItemId, input.result);
+
   await db.auditLog.create({
     data: {
       entityType: 'AutomationRun',
@@ -219,6 +303,10 @@ export async function listAutomationRuns(db: PrismaClient, take = 50): Promise<u
       events: {
         orderBy: { createdAt: 'desc' },
         take: 5
+      },
+      artifacts: {
+        orderBy: { createdAt: 'desc' },
+        take: 10
       }
     }
   });

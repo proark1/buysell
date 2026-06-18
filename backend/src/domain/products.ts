@@ -86,6 +86,10 @@ export interface ProductIdentityMatch {
     amazonModelTokens: string[];
     ebayIdentifiers: string[];
     amazonIdentifiers: string[];
+    ebayVariantTokens?: string[];
+    amazonVariantTokens?: string[];
+    ebayPackCount?: number;
+    amazonPackCount?: number;
   };
 }
 

@@ -27,7 +27,8 @@ async function pollApprovedActions(): Promise<void> {
     computerUseAutopilotCommand: env.computerUseAutopilotCommand,
     automationMode: env.automationMode,
     computerUseTimeoutMs: env.computerUseTimeoutMs,
-    autoCompleteManualActions: env.autoCompleteManualActions
+    autoCompleteManualActions: env.autoCompleteManualActions,
+    allowedDomains: env.allowedDomains
   };
   const actions = await fetchApprovedActions(clientOptions);
 
