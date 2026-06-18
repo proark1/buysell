@@ -132,19 +132,25 @@ const dashboardHtml = `<!doctype html>
     .discover-metric-label{margin-top:7px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
     .discover-workbench{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.7fr);gap:14px;align-items:start}
     .discover-main,.discover-side{display:grid;gap:14px;min-width:0}
+    .discover-side{position:sticky;top:92px;height:calc(100vh - 124px);grid-template-rows:minmax(320px,1fr) minmax(150px,.45fr);align-self:start;min-height:0}
     .discover-panel-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;min-width:0}
     .discover-panel-head h3{margin:0;font-size:14px}
     .discover-panel-head .hint{color:var(--muted);font-size:12px}
-    .discover-inspector{position:sticky;top:92px;max-height:calc(100vh - 124px);overflow:auto}
+    .discover-inspector,.discover-activity{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+    .discover-inspector .discover-panel-head,.discover-activity .discover-panel-head{flex:0 0 auto}
+    #discoverInspector,#discoverActivityTimeline{min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:2px}
+    #discoverInspector{flex:1}
+    #discoverActivityTimeline{flex:1}
     .inspector-title{font-weight:800;font-size:15px;line-height:1.35}
     .inspector-meta{color:var(--muted);font-size:12px;margin-top:4px}
     .inspector-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px;display:grid;gap:8px}
     .inspector-section-title{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
     .queue-row{width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);padding:10px;display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;color:var(--text);font:inherit;text-align:left;cursor:pointer}
     .queue-row:hover,.queue-row.active{border-color:var(--border-strong);background:rgba(15,23,42,.62)}
+    .queue-copy{min-width:0;display:grid;gap:2px}
     .queue-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .queue-meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-    .queue-stats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .queue-stats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:max-content}
     .activity-list{display:grid;gap:8px}
     .activity-row{border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.22);padding:10px;display:grid;gap:6px}
     .activity-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -224,7 +230,7 @@ const dashboardHtml = `<!doctype html>
     .result-card.error{border-color:rgba(248,113,113,.44);background:rgba(127,29,29,.12)}
     .result-head{display:flex;gap:12px;align-items:flex-start}
     .result-main{min-width:0;flex:1}.result-title{font-weight:700}.result-meta{color:var(--muted);font-size:12px;margin-top:3px}
-    .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--border-strong);color:var(--muted)}
+    .chips{display:flex;gap:6px;flex-wrap:wrap;min-width:0}.chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--border-strong);color:var(--muted);max-width:100%;overflow-wrap:anywhere}
     .section-label{display:flex;align-items:center;gap:8px;color:var(--text);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:2px 0}
     .section-label span{color:var(--muted);font-weight:700;text-transform:none;letter-spacing:0}
     .result-section{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);overflow:hidden}
@@ -249,10 +255,10 @@ const dashboardHtml = `<!doctype html>
     .job-status-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .job-status-meta{color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .placeholder-check{width:20px;flex:0 0 20px}
-    .comparison-box{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.48);padding:10px;display:grid;gap:7px}
+    .comparison-box{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.48);padding:10px;display:grid;gap:7px;min-width:0}
     .comparison-box.locked{border-color:rgba(248,113,113,.28);background:rgba(127,29,29,.1)}
     .comparison-box.review{border-color:rgba(251,191,36,.35);background:rgba(120,53,15,.11)}
-    .comparison-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--text)}
+    .comparison-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--text);min-width:0;flex-wrap:wrap}
     .comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
     .metric{border:1px solid var(--border);border-radius:8px;padding:7px 8px;background:rgba(2,6,23,.35)}
     .metric .mk{color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.4px}.metric .mv{font-size:13px;font-weight:800;margin-top:1px}
@@ -272,7 +278,7 @@ const dashboardHtml = `<!doctype html>
     .pager .btn{min-width:34px;justify-content:center}
     .settings-group{margin-top:0;margin-bottom:12px}
     .settings-group:last-child{margin-bottom:0}
-    @media(max-width:1100px){.discover-workbench{grid-template-columns:1fr}.discover-inspector{position:static;max-height:none}}
+    @media(max-width:1100px){.discover-workbench{grid-template-columns:1fr}.discover-side{position:static;height:auto;max-height:none;grid-template-rows:auto}.discover-inspector,.discover-activity{overflow:visible}#discoverInspector,#discoverActivityTimeline{overflow:visible}}
     @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}.queue-row{grid-template-columns:38px minmax(0,1fr)}.queue-stats{grid-column:1/-1;justify-content:flex-start}.discover-primary-field{grid-column:auto}}
     @media(max-width:760px){.list-controls{grid-template-columns:1fr 1fr}.pager{justify-content:flex-start;flex-wrap:wrap}}
     /* KV settings */
@@ -679,7 +685,7 @@ const dashboardHtml = `<!doctype html>
               <div class="discover-panel-head"><h3>Inspector</h3><span class="hint">Selected product</span></div>
               <div id="discoverInspector"><div class="empty">Select a product row to inspect pricing, match quality, and decision reasons.</div></div>
             </div>
-            <div class="subtle-box">
+            <div class="subtle-box discover-activity">
               <div class="discover-panel-head"><h3>Activity</h3><span class="hint">Recent discovery and comparison jobs</span></div>
               <div id="discoverActivityTimeline" class="activity-list"><div class="empty">No job activity yet.</div></div>
             </div>
@@ -2160,7 +2166,7 @@ function renderEbayAmazonComparisonRows(candidates){
     var discoverId=discoverKey('ebay',c);
     return '<button type="button" class="queue-row" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)">'+
       '<span class="'+scoreClass(score)+'">'+score+'</span>'+
-      '<span><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span></span>'+
+      '<span class="queue-copy"><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span></span>'+
       '<span class="queue-stats">'+badge(ebayCandidateStatus(c))+'</span>'+
       '</button>';
   }).join('');
