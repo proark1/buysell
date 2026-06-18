@@ -11,18 +11,18 @@ const dashboardHtml = `<!doctype html>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
-      --bg:#0b1120;--bg-2:#0f172a;--panel:#111a2e;--panel-2:#16213b;
+      --bg:#08111f;--bg-2:#0d1828;--panel:#111b2b;--panel-2:#172438;
       --border:rgba(148,163,184,.14);--border-strong:rgba(148,163,184,.28);
       --text:#e8eefc;--muted:#94a3b8;--faint:#64748b;
-      --brand:#6366f1;--brand-2:#8b5cf6;--accent:#22d3ee;
+      --brand:#0ea5e9;--brand-2:#14b8a6;--accent:#2dd4bf;
       --green:#34d399;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--slate:#94a3b8;--teal:#2dd4bf;
       --shadow:0 18px 40px -20px rgba(0,0,0,.65);
     }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;font-family:'Inter',system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text);
-      background:radial-gradient(1200px 700px at 80% -10%,rgba(99,102,241,.16),transparent 60%),
-                 radial-gradient(900px 600px at -10% 10%,rgba(34,211,238,.10),transparent 55%),
+      background:radial-gradient(1200px 700px at 80% -10%,rgba(20,184,166,.11),transparent 60%),
+                 radial-gradient(900px 600px at -10% 10%,rgba(14,165,233,.10),transparent 55%),
                  var(--bg);
       -webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
     a{color:var(--blue);text-decoration:none}
@@ -34,15 +34,16 @@ const dashboardHtml = `<!doctype html>
       display:flex;flex-direction:column;padding:20px 16px;gap:6px}
     .brand{display:flex;align-items:center;gap:12px;padding:6px 8px 18px}
     .logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-weight:800;font-size:18px;
-      color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 8px 20px -6px rgba(99,102,241,.7)}
+      color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 8px 20px -6px rgba(14,165,233,.55)}
     .brand b{font-size:16px;letter-spacing:.2px}.brand span{display:block;color:var(--muted);font-size:11px;font-weight:500}
     nav{display:flex;flex-direction:column;gap:4px;margin-top:4px}
     .nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:var(--muted);
       cursor:pointer;font-weight:500;border:1px solid transparent;transition:.15s}
     .nav-item:hover{background:rgba(148,163,184,.07);color:var(--text)}
-    .nav-item.active{background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(139,92,246,.14));
+    .nav-item.active{background:linear-gradient(135deg,rgba(14,165,233,.22),rgba(20,184,166,.14));
       color:#fff;border-color:var(--border-strong)}
-    .nav-item .ic{width:18px;text-align:center;opacity:.95}
+    .nav-item .ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted);background:rgba(148,163,184,.08)}
+    .nav-item.active .ic{color:#fff;background:rgba(255,255,255,.12)}
     .side-foot{margin-top:auto;padding:12px 10px 4px;border-top:1px solid var(--border);color:var(--faint);font-size:11px}
     /* Main */
     main{padding:0 0 60px}
@@ -65,11 +66,11 @@ const dashboardHtml = `<!doctype html>
     .btn:hover{background:rgba(148,163,184,.13);transform:translateY(-1px)}
     .btn:active{transform:translateY(0)}
     .btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;
-      box-shadow:0 10px 24px -10px rgba(99,102,241,.8);color:#fff}
+      box-shadow:0 10px 24px -10px rgba(14,165,233,.65);color:#fff}
     .btn.primary:hover{filter:brightness(1.08)}
     .btn:disabled{cursor:not-allowed;opacity:.5;transform:none;filter:none}
     .btn:disabled:hover{background:rgba(148,163,184,.06);transform:none;filter:none}
-    .btn.danger{background:linear-gradient(135deg,#ef4444,#db2777);border-color:transparent;color:#fff}
+    .btn.danger{background:linear-gradient(135deg,#ef4444,#f97316);border-color:transparent;color:#fff}
     .btn.ghost{background:transparent}
     .btn.sm{padding:6px 10px;font-size:12px}
     .content{padding:26px 28px;display:grid;gap:22px;max-width:1280px}
@@ -105,8 +106,30 @@ const dashboardHtml = `<!doctype html>
     .list-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
     .panel-body{padding:16px 18px}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .hidden{display:none!important}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .tab-btn{border:1px solid var(--border-strong);background:rgba(148,163,184,.06);color:var(--muted);border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
+    .tab-btn.active{background:rgba(14,165,233,.16);color:var(--text);border-color:rgba(14,165,233,.34)}
+    .setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+    .setup-card{border:1px solid var(--border);background:rgba(2,6,23,.24);border-radius:12px;padding:13px;display:grid;gap:8px}
+    .setup-card .setup-status{display:inline-flex;width:max-content;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800;border:1px solid var(--border-strong);color:var(--muted)}
+    .setup-card.ok .setup-status{color:var(--green);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}
+    .setup-card.warn .setup-status{color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+    .setup-card.err .setup-status{color:var(--red);border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.08)}
+    .setup-title{font-weight:800}.setup-copy{color:var(--muted);font-size:12px}
+    .workflow-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+    .workflow-step{border:1px solid var(--border);border-radius:12px;padding:10px;background:rgba(2,6,23,.22);min-height:88px}
+    .workflow-step b{display:block;font-size:13px;margin-bottom:4px}.workflow-step span{display:block;color:var(--muted);font-size:11px}
+    .primary-flow{border-color:rgba(14,165,233,.35);background:rgba(14,165,233,.08)}
+    .decision-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);margin-bottom:12px}
+    .decision-row b{display:block}.decision-row span{display:block;color:var(--muted);font-size:12px}
+    .compact-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;align-items:end}
+    .schedule-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;align-items:end}
+    .subtle-box{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.18);padding:14px}
+    .danger-zone{border-color:rgba(248,113,113,.28);background:rgba(127,29,29,.08)}
     @media(max-width:960px){
-      .grid-2{grid-template-columns:1fr}.layout{grid-template-columns:1fr}aside{display:none}
+      .grid-2,.grid-3,.workflow-steps{grid-template-columns:1fr}.layout{grid-template-columns:1fr}aside{display:none}
       .topbar{flex-wrap:wrap;padding:16px;gap:10px}.topbar>div:first-child{width:100%}.topbar .spacer{display:none}
       .mobile-nav{display:block}.content{padding:18px 16px}.pill{flex:1;justify-content:center}.topbar .btn{flex:1;justify-content:center}
     }
@@ -201,6 +224,7 @@ const dashboardHtml = `<!doctype html>
     @keyframes slidein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
     .banner{display:none;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;
       background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#fecaca;font-size:13px;font-weight:500}
+    .banner.setup{background:rgba(251,191,36,.09);border-color:rgba(251,191,36,.32);color:#fde68a}
     .banner.show{display:flex}
     code{background:rgba(2,6,23,.6);padding:2px 6px;border-radius:6px;font-size:12px;color:var(--accent)}
     /* Credentials */
@@ -221,14 +245,12 @@ const dashboardHtml = `<!doctype html>
       <div><b>Buysell</b><span>Control Center</span></div>
     </div>
     <nav id="nav">
-      <div class="nav-item active" data-view="overview"><span class="ic">▦</span> Overview</div>
-      <div class="nav-item" data-view="actions"><span class="ic">⚡</span> Actions</div>
-      <div class="nav-item" data-view="automation"><span class="ic">◉</span> Automation</div>
-      <div class="nav-item" data-view="catalog"><span class="ic">◳</span> Listings &amp; Orders</div>
-      <div class="nav-item" data-view="discovery"><span class="ic">⌕</span> Discovery</div>
-      <div class="nav-item" data-view="ebayDiscovery"><span class="ic">⇄</span> eBay Discovery</div>
-      <div class="nav-item" data-view="keys"><span class="ic">🔑</span> API Keys</div>
-      <div class="nav-item" data-view="settings"><span class="ic">⚙</span> Settings</div>
+      <div class="nav-item active" data-view="overview"><span class="ic">H</span> Home</div>
+      <div class="nav-item" data-view="ebayDiscovery"><span class="ic">D</span> Discover</div>
+      <div class="nav-item" data-view="actions"><span class="ic">R</span> Review</div>
+      <div class="nav-item" data-view="catalog"><span class="ic">L</span> Listings &amp; Orders</div>
+      <div class="nav-item" data-view="automation"><span class="ic">A</span> Automation</div>
+      <div class="nav-item" data-view="settings"><span class="ic">S</span> Settings</div>
     </nav>
     <div class="side-foot">
       API: <a href="/health">/health</a> · <a href="/api/dashboard">/api/dashboard</a><br>
@@ -239,16 +261,14 @@ const dashboardHtml = `<!doctype html>
   <main>
     <div class="topbar">
       <div>
-        <h1 id="viewTitle">Overview</h1>
-        <div class="sub" id="viewSub">Live snapshot of your arbitrage pipeline</div>
+        <h1 id="viewTitle">Home</h1>
+        <div class="sub" id="viewSub">What needs attention and what is safe to do next</div>
         <select id="mobileNav" class="mobile-nav" aria-label="View">
-          <option value="overview">Overview</option>
-          <option value="actions">Actions</option>
-          <option value="automation">Automation</option>
+          <option value="overview">Home</option>
+          <option value="ebayDiscovery">Discover</option>
+          <option value="actions">Review</option>
           <option value="catalog">Listings &amp; Orders</option>
-          <option value="discovery">Discovery</option>
-          <option value="ebayDiscovery">eBay Discovery</option>
-          <option value="keys">API Keys</option>
+          <option value="automation">Automation</option>
           <option value="settings">Settings</option>
         </select>
       </div>
@@ -259,10 +279,38 @@ const dashboardHtml = `<!doctype html>
     </div>
 
     <div class="content">
-      <div class="banner" id="offline"><span>⚠</span><span id="offlineMsg">Backend data unavailable.</span></div>
+      <div class="banner setup" id="offline"><span>Setup</span><span id="offlineMsg">Complete setup before running protected workflows.</span></div>
 
       <!-- OVERVIEW -->
       <section class="view active" id="view-overview">
+        <div class="panel" id="setupChecklist">
+          <div class="panel-head"><h2>Setup Checklist</h2><span class="hint">Complete these before running discovery or marketplace actions.</span></div>
+          <div class="panel-body">
+            <div class="setup-grid">
+              <div class="setup-card warn" id="setupDbCard">
+                <div class="setup-status" id="setupDbStatus">Checking</div>
+                <div class="setup-title">Connect the database</div>
+                <div class="setup-copy" id="setupDbCopy">Postgres stores candidates, listings, credentials, and review history.</div>
+              </div>
+              <div class="setup-card warn" id="setupBackendSecretCard">
+                <div class="setup-status" id="setupBackendSecretStatus">Checking</div>
+                <div class="setup-title">Set the backend shared secret</div>
+                <div class="setup-copy" id="setupBackendSecretCopy">Configure LOCAL_AGENT_SHARED_SECRET on the backend so protected routes can run.</div>
+              </div>
+              <div class="setup-card warn" id="setupBrowserSecretCard">
+                <div class="setup-status" id="setupBrowserSecretStatus">Needed</div>
+                <div class="setup-title">Save this browser's secret</div>
+                <div class="setup-copy">Add the same shared secret under Settings so this dashboard can call protected routes.</div>
+                <div><button class="btn sm" onclick="navigate('settings')">Open Settings</button></div>
+              </div>
+              <div class="setup-card warn" id="setupKeysCard">
+                <div class="setup-status" id="setupKeysStatus">After secret</div>
+                <div class="setup-title">Add marketplace keys</div>
+                <div class="setup-copy">SerpAPI and Keepa are required for discovery; eBay credentials are required for inventory actions.</div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="stats" id="stats"></div>
         <div class="panel">
           <div class="panel-head"><h2>Opportunity Pipeline</h2><span class="hint">eBay demand to Amazon source comparison</span><span class="spacer"></span><button class="btn sm" onclick="navigate('ebayDiscovery')">Open Discovery</button></div>
@@ -287,7 +335,7 @@ const dashboardHtml = `<!doctype html>
         </div>
         <div class="grid-2">
           <div class="panel">
-            <div class="panel-head"><h2>Priority Actions</h2><span class="hint">Top pending items</span></div>
+            <div class="panel-head"><h2>Needs Review</h2><span class="hint">Top pending decisions</span></div>
             <div class="panel-body"><div class="table-wrap"><div id="ovActions"></div></div></div>
           </div>
           <div class="panel">
@@ -300,30 +348,33 @@ const dashboardHtml = `<!doctype html>
       <!-- ACTIONS -->
       <section class="view" id="view-actions">
         <div class="panel">
-          <div class="panel-head"><h2>Amazon Price Protection</h2><span class="hint">Pause listings when Amazon cost rises</span></div>
+          <div class="panel-head"><h2>Review Queue</h2><span class="hint">Select one item, then choose the next safe action.</span></div>
           <div class="panel-body">
-            <div class="inline">
-              <button class="btn danger" onclick="runMonitor()"><span>🛡</span> Run Price Check Now</button>
-              <span class="hint">Scans active listings against current Amazon pricing.</span>
+            <div class="decision-row">
+              <div>
+                <b id="reviewSelectionTitle">No action selected</b>
+                <span id="reviewSelectionCopy">Click a queue row to approve, verify, draft, execute, complete, or reject it.</span>
+              </div>
+              <input id="actionId" placeholder="Action ID" oninput="updateActionButtons()" style="max-width:260px">
             </div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Review Queue</h2><span class="hint">Click a row to select, then act</span></div>
-          <div class="panel-body">
             <div class="inline" style="margin-bottom:14px">
-              <input id="actionId" placeholder="Action ID (or click a row)" style="max-width:320px">
-              <button class="btn" onclick="approveAction()">✓ Approve</button>
-              <button class="btn primary" onclick="executeAction()">▶ Execute</button>
-              <button class="btn" onclick="completeSelectedAction()">✓ Complete</button>
-              <button class="btn ghost" onclick="rejectAction()">✕ Reject</button>
+              <button class="btn requires-action" id="approveActionBtn" onclick="approveAction()" disabled>Approve</button>
+              <button class="btn primary requires-action" id="executeActionBtn" onclick="executeAction()" disabled>Execute</button>
+              <button class="btn requires-action" id="completeActionBtn" onclick="completeSelectedAction()" disabled>Complete</button>
+              <button class="btn ghost requires-action" id="rejectActionBtn" onclick="rejectAction()" disabled>Reject</button>
               <span class="selected-tag" id="selTag"></span>
             </div>
             <div class="inline" style="margin-bottom:14px">
-              <button class="btn" onclick="queueAutomation('VERIFY')">Queue Verify</button>
-              <button class="btn" onclick="queueAutomation('DRAFT')">Queue Draft</button>
-              <button class="btn" onclick="queueAutomation('ASSISTED')">Queue Assisted</button>
-              <button class="btn danger" onclick="queueAutomation('AUTOPILOT')">Queue Autopilot</button>
+              <button class="btn requires-action" id="verifyActionBtn" onclick="queueAutomation('VERIFY')" disabled>Queue Verify</button>
+              <button class="btn requires-action" id="draftActionBtn" onclick="queueAutomation('DRAFT')" disabled>Queue Draft</button>
+              <button class="btn requires-action" id="assistedActionBtn" onclick="queueAutomation('ASSISTED')" disabled>Queue Assisted</button>
+              <details class="advanced" style="margin:0;min-width:220px">
+                <summary>High-risk mode</summary>
+                <div class="subtle-box danger-zone">
+                  <div class="result-meta">Autopilot can complete final marketplace actions only when the local agent is explicitly configured for it.</div>
+                  <div class="actions-row"><button class="btn danger requires-action" id="autopilotActionBtn" onclick="queueAutomation('AUTOPILOT')" disabled>Queue Autopilot</button></div>
+                </div>
+              </details>
             </div>
             <div class="table-wrap"><div id="actionsTable"></div></div>
           </div>
@@ -332,6 +383,38 @@ const dashboardHtml = `<!doctype html>
 
       <!-- AUTOMATION -->
       <section class="view" id="view-automation">
+        <div class="panel">
+          <div class="panel-head"><h2>Protection &amp; Schedules</h2><span class="hint">Run checks now or let the scheduler do quiet background work.</span></div>
+          <div class="panel-body">
+            <div class="grid-3">
+              <div class="subtle-box">
+                <div class="setup-title">Amazon price protection</div>
+                <div class="setup-copy">Checks active listings and queues pause actions if source prices make them unsafe.</div>
+                <div class="actions-row"><button class="btn danger" onclick="runMonitor()">Run Price Check Now</button></div>
+              </div>
+              <div class="subtle-box">
+                <div class="setup-title">eBay sold-product scan</div>
+                <div class="setup-copy">Finds new sold eBay products on a timer. Results wait for Amazon comparison.</div>
+                <div class="schedule-grid" style="margin-top:12px">
+                  <label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run on schedule</label>
+                  <div class="field"><label>Every minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
+                  <div class="field"><label>Products per run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
+                </div>
+                <div class="actions-row"><button class="btn primary" onclick="saveEbayAutoRun()">Save</button><button class="btn" onclick="runEbayAutoNow()">Run Now</button><button class="btn" onclick="stopEbayAutoRun()">Stop</button><button class="btn danger" onclick="deleteEbayAutoRun()">Delete</button></div>
+              </div>
+              <div class="subtle-box">
+                <div class="setup-title">Amazon comparison queue</div>
+                <div class="setup-copy">Compares the highest-score queued eBay products with Amazon source matches.</div>
+                <div class="schedule-grid" style="margin-top:12px">
+                  <label class="check"><input id="ebayAmazonCompareEnabled" type="checkbox"> Run on schedule</label>
+                  <div class="field"><label>Every minutes</label><input id="ebayAmazonCompareInterval" type="number" min="1" max="1440" value="1"></div>
+                  <div class="field"><label>Products per run</label><input id="ebayAmazonCompareLimit" type="number" min="1" max="25" value="1"></div>
+                </div>
+                <div class="actions-row"><button class="btn primary" onclick="saveEbayAmazonCompareAutoRun()">Save</button><button class="btn" onclick="runEbayAmazonCompareNow()">Run Now</button><button class="btn" onclick="stopEbayAmazonCompareAutoRun()">Stop</button><button class="btn danger" onclick="deleteEbayAmazonCompareAutoRun()">Delete</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Automation Runs</h2><span class="hint">Browser and computer-use operator history</span></div>
           <div class="panel-body"><div class="table-wrap"><div id="automationRunsTable"></div></div></div>
@@ -348,25 +431,31 @@ const dashboardHtml = `<!doctype html>
           <div class="panel">
             <div class="panel-head"><h2>Manual eBay Order</h2><span class="hint">Create a BUY action</span></div>
             <div class="panel-body">
-              <div class="form-grid">
-                <div class="field"><label>eBay Order ID</label><input id="orderEbayOrderId" placeholder="ORDER-1"></div>
-                <div class="field"><label>eBay Item ID</label><input id="orderEbayItemId" placeholder="EBAY-ITEM-1"></div>
-                <div class="field"><label>Buyer Name</label><input id="orderBuyerName" placeholder="Buyer"></div>
-                <div class="field"><label>Sale Price</label><input id="orderSalePrice" type="number" step="0.01" placeholder="54.99"></div>
-              </div>
-              <div class="actions-row"><button class="btn primary" onclick="createOrder()">Create BUY action</button></div>
+              <details class="advanced">
+                <summary>Add order manually</summary>
+                <div class="form-grid">
+                  <div class="field"><label>eBay Order ID</label><input id="orderEbayOrderId" placeholder="ORDER-1"></div>
+                  <div class="field"><label>eBay Item ID</label><input id="orderEbayItemId" placeholder="EBAY-ITEM-1"></div>
+                  <div class="field"><label>Buyer Name</label><input id="orderBuyerName" placeholder="Buyer"></div>
+                  <div class="field"><label>Sale Price</label><input id="orderSalePrice" type="number" step="0.01" placeholder="54.99"></div>
+                </div>
+                <div class="actions-row"><button class="btn primary" onclick="createOrder()">Create BUY action</button></div>
+              </details>
             </div>
           </div>
           <div class="panel">
             <div class="panel-head"><h2>Record Amazon Purchase</h2></div>
             <div class="panel-body">
-              <div class="form-grid">
-                <div class="field"><label>Internal Order ID</label><input id="purchaseOrderId" placeholder="order_id"></div>
-                <div class="field"><label>ASIN</label><input id="purchaseAsin" placeholder="B000000000"></div>
-                <div class="field"><label>Amazon Order ID</label><input id="purchaseAmazonOrderId" placeholder="AMZ-1"></div>
-                <div class="field"><label>Purchase Price</label><input id="purchasePrice" type="number" step="0.01" placeholder="31.50"></div>
-              </div>
-              <div class="actions-row"><button class="btn primary" onclick="recordPurchase()">Record purchase</button></div>
+              <details class="advanced">
+                <summary>Record purchase manually</summary>
+                <div class="form-grid">
+                  <div class="field"><label>Internal Order ID</label><input id="purchaseOrderId" placeholder="order_id"></div>
+                  <div class="field"><label>ASIN</label><input id="purchaseAsin" placeholder="B000000000"></div>
+                  <div class="field"><label>Amazon Order ID</label><input id="purchaseAmazonOrderId" placeholder="AMZ-1"></div>
+                  <div class="field"><label>Purchase Price</label><input id="purchasePrice" type="number" step="0.01" placeholder="31.50"></div>
+                </div>
+                <div class="actions-row"><button class="btn primary" onclick="recordPurchase()">Record purchase</button></div>
+              </details>
             </div>
           </div>
         </div>
@@ -378,6 +467,10 @@ const dashboardHtml = `<!doctype html>
 
       <!-- DISCOVERY -->
       <section class="view" id="view-discovery">
+        <div class="tabs">
+          <button class="tab-btn" onclick="navigate('ebayDiscovery')">eBay-first</button>
+          <button class="tab-btn active" onclick="navigate('discovery')">Amazon-first</button>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Amazon Scout</h2><span class="hint">Find promising Amazon products before spending eBay checks</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
           <div class="panel-body">
@@ -470,27 +563,34 @@ const dashboardHtml = `<!doctype html>
 
       <!-- EBAY DISCOVERY -->
       <section class="view" id="view-ebayDiscovery">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="navigate('ebayDiscovery')">eBay-first</button>
+          <button class="tab-btn" onclick="navigate('discovery')">Amazon-first</button>
+        </div>
         <div class="panel">
-          <div class="panel-head"><h2>eBay Discovery</h2><span class="hint">Find sold eBay products first, then check Amazon source prices</span></div>
+          <div class="panel-head"><h2>Find Products From eBay Demand</h2><span class="hint">Start with sold listings, then check Amazon source prices.</span></div>
           <div class="panel-body">
+            <div class="workflow-steps">
+              <div class="workflow-step primary-flow"><b>1. Search sold eBay items</b><span>Pick a market and product area.</span></div>
+              <div class="workflow-step"><b>2. Read the shortlist</b><span>Accepted, review, and rejected products are explained.</span></div>
+              <div class="workflow-step"><b>3. Select candidates</b><span>Use high score or choose rows manually.</span></div>
+              <div class="workflow-step"><b>4. Compare Amazon</b><span>Check source price, match quality, profit, and ROI.</span></div>
+              <div class="workflow-step"><b>5. Review winners</b><span>Safe opportunities move to the review queue.</span></div>
+            </div>
             <div class="settings-strip">
               <div class="field"><label>Market</label><select id="ebayDiscoveryMarket"></select></div>
               <div class="field"><label>Profile</label><select id="ebayDiscoveryProfile"></select></div>
             </div>
-            <div class="subsection-title">Sold product search</div>
-            <div class="form-grid">
+            <div class="subsection-title">Step 1: Search setup</div>
+            <div class="compact-form">
               <div class="field"><label>Category</label><select id="ebayDiscoveryCategory"></select></div>
-              <div class="field" style="grid-column:span 2"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
+              <div class="field"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
               <div class="field"><label>Sold Products To Check</label><input id="ebayDiscoveryLimit" type="number" min="1" max="100" value="25"></div>
               <div class="field"><label>Query Breadth</label><select id="ebayDiscoveryQueryBreadth"><option value="BALANCED" selected>Balanced</option><option value="WIDE">Wide</option><option value="FOCUSED">Focused</option></select></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold</label></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed</label></div>
               <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySafeMode" type="checkbox" checked> Safe mode</label></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySkipExisting" type="checkbox" checked> Skip known products</label></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Auto compare top candidates</label></div>
             </div>
             <details class="advanced">
-              <summary>Advanced filters</summary>
+              <summary>Search rules and thresholds</summary>
               <div class="subsection-title">eBay filters</div>
               <div class="form-grid compact">
                 <div class="field"><label>eBay Category ID</label><input id="ebayDiscoveryCategoryId" placeholder="optional"></div>
@@ -501,6 +601,9 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
                 <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
                 <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold listings only</label></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed listings only</label></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySkipExisting" type="checkbox" checked> Skip known products</label></div>
               </div>
               <div class="subsection-title">Amazon comparison gates</div>
               <div class="form-grid compact">
@@ -511,40 +614,24 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
                 <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" step="1" value="65"></div>
               </div>
-              <div class="subsection-title">Automatic discovery</div>
+              <div class="subsection-title">Run behavior</div>
               <div class="form-grid compact">
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAutoRunEnabled" type="checkbox"> Run every interval</label></div>
-                <div class="field"><label>Interval Minutes</label><input id="ebayAutoRunInterval" type="number" min="1" max="1440" value="1"></div>
-                <div class="field"><label>Products Per Run</label><input id="ebayAutoRunLimit" type="number" min="1" max="25" value="5"></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAutoRun()">Save / Change Job</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAutoNow()">Run Auto Now</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="stopEbayAutoRun()">Stop Job</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn danger" onclick="deleteEbayAutoRun()">Delete Job</button></div>
-              </div>
-              <div class="subsection-title">Automatic Amazon comparison</div>
-              <div class="form-grid compact">
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayAmazonCompareEnabled" type="checkbox"> Compare every interval</label></div>
-                <div class="field"><label>Interval Minutes</label><input id="ebayAmazonCompareInterval" type="number" min="1" max="1440" value="1"></div>
-                <div class="field"><label>Products Per Run</label><input id="ebayAmazonCompareLimit" type="number" min="1" max="25" value="1"></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="saveEbayAmazonCompareAutoRun()">Save / Change Job</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="runEbayAmazonCompareNow()">Run Compare Now</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn" onclick="stopEbayAmazonCompareAutoRun()">Stop Job</button></div>
-                <div class="field"><label>&nbsp;</label><button class="btn danger" onclick="deleteEbayAmazonCompareAutoRun()">Delete Job</button></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Compare top candidates after this scan</label></div>
               </div>
             </details>
             <div class="actions-row">
-              <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find eBay Sold Products</button>
-              <button class="btn" id="ebayDiscoverySelectBtn" onclick="selectHighEbayScores()">Select High Score</button>
+              <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find Sold Products</button>
+              <button class="btn" id="ebayDiscoverySelectBtn" onclick="selectHighEbayScores()">Select High-Score Products</button>
               <button class="btn primary" id="ebayDiscoveryCompareBtn" onclick="compareSelectedEbay()">Compare Selected With Amazon</button>
               <span class="hint" id="ebayDiscoveryHint"></span>
             </div>
           </div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h2>eBay Sold Candidates</h2><span class="hint" id="ebayDiscoverySummary">Run eBay Discovery to build a shortlist.</span></div>
+          <div class="panel-head"><h2>Sold Product Shortlist</h2><span class="hint" id="ebayDiscoverySummary">Run a sold-products search to build a shortlist.</span></div>
           <div class="panel-body"><div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div></div>
         </div>
-        <div class="panel">
+        <div class="panel hidden" id="ebayCompactPanel">
           <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',false)">Collapse all</button></span></div>
           <div class="panel-body">
             <div class="list-controls">
@@ -557,7 +644,7 @@ const dashboardHtml = `<!doctype html>
             <div id="ebayCompactPager" class="pager"></div>
           </div>
         </div>
-        <div class="panel">
+        <div class="panel hidden" id="ebayComparePanel">
           <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',false)">Collapse all</button></span></div>
           <div class="panel-body">
             <div class="list-controls">
@@ -571,24 +658,13 @@ const dashboardHtml = `<!doctype html>
             <div id="ebayComparePager" class="pager"></div>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Recent eBay Discovery Runs</h2></div>
+        <div class="panel hidden" id="ebayRunsPanel">
+          <div class="panel-head"><h2>Recent eBay Searches</h2></div>
           <div class="panel-body"><div class="table-wrap"><div id="ebayDiscoveryRunsTable"></div></div></div>
         </div>
-        <div class="panel">
+        <div class="panel hidden" id="ebayCompareRunsPanel">
           <div class="panel-head"><h2>Recent Amazon Comparison Jobs</h2><span class="hint">Timer and manual eBay-to-Amazon comparison runs.</span></div>
           <div class="panel-body"><div class="table-wrap"><div id="ebayAmazonComparisonRunsTable"></div></div></div>
-        </div>
-      </section>
-
-      <!-- API KEYS -->
-      <section class="view" id="view-keys">
-        <div class="banner" id="keysLocked" style="display:none;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#fde68a">
-          <span>🔒</span><span>These routes are protected. Configure <b>LOCAL_AGENT_SHARED_SECRET</b> on the backend, then save the same value under Settings → Local Agent Connection in this browser.</span>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>API Keys &amp; Credentials</h2><span class="hint">Values are encrypted (AES-256-GCM) and saved in Postgres; they override environment variables.</span></div>
-          <div class="panel-body"><div id="credsContainer"><div class="empty">Loading…</div></div></div>
         </div>
       </section>
 
@@ -612,6 +688,15 @@ const dashboardHtml = `<!doctype html>
                 <button class="btn" onclick="saveSecret()">Save</button><button class="btn ghost" onclick="clearSecret()">Clear</button></div>
               </div>
             </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Credentials</h2><span class="hint">SerpAPI, Keepa, eBay, and local-agent values are encrypted at rest.</span></div>
+          <div class="panel-body">
+            <div class="banner" id="keysLocked" style="display:none;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#fde68a;margin-bottom:14px">
+              <span>Locked</span><span>Configure <b>LOCAL_AGENT_SHARED_SECRET</b> on the backend, then save the same value above in this browser.</span>
+            </div>
+            <div id="credsContainer"><div class="empty">Open Settings after the shared secret is configured to manage credentials.</div></div>
           </div>
         </div>
         <div class="panel">
@@ -639,17 +724,16 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null,ebayCompactPage:1,ebayComparePage:1,expandedLists:{}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},keepaToken:null,ebayCompactPage:1,ebayComparePage:1,expandedLists:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
 var pageSize=20;
 var META={
-  overview:['Overview','Live snapshot of your arbitrage pipeline'],
-  actions:['Actions','Approve, execute, and protect your listings'],
-  automation:['Automation','Track AI browser runs, evidence, and confirmation states'],
+  overview:['Home','What needs attention and what is safe to do next'],
+  actions:['Review','Approve, verify, draft, execute, complete, or reject one item at a time'],
+  automation:['Automation','Price protection, schedules, browser runs, and confirmation states'],
   catalog:['Listings & Orders','Manage marketplace inventory and fulfillment'],
-  discovery:['Discovery','Scout Amazon first, then compare selected products with eBay'],
-  ebayDiscovery:['eBay Discovery','Start from sold eBay products, then compare with Amazon'],
-  keys:['API Keys & Credentials','Encrypted at rest, stored in your database'],
-  settings:['Settings','Thresholds, intervals, and connections']
+  discovery:['Discover','Scout Amazon first, then compare selected products with eBay'],
+  ebayDiscovery:['Discover','Start from sold eBay products, then compare with Amazon'],
+  settings:['Settings','Connections, credentials, thresholds, and safety rules']
 };
 var BADGE={
   PENDING:'amber',APPROVED:'blue',COMPLETED:'green',REJECTED:'slate',CANCELLED:'red',ERROR:'red',
@@ -723,6 +807,29 @@ function table(rows,cols,opts){
     }).join('')+'</tr>';
   }).join('')+'</tbody>';
   return '<table>'+head+body+'</table>';
+}
+
+function setSetupCard(id,status,label,copy){
+  var card=document.getElementById(id+'Card');
+  var statusEl=document.getElementById(id+'Status');
+  var copyEl=document.getElementById(id+'Copy');
+  if(!card||!statusEl)return;
+  card.classList.remove('ok','warn','err');
+  card.classList.add(status);
+  statusEl.textContent=label;
+  if(copyEl&&copy)copyEl.textContent=copy;
+}
+function updateSetupChecklist(){
+  var hasBrowserSecret=!!localStorage.getItem('localAgentSecret');
+  state.setup.browserSecret=hasBrowserSecret;
+  setSetupCard('setupDb',state.setup.db?'ok':'err',state.setup.db?'Connected':'Needs setup',state.setup.db?'Postgres is reachable.':'DATABASE_URL is missing or Postgres is unavailable.');
+  var backendStatus=state.setup.backendSecret;
+  setSetupCard('setupBackendSecret',backendStatus==='ok'?'ok':(backendStatus==='checking'?'warn':'err'),backendStatus==='ok'?'Configured':(backendStatus==='checking'?'Checking':'Needs setup'),backendStatus==='ok'?'Protected backend routes are available.':'Set LOCAL_AGENT_SHARED_SECRET in the backend environment.');
+  setSetupCard('setupBrowserSecret',hasBrowserSecret?'ok':'warn',hasBrowserSecret?'Saved':'Needed',hasBrowserSecret?'This browser will send the shared secret with protected requests.':'Save the same LOCAL_AGENT_SHARED_SECRET under Settings.');
+  var keysReady=state.setup.dashboard&&state.setup.db&&backendStatus==='ok'&&hasBrowserSecret;
+  setSetupCard('setupKeys',keysReady?'ok':'warn',keysReady?'Manage now':'After setup',keysReady?'Open Settings to add or update SerpAPI, Keepa, and eBay credentials.':'Credentials unlock after the database and shared secret are configured.');
+  var checklist=document.getElementById('setupChecklist');
+  if(checklist)checklist.classList.toggle('hidden',state.setup.dashboard&&state.setup.db&&backendStatus==='ok'&&hasBrowserSecret);
 }
 
 function renderProfiles(){
@@ -986,8 +1093,8 @@ function updateAmazonScoutActions(){
   var selectBtn=document.getElementById('amazonScoutSelectBtn');
   var compareBtn=document.getElementById('amazonScoutCompareBtn');
   var selectable=state.amazonScoutCandidates.filter(isSelectableAmazonCandidate);
-  if(selectBtn)selectBtn.disabled=!selectable.length;
-  if(compareBtn)compareBtn.disabled=!selectedAmazonIds().length;
+  if(selectBtn){selectBtn.disabled=!selectable.length;selectBtn.classList.toggle('hidden',!selectable.length)}
+  if(compareBtn){compareBtn.disabled=!selectedAmazonIds().length;compareBtn.classList.toggle('hidden',!selectable.length)}
 }
 function renderRejectionBreakdown(rejected){
   if(!rejected.length)return '';
@@ -1156,8 +1263,8 @@ function updateEbayDiscoveryActions(){
   var selectBtn=document.getElementById('ebayDiscoverySelectBtn');
   var compareBtn=document.getElementById('ebayDiscoveryCompareBtn');
   var selectable=state.ebayDiscoveryCandidates.filter(isSelectableEbayCandidate);
-  if(selectBtn)selectBtn.disabled=!selectable.length;
-  if(compareBtn)compareBtn.disabled=!selectedEbayIds().length;
+  if(selectBtn){selectBtn.disabled=!selectable.length;selectBtn.classList.toggle('hidden',!selectable.length)}
+  if(compareBtn){compareBtn.disabled=!selectedEbayIds().length;compareBtn.classList.toggle('hidden',!selectable.length)}
 }
 function renderEbayRejectionBreakdown(rejected){
   if(!rejected.length)return '';
@@ -1321,11 +1428,16 @@ function currentAllEbayRows(){
   var d=state.data||{};
   return (d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]);
 }
+function showPanel(id,visible){
+  var el=document.getElementById(id);
+  if(el)el.classList.toggle('hidden',!visible);
+}
 function renderEbayCompactProducts(candidates){
   var el=document.getElementById('ebayCompactProducts');
   var summary=document.getElementById('ebayCompactSummary');
   if(!el)return;
   var allRows=compactEbayLines(candidates);
+  showPanel('ebayCompactPanel',allRows.length>0);
   var rows=filterEbayRows(allRows,{
     text:inputValue('ebayCompactSearch'),
     status:selectValue('ebayCompactStatus','ALL'),
@@ -1401,6 +1513,7 @@ function renderEbayAmazonComparisonRows(candidates){
   var allRows=(candidates||[]).slice().sort(function(a,b){
     return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
   });
+  showPanel('ebayComparePanel',allRows.length>0);
   var rows=filterEbayRows(allRows,{
     text:inputValue('ebayCompareSearch'),
     status:selectValue('ebayCompareStatus','ALL'),
@@ -1550,13 +1663,13 @@ function renderPipeline(){
       'ROI '+(profit.roiPercent===undefined||profit.roiPercent===null?'—':Number(profit.roiPercent).toFixed(1)+'%')
     ].join(' · ');
     return '<div class="rank-row"><div class="rank-score">'+esc(score)+'</div><div><div class="rank-title" title="'+esc(item.ebayTitle||'')+'">'+esc(item.ebayTitle||'Untitled opportunity')+'</div><div class="rank-meta">'+esc(meta)+'</div></div>'+badge(decision.decision||item.safetyStatus||'PENDING')+'</div>';
-  }).join(''):'<div class="empty">No scored opportunities yet. Start eBay Discovery to build the queue.</div>';
+  }).join(''):'<div class="empty">No scored opportunities yet. Open Discover to build the queue.</div>';
 }
 
 function render(){
   var d=state.data;if(!d)return;
-  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],ebayAmazonComparisons:['A>','rgba(34,211,238,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
-  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Discovery',ebayAmazonComparisons:'Amazon Compare Jobs',automationRuns:'Automation Runs',automationNeedsConfirmation:'Needs Confirm',automationFailures:'Automation Issues'};
+  var icons={productCandidates:['PC','rgba(14,165,233,.16)'],amazonMatches:['AM','rgba(20,184,166,.16)'],ebayListings:['EL','rgba(52,211,153,.16)'],orders:['OR','rgba(96,165,250,.16)'],actions:['RV','rgba(251,191,36,.16)'],purchases:['PU','rgba(45,212,191,.16)'],discoveryScans:['SC','rgba(45,212,191,.16)'],amazonScouts:['AS','rgba(20,184,166,.16)'],ebayDiscoveries:['ES','rgba(52,211,153,.16)'],ebayAmazonComparisons:['AC','rgba(14,165,233,.16)'],automationRuns:['AU','rgba(96,165,250,.16)'],automationNeedsConfirmation:['HC','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
+  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Review Items',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Searches',ebayAmazonComparisons:'Amazon Compare Jobs',automationRuns:'Automation Runs',automationNeedsConfirmation:'Needs Confirm',automationFailures:'Automation Issues'};
   document.getElementById('stats').innerHTML=Object.keys(d.counts).map(function(k){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
@@ -1647,6 +1760,7 @@ function render(){
     {key:'error',label:'Error',fmt:function(v){return v?'<span class="truncate" title="'+esc(v)+'">'+esc(v)+'</span>':'—'}},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
+  showPanel('ebayRunsPanel',!!(d.ebayDiscoveryRuns&&d.ebayDiscoveryRuns.length));
   document.getElementById('ebayAmazonComparisonRunsTable').innerHTML=table(d.ebayAmazonComparisonRuns,[
     {key:'mode',label:'Mode',fmt:badge},
     {key:'status',label:'Status',fmt:badge},
@@ -1669,6 +1783,7 @@ function render(){
     {key:'reason',label:'Reason',fmt:function(v,r){var msg=r.error||v;return msg?'<span class="truncate" title="'+esc(msg)+'">'+esc(msg)+'</span>':'—'}},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
+  showPanel('ebayCompareRunsPanel',!!(d.ebayAmazonComparisonRuns&&d.ebayAmazonComparisonRuns.length));
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
   renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
   renderEbayAmazonComparisonRows((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
@@ -1706,15 +1821,27 @@ function render(){
   document.getElementById('updatedPill').textContent='Updated '+new Date().toLocaleTimeString();
 }
 
-function selectAction(id){document.getElementById('actionId').value=id;document.getElementById('selTag').innerHTML='Selected: <b>'+esc(id)+'</b>';navigate('actions')}
+function activeNavView(view){return view==='discovery'?'ebayDiscovery':view}
+function updateActionButtons(){
+  var id=(document.getElementById('actionId').value||'').trim();
+  document.querySelectorAll('.requires-action').forEach(function(btn){btn.disabled=!id});
+  var title=document.getElementById('reviewSelectionTitle');
+  var copy=document.getElementById('reviewSelectionCopy');
+  var tag=document.getElementById('selTag');
+  if(title)title.textContent=id?'Selected action':'No action selected';
+  if(copy)copy.innerHTML=id?'Review <span class="mono">'+esc(id)+'</span>, then choose one next step.':'Click a queue row to approve, verify, draft, execute, complete, or reject it.';
+  if(tag)tag.innerHTML=id?'Selected: <b>'+esc(id)+'</b>':'';
+}
+function selectAction(id){document.getElementById('actionId').value=id;updateActionButtons();navigate('actions')}
 
   function navigate(view){
-    document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===view)});
+    var navView=activeNavView(view);
+    document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===navView)});
     document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+view)});
-    var mobile=document.getElementById('mobileNav');if(mobile)mobile.value=view;
+    var mobile=document.getElementById('mobileNav');if(mobile)mobile.value=navView;
     document.getElementById('viewTitle').textContent=META[view][0];
     document.getElementById('viewSub').textContent=META[view][1];
-    if(view==='keys')loadCredentials();
+    if(view==='settings')loadCredentials();
 }
 
 function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
@@ -1742,8 +1869,9 @@ function renderCredentials(list){
 }
   function loadCredentials(){
     apiFetch('/api/credentials').then(function(r){
-      if(r.status===401){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Set the Local Agent Shared Secret in Settings, then reopen this tab.</div>';return null}
-      if(r.status===503){document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Protected routes are not configured. Set LOCAL_AGENT_SHARED_SECRET on the backend first.</div>';return null}
+      if(r.status===401){state.setup.backendSecret='ok';updateSetupChecklist();document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Save the Local Agent Shared Secret above, then refresh Settings.</div>';return null}
+      if(r.status===503){state.setup.backendSecret='missing';updateSetupChecklist();document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Protected routes are not configured. Set LOCAL_AGENT_SHARED_SECRET on the backend first.</div>';return null}
+      state.setup.backendSecret='ok';updateSetupChecklist();
       document.getElementById('keysLocked').style.display='none';return responseJson(r);
     }).then(function(j){if(j)renderCredentials(j.credentials)}).catch(function(e){document.getElementById('credsContainer').innerHTML='<div class="empty">Could not load credentials: '+esc(e.message)+'</div>'});
   }
@@ -1762,6 +1890,8 @@ function setDb(connected,msg){
   dot.className='dot '+(connected?'on':'off');
   lbl.textContent=connected?'Postgres connected':'DB disconnected';
   if(!connected&&msg)lbl.title=msg;
+  state.setup.db=!!connected;
+  updateSetupChecklist();
 }
 
 function checkDb(){
@@ -1770,18 +1900,22 @@ function checkDb(){
 
   function load(){
     document.getElementById('agentSecret').value=localStorage.getItem('localAgentSecret')||'';
+    updateSetupChecklist();
     checkDb();
     apiJson('/api/dashboard').then(function(data){
-      state.data=data;document.getElementById('offline').classList.remove('show');render();
+      state.data=data;state.setup.dashboard=true;state.setup.backendSecret='ok';document.getElementById('offline').classList.remove('show');updateSetupChecklist();render();
     }).catch(function(e){
-      var authHint=e.status===401||e.status===503?' Set the Local Agent Shared Secret in Settings and ensure the backend has a configured shared secret.':' Check the database connection.';
-      document.getElementById('offlineMsg').textContent='Could not load dashboard data: '+e.message+'.'+authHint;
+      state.setup.dashboard=false;
+      state.setup.backendSecret=e.status===503?'missing':(e.status===401?'ok':state.setup.backendSecret);
+      updateSetupChecklist();
+      var authHint=e.status===401?' Save the shared secret in Settings.':(e.status===503?' Configure LOCAL_AGENT_SHARED_SECRET on the backend first.':' Check the database connection.');
+      document.getElementById('offlineMsg').textContent='Setup needed: '+e.message+'.'+authHint;
       document.getElementById('offline').classList.add('show');
     });
   }
 
-  function saveSecret(){localStorage.setItem('localAgentSecret',document.getElementById('agentSecret').value);toast('Secret saved','Stored in this browser.','ok')}
-  function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';toast('Secret cleared',null,'ok')}
+  function saveSecret(){localStorage.setItem('localAgentSecret',document.getElementById('agentSecret').value);updateSetupChecklist();toast('Secret saved','Stored in this browser.','ok');load()}
+  function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';updateSetupChecklist();toast('Secret cleared',null,'ok')}
   function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
     apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
 function saveEbayAutoRun(){
@@ -2003,14 +2137,14 @@ function runEbayDiscovery(){
     postalCode:document.getElementById('ebayDiscoveryPostalCode').value.trim()||undefined,
     skipExistingProducts:document.getElementById('ebayDiscoverySkipExisting').checked
   };
-  toast('Running eBay Discovery',profile+' · '+category);
+  toast('Searching eBay sold products',profile+' · '+category);
   jpost('/ebay-discovery/run',body).then(function(res){
     state.ebayDiscoveryRunId=res.run&&res.run.id;
     state.selectedEbay={};
     renderEbayDiscoveryReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
     document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source dropped '+(res.summary.sourceDropped||0)+' · auctions '+(res.summary.auctionDropped||0)+' · no price '+(res.summary.missingPriceDropped||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
     renderEbayCompactProducts((res.run&&res.run.candidates)||[]);
-    toast('eBay Discovery complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
+    toast('eBay search complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();
     load();
   }).catch(function(e){renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('eBay Discovery failed',e.message,'err')});
