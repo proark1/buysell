@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { ProductOpportunity } from '../domain/products.js';
 import type { PersistedOpportunityIds, PersistOpportunityContext } from './opportunityRepository.js';
 import { productFamilyKeyForEbayCandidate } from '../services/productFamily.js';
+import { rejectionStageForFlag } from '../services/discoveryPolicy.js';
 
 const money = (value: number | undefined): string | undefined => value === undefined ? undefined : value.toFixed(2);
 
@@ -54,6 +55,80 @@ function identityMetadata(opportunity: ProductOpportunity): {
     modelTokens: [...new Set([...(normalized?.ebayModelTokens ?? []), ...(normalized?.amazonModelTokens ?? [])])],
     identifiers: [...new Set([...(normalized?.ebayIdentifiers ?? []), ...(normalized?.amazonIdentifiers ?? []), opportunity.amazon.upc].filter((item): item is string => Boolean(item)))]
   };
+}
+
+export interface DiscoveryCandidateLearningInput {
+  marketplace: 'AMAZON' | 'EBAY';
+  title: string;
+  familyKey?: string;
+  ebayCandidateId?: string;
+  amazonCandidateId?: string;
+  source: string;
+  accepted: boolean;
+  score?: number;
+  riskFlags: string[];
+  rejectionReasons: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export async function recordDiscoveryCandidateLearning(
+  db: PrismaClient,
+  input: DiscoveryCandidateLearningInput
+): Promise<void> {
+  const stages = [...new Set(input.riskFlags.map(rejectionStageForFlag))];
+  const primaryStage = stages[0] ?? 'SCORING';
+  const reasonCode = input.riskFlags[0] ?? (input.accepted ? 'DISCOVERY_ACCEPTED' : 'LOW_DISCOVERY_SCORE');
+  const feedbackType = input.accepted
+    ? 'DISCOVERY_ACCEPTED'
+    : primaryStage === 'SOURCE_DATA' || primaryStage === 'SOURCE_FORMAT'
+      ? 'SOURCE_REJECT'
+      : primaryStage === 'MATCHING'
+        ? 'MATCH_REJECT'
+        : primaryStage === 'ECONOMICS'
+          ? 'ECONOMICS_REJECT'
+          : 'DISCOVERY_REJECT';
+
+  if (input.familyKey) {
+    await db.productFamily.upsert({
+      where: { familyKey: input.familyKey },
+      create: {
+        familyKey: input.familyKey,
+        canonicalTitle: input.title.slice(0, 240),
+        rejectedCount: input.accepted ? 0 : 1,
+        lastDecision: feedbackType,
+        lastRiskFlags: input.riskFlags,
+        lastSeenAt: new Date()
+      },
+      update: {
+        canonicalTitle: input.title.slice(0, 240),
+        rejectedCount: { increment: input.accepted ? 0 : 1 },
+        lastDecision: feedbackType,
+        lastRiskFlags: input.riskFlags,
+        lastSeenAt: new Date()
+      }
+    });
+  }
+
+  await db.opportunityFeedback.create({
+    data: {
+      ebayCandidateId: input.ebayCandidateId,
+      feedbackType,
+      reasonCode,
+      reasonText: input.rejectionReasons[0] ?? reasonCode,
+      source: input.source,
+      weight: input.accepted ? 1 : -1,
+      metadataJson: jsonReady({
+        marketplace: input.marketplace,
+        amazonCandidateId: input.amazonCandidateId,
+        title: input.title,
+        score: input.score,
+        riskFlags: input.riskFlags,
+        rejectionReasons: input.rejectionReasons,
+        stages,
+        ...input.metadata
+      })
+    }
+  });
 }
 
 function priceObservations(opportunity: ProductOpportunity, ids: PersistedOpportunityIds, context: PersistOpportunityContext): Array<Record<string, unknown>> {

@@ -35,4 +35,13 @@ if (packMismatchScore >= score) {
   throw new Error(`expected pack uncertainty score below exact product score, got ${packMismatchScore} >= ${score}`);
 }
 
+const specNoiseScore = scoreAmazonMatch(
+  { title: 'Zoom Recorder Battery 7600mAh 32-bit Accessory' },
+  { asin: 'B000TEST5', title: 'Zoom Recorder Battery Accessory', brand: 'Zoom', matchConfidence: 0 }
+);
+
+if (specNoiseScore < 0.45) {
+  throw new Error(`expected spec tokens to avoid hard model penalty, got ${specNoiseScore}`);
+}
+
 console.log('matchScorer unit test passed');

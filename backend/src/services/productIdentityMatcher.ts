@@ -2,6 +2,8 @@ import type { AmazonMatchInput, EbayCandidateInput, OpportunityDecision, Product
 
 const knownBrands = new Set([
   '3m',
+  'acme',
+  'av access',
   'anker',
   'apple',
   'belkin',
@@ -15,6 +17,8 @@ const knownBrands = new Set([
   'dymo',
   'epson',
   'eyoyo',
+  'gulikit',
+  'gulitech',
   'fujitsu',
   'garmin',
   'hp',
@@ -29,42 +33,76 @@ const knownBrands = new Set([
   'metabo',
   'milwaukee',
   'netgear',
+  'nelko',
   'panasonic',
+  'phomemo',
   'philips',
   'poly',
+  'rode',
   'ryobi',
   'samsung',
   'seagate',
+  'shure',
   'sony',
   'symbol',
   'tera',
+  'teslong',
   'tp-link',
   'tp link',
+  'traxxas',
   'ugreen',
+  'vdiagtool',
+  'wera',
   'wd',
   'western digital',
+  'xtool',
   'xerox',
+  'yihua',
+  'zoom',
   'zebra'
 ]);
 
 const genericLeadingWords = new Set([
+  'akku',
+  'akkus',
+  'adapter',
+  'battery',
+  'batterie',
   'new',
+  'neu',
   'used',
+  'gebraucht',
   'original',
   'genuine',
+  'compatible',
   'wireless',
   'bluetooth',
   'portable',
   'digital',
   'usb',
+  'usb-c',
   'mini',
   'barcode',
   'scanner',
   'replacement',
+  'ersatz',
+  'ersatzteil',
   'for',
+  'fur',
+  'für',
   'with',
+  'ohne',
+  'mit',
   'lot',
-  'pack'
+  'pack',
+  'set',
+  'kit',
+  'pcs',
+  'piece',
+  'pieces',
+  'heavy',
+  'duty',
+  'profi'
 ]);
 
 const genericModelTokens = new Set([
@@ -82,7 +120,9 @@ const genericModelTokens = new Set([
   '4K',
   '1080P',
   '220V',
-  '110V'
+  '110V',
+  '32BIT',
+  '64BIT'
 ]);
 
 const variantWords = new Set([
@@ -113,6 +153,12 @@ const normalize = (value: string | undefined): string | undefined => {
   if (!value) return undefined;
   const normalized = value
     .toLowerCase()
+    .replace(/ø/g, 'o')
+    .replace(/æ/g, 'ae')
+    .replace(/œ/g, 'oe')
+    .replace(/ß/g, 'ss')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9+ ]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -121,6 +167,18 @@ const normalize = (value: string | undefined): string | undefined => {
 };
 
 const tokenKey = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+function normalizeBrand(value: string | undefined): string | undefined {
+  const normalized = normalize(value);
+  if (!normalized) return undefined;
+  const withoutNoisePrefix = normalized.replace(/^(?:brand|store|the|v)\s+/, '');
+  const candidate = knownBrands.has(withoutNoisePrefix) ? withoutNoisePrefix : normalized;
+  if (['unbranded', 'markenlos', 'does not apply', 'unknown', 'generic', 'none', 'na', 'n a'].includes(candidate)) return undefined;
+  if (/^\d/.test(candidate)) return undefined;
+  if (candidate.length < 2) return undefined;
+  if (genericLeadingWords.has(candidate)) return undefined;
+  return candidate;
+}
 
 const textContainsToken = (text: string, token: string): boolean => new RegExp(`(^|[^a-z0-9])${escapeRegex(token)}([^a-z0-9]|$)`, 'i').test(text);
 
@@ -188,25 +246,32 @@ function inferKnownBrand(text: string): string | undefined {
 function inferLeadingBrand(text: string): string | undefined {
   const words = (normalize(text) ?? '').split(' ').filter(Boolean);
   const firstMeaningful = words.find((word) => !genericLeadingWords.has(word));
-  if (!firstMeaningful || firstMeaningful.length < 2) return undefined;
-  return firstMeaningful;
+  if (!firstMeaningful || firstMeaningful.length < 2 || /\d/.test(firstMeaningful)) return undefined;
+  return knownBrands.has(firstMeaningful) ? firstMeaningful : undefined;
 }
 
 function inferEbayBrand(ebay: EbayCandidateInput): string | undefined {
-  const rawBrand = collectRawFieldValues(ebay.raw, new Set(['brand', 'manufacturer'])).map(normalize)[0];
+  const rawBrand = collectRawFieldValues(ebay.raw, new Set(['brand', 'manufacturer'])).map(normalizeBrand).find(Boolean);
   if (rawBrand) return rawBrand;
   return inferKnownBrand(ebay.title) ?? inferLeadingBrand(ebay.title);
 }
 
 function amazonBrand(amazon: AmazonMatchInput): string | undefined {
-  return normalize(amazon.brand) ?? inferKnownBrand(amazon.title);
+  return normalizeBrand(amazon.brand) ?? inferKnownBrand(amazon.title);
 }
 
 function modelTokensFromText(value: string | undefined): string[] {
   if (!value) return [];
   const matches = value.match(/\b[A-Z]{1,6}[-_/ ]?\d{2,6}[A-Z0-9]{0,5}\b|\b\d{2,6}[-_/ ]?[A-Z]{1,5}\b/gi) ?? [];
   return unique(matches.map(tokenKey))
-    .filter((token) => token.length >= 3 && !genericModelTokens.has(token));
+    .filter((token) => token.length >= 3 && !genericModelTokens.has(token) && !isSpecificationToken(token));
+}
+
+function isSpecificationToken(token: string): boolean {
+  if (/^\d{2,6}(?:MAH|AH|WH|W|KW|V|A|MM|CM|M|IN|INCH|HZ|KHZ|MHZ|GHZ|BIT|GB|TB|MB|DPI|P|K)$/.test(token)) return true;
+  if (/^(?:STEREO|MONO|AUDIO|VIDEO)\d{2,6}$/.test(token)) return true;
+  if (/^\d{2,6}(?:PCS|PC|PACK|CT|COUNT)$/.test(token)) return true;
+  return false;
 }
 
 function modelTokensFromRaw(raw: unknown): string[] {
@@ -312,7 +377,7 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
     evidence.push(`Shared product identifier: ${sharedIdentifiers[0]}.`);
   }
 
-  if (normalizedAmazonBrand) {
+  if (normalizedAmazonBrand && sharedIdentifiers.length === 0) {
     if (normalizedEbayBrand === normalizedAmazonBrand || textContainsToken(normalize(ebay.title) ?? '', normalizedAmazonBrand)) {
       evidence.push(`Brand matched: ${normalizedAmazonBrand}.`);
     } else if (normalizedEbayBrand) {
@@ -323,16 +388,20 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
       riskFlags.push('BRAND_NOT_VERIFIED');
     }
   } else {
-    conflicts.push('Amazon brand is missing, so brand equality cannot be verified.');
-    riskFlags.push('BRAND_NOT_VERIFIED');
+    if (sharedIdentifiers.length === 0) {
+      conflicts.push('Amazon brand is missing, so brand equality cannot be verified.');
+      riskFlags.push('BRAND_NOT_VERIFIED');
+    } else if (normalizedAmazonBrand) {
+      evidence.push(`Amazon brand captured: ${normalizedAmazonBrand}.`);
+    }
   }
 
   if (sharedModels.length > 0) {
     evidence.push(`Model matched: ${sharedModels[0]}.`);
-  } else if (ebayModelTokens.length > 0 && amazonModelTokens.length > 0) {
+  } else if (sharedIdentifiers.length === 0 && ebayModelTokens.length > 0 && amazonModelTokens.length > 0) {
     conflicts.push(`Model mismatch: eBay has ${ebayModelTokens.join(', ')}, Amazon has ${amazonModelTokens.join(', ')}.`);
     riskFlags.push('MODEL_MISMATCH');
-  } else if (amazonModelTokens.length > 0 || ebayModelTokens.length > 0) {
+  } else if (sharedIdentifiers.length === 0 && (amazonModelTokens.length > 0 || ebayModelTokens.length > 0)) {
     conflicts.push('Model number is present on only one side, so exact model equality is not proven.');
     riskFlags.push('MODEL_NOT_VERIFIED');
   }

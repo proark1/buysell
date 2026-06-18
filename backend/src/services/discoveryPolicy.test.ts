@@ -54,6 +54,42 @@ const expensive = evaluateProductSafety(
 assertEqual(expensive.status, 'REJECT', 'expensive product status');
 assertIncludes(expensive.riskFlags, 'AMAZON_COST_TOO_HIGH', 'expensive product flags');
 
+const aboveProfileButReviewable = evaluateProductSafety(
+  { title: 'Thermal label printer', soldPrice: 300, category: 'Office Products' },
+  { asin: 'B000PRINT2', title: 'Thermal label printer', currentPrice: 175, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  { ...basePolicy, maxAmazonCostUsd: 150 }
+);
+
+assertEqual(aboveProfileButReviewable.status, 'WARN', 'above profile cost remains reviewable when backed by eBay sold price');
+assertIncludes(aboveProfileButReviewable.riskFlags, 'AMAZON_COST_ABOVE_PROFILE', 'above profile review flag');
+
+const unknownCategory = evaluateProductSafety(
+  { title: 'Thermal label printer', soldPrice: 129.99 },
+  { asin: 'B000CAT', title: 'Thermal label printer', currentPrice: 40, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91 },
+  basePolicy
+);
+
+assertEqual(unknownCategory.status, 'WARN', 'missing category should not hard reject');
+assertIncludes(unknownCategory.riskFlags, 'CATEGORY_UNKNOWN', 'missing category flag');
+
+const stockUnknown = evaluateProductSafety(
+  { title: 'Thermal label printer', soldPrice: 129.99, category: 'Office Products' },
+  { asin: 'B000STOCK', title: 'Thermal label printer', currentPrice: 40, availabilityStatus: 'UNKNOWN', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  basePolicy
+);
+
+assertEqual(stockUnknown.status, 'WARN', 'unknown stock should route to review');
+assertIncludes(stockUnknown.riskFlags, 'AMAZON_STOCK_UNKNOWN', 'unknown stock flag');
+
+const outOfStock = evaluateProductSafety(
+  { title: 'Thermal label printer', soldPrice: 129.99, category: 'Office Products' },
+  { asin: 'B000OUT', title: 'Thermal label printer', currentPrice: 40, availabilityStatus: 'OUT_OF_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },
+  basePolicy
+);
+
+assertEqual(outOfStock.status, 'REJECT', 'out of stock should hard reject');
+assertIncludes(outOfStock.riskFlags, 'AMAZON_OUT_OF_STOCK', 'out of stock flag');
+
 const usedEbay = evaluateProductSafety(
   { title: 'Wireless barcode scanner', soldPrice: 79.99, condition: 'Used', category: 'Office Products' },
   { asin: 'B000USED', title: 'Wireless barcode scanner', currentPrice: 35, availabilityStatus: 'IN_STOCK', matchConfidence: 0.91, categoryTree: ['Office Products'] },

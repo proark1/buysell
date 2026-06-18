@@ -9,6 +9,7 @@ import {
   evaluateProductSafety,
   getAmazonDiscoveryCategory,
   getAmazonDiscoveryProfile,
+  rejectionStageForFlag,
   type SafetyPolicy
 } from './discoveryPolicy.js';
 import { scoreAmazonDiscoveryCandidate, type AmazonDiscoveryScore } from './amazonDiscoveryScorer.js';
@@ -19,6 +20,7 @@ import { profitInputsFromRuleConfig } from './profitInputs.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from './marketMetrics.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { recordDiscoveryCandidateLearning } from '../repositories/learningRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
 import { createActionForDecision } from '../repositories/actionRepository.js';
 import { postgresInt } from '../utils/postgres.js';
@@ -200,6 +202,23 @@ function amazonRejectionReasons(candidate: Omit<AmazonDiscoveryCandidateResult, 
   return [...new Set(reasons)];
 }
 
+function rejectionDiagnostics(riskFlags: string[], reasons: string[]): Record<string, unknown> {
+  const stages = riskFlags.reduce<Record<string, number>>((counts, flag) => {
+    const stage = rejectionStageForFlag(flag);
+    counts[stage] = (counts[stage] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    riskFlagStages: stages,
+    sourceDataFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_DATA'),
+    sourceFormatFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_FORMAT'),
+    safetyFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SAFETY'),
+    matchingFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'MATCHING'),
+    sourceCostFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_COST'),
+    diagnostics: reasons
+  };
+}
+
 export function selectAmazonDiscoveryQueries(
   profile: ReturnType<typeof getAmazonDiscoveryProfile>,
   category: ReturnType<typeof getAmazonDiscoveryCategory>,
@@ -309,7 +328,7 @@ export async function persistAmazonDiscoveryRun(
     });
 
     const persistCandidate = async (candidate: AmazonDiscoveryCandidateResult, accepted: boolean): Promise<void> => {
-      await tx.amazonDiscoveryCandidate.create({
+      const persisted = await tx.amazonDiscoveryCandidate.create({
         data: {
           runId: run.id,
           asin: candidate.amazon.asin,
@@ -331,13 +350,34 @@ export async function persistAmazonDiscoveryRun(
           riskFlags: candidate.safety.riskFlags,
           scoreBreakdown: {
             ...candidate.score,
-            rejectionReasons: candidate.rejectionReasons
+            rejectionReasons: candidate.rejectionReasons,
+            ...rejectionDiagnostics(candidate.safety.riskFlags, candidate.safety.reasons)
           },
           selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
           comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
           rawKeepaJson: candidate.amazon.raw
         }
       });
+      if (!accepted) {
+        await recordDiscoveryCandidateLearning(tx, {
+          marketplace: 'AMAZON',
+          title: candidate.amazon.title,
+          amazonCandidateId: persisted.id,
+          source: 'amazon-discovery',
+          accepted,
+          score: candidate.score.total,
+          riskFlags: candidate.safety.riskFlags,
+          rejectionReasons: candidate.rejectionReasons,
+          metadata: {
+            asin: candidate.amazon.asin,
+            brand: candidate.amazon.brand,
+            rootCategory: candidate.amazon.rootCategory,
+            categoryTree: candidate.amazon.categoryTree,
+            score: candidate.score,
+            safety: candidate.safety
+          }
+        });
+      }
     };
 
     for (const candidate of result.candidates) await persistCandidate(candidate, true);
@@ -415,7 +455,7 @@ const conditionIdsBySetting: Record<EbayComparisonSettings['itemCondition'], str
 
 function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): boolean {
   const flags = opportunity.decision.riskFlags;
-  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
+  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'AMAZON_OUT_OF_STOCK', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
     return false;
   }
 
@@ -467,8 +507,17 @@ function comparisonRejectionReasons(
   if (opportunity.decision.riskFlags.includes('MISSING_AMAZON_PRICE')) {
     reasons.push('Amazon price is missing, so profit cannot be calculated safely.');
   }
+  if (opportunity.decision.riskFlags.includes('AMAZON_COST_ABOVE_PROFILE')) {
+    reasons.push('Amazon source price is above the profile budget, but profit may justify manual review.');
+  }
+  if (opportunity.decision.riskFlags.includes('AMAZON_OUT_OF_STOCK')) {
+    reasons.push('Amazon source appears out of stock.');
+  }
   if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) {
-    reasons.push('Amazon stock status is not confirmed as in stock.');
+    reasons.push('Amazon stock status is unknown; verify live availability before listing.');
+  }
+  if (opportunity.decision.riskFlags.includes('CATEGORY_UNKNOWN')) {
+    reasons.push('Marketplace category is missing, so safe-mode category fit needs review.');
   }
   if (opportunity.decision.riskFlags.includes('LOW_OPPORTUNITY_SCORE') && opportunity.score) {
     reasons.push(`Overall comparison score ${opportunity.score.total} is below the ${ruleConfig.minimumOpportunityScore} minimum after profit, ROI, demand, match, and risk scoring.`);

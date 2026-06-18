@@ -8,7 +8,7 @@ import { buildOpportunities } from '../pipeline/opportunityPipeline.js';
 import { persistOpportunities } from '../repositories/opportunityRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
-import { amazonDiscoveryProfiles, discoveryProfiles, ebayDiscoveryProfiles, getDiscoveryProfile } from '../services/discoveryPolicy.js';
+import { amazonDiscoveryProfiles, discoveryProfiles, ebayDiscoveryProfiles, getDiscoveryProfile, rejectionStageForFlag } from '../services/discoveryPolicy.js';
 import {
   buildAmazonDiscoveryCandidates,
   considerAmazonDiscoveryCandidate,
@@ -349,6 +349,30 @@ function buildEbayRejectionBreakdown(candidates: EbayDiscoveryCandidateResult[])
   return [...counts.entries()]
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+}
+
+function buildRejectionStageBreakdown(candidates: Array<{ safety: { riskFlags: string[] } }>): Array<{
+  stage: string;
+  count: number;
+}> {
+  const counts = new Map<string, number>();
+  for (const candidate of candidates) {
+    const stages = candidate.safety.riskFlags.length > 0
+      ? [...new Set(candidate.safety.riskFlags.map(rejectionStageForFlag))]
+      : ['SCORING'];
+    for (const stage of stages) counts.set(stage, (counts.get(stage) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([stage, count]) => ({ stage, count }))
+    .sort((a, b) => b.count - a.count || a.stage.localeCompare(b.stage));
+}
+
+function countRejectedByStages(candidates: Array<{ safety: { riskFlags: string[] } }>, stages: string[]): number {
+  const stageSet = new Set(stages);
+  return candidates.filter((candidate) => {
+    const candidateStages = candidate.safety.riskFlags.map(rejectionStageForFlag);
+    return candidateStages.some((stage) => stageSet.has(stage));
+  }).length;
 }
 
 function normalizeEbayComparisonSettings(input: EbayComparisonSettingsBody): EbayComparisonSettings {
@@ -729,6 +753,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         scanned: result.candidates.length + result.rejected.length,
         accepted: result.candidates.length,
         rejected: result.rejected.length,
+        sourceRejected: countRejectedByStages(result.rejected, ['SOURCE_DATA', 'SOURCE_FORMAT']),
+        safetyRejected: countRejectedByStages(result.rejected, ['SAFETY']),
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0,
         manualReviews: comparison?.manualReviews.length ?? 0
@@ -736,6 +762,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       rejected: result.rejected.map(sanitizeAmazonDiscoveryCandidate),
       rejectedPreview: result.rejected.slice(0, 5).map(sanitizeAmazonDiscoveryCandidate),
       rejectionBreakdown: buildAmazonRejectionBreakdown(result.rejected),
+      rejectionStageBreakdown: buildRejectionStageBreakdown(result.rejected),
       comparison: comparison
         ? {
           ...comparison,
@@ -958,6 +985,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         scanned: result.candidates.length + result.rejected.length,
         accepted: result.candidates.length,
         rejected: result.rejected.length,
+        sourceRejected: countRejectedByStages(result.rejected, ['SOURCE_DATA', 'SOURCE_FORMAT']),
+        safetyRejected: countRejectedByStages(result.rejected, ['SAFETY']),
         skippedExisting: result.skippedExisting,
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0,
@@ -966,6 +995,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       rejected: result.rejected.map(sanitizeEbayDiscoveryCandidate),
       rejectedPreview: result.rejected.slice(0, 5).map(sanitizeEbayDiscoveryCandidate),
       rejectionBreakdown: buildEbayRejectionBreakdown(result.rejected),
+      rejectionStageBreakdown: buildRejectionStageBreakdown(result.rejected),
       comparison: comparison
         ? {
           ...comparison,

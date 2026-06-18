@@ -1492,7 +1492,9 @@ function renderPipeline(){
     stage('Manual Review',f.ebayManualReview,'promising but needs human verification',COLORS.amber),
     stage('Verify Queue',f.verifyActions,'live price checks before listing',COLORS.amber),
     stage('Active Listings',f.activeListings,'currently live on eBay',COLORS.teal),
-    stage('Rejected',f.ebayRejected,'filtered out by risk, price, or matching',COLORS.red),
+    stage('Source Rejects',f.ebaySourceRejected,'missing prices, auctions, or bad source rows',COLORS.red),
+    stage('Match Rejects',f.ebayMatchingRejected,'identity or confidence did not clear automation',COLORS.red),
+    stage('Rejected',f.ebayRejected,'all filtered-out products',COLORS.red),
     stage('Errors',f.ebayErrors,'retryable comparison failures',COLORS.red)
   ].join('');
   var funnelEl=document.getElementById('pipelineFunnel');
@@ -1908,7 +1910,7 @@ function runAmazonScout(){
     state.amazonScoutRunId=res.run&&res.run.id;
     state.selectedAmazon={};
     renderAmazonScoutReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
-    document.getElementById('amazonScoutSummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    document.getElementById('amazonScoutSummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source rejected '+(res.summary.sourceRejected||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
     toast('Amazon Scout complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();
     load();
@@ -1992,7 +1994,7 @@ function runEbayDiscovery(){
     state.ebayDiscoveryRunId=res.run&&res.run.id;
     state.selectedEbay={};
     renderEbayDiscoveryReport((res.run&&res.run.candidates)||[],res.rejected||[],false);
-    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
+    document.getElementById('ebayDiscoverySummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source rejected '+(res.summary.sourceRejected||0)+' · rejected '+(res.summary.rejected||0)+' · skipped known '+(res.summary.skippedExisting||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
     renderEbayCompactProducts((res.run&&res.run.candidates)||[]);
     toast('eBay Discovery complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();

@@ -76,6 +76,29 @@ const unverified = evaluateProductIdentity(
 assertEqual(unverified.status, 'REVIEW', 'brand-only identity status');
 assertIncludes(unverified.riskFlags, 'PRODUCT_IDENTITY_UNVERIFIED', 'unverified identity flag');
 
+const genericLeadingWord = evaluateProductIdentity(
+  { title: 'Akku 7600mAh Battery Replacement for Zoom Recorder', soldPrice: 120 },
+  { ...amazonExact, asin: 'B000ZOOM', title: 'Zoom Recorder Battery Replacement', brand: 'Zoom', model: undefined }
+);
+assertEqual(genericLeadingWord.status, 'REVIEW', 'generic leading word should not create brand mismatch');
+if (genericLeadingWord.riskFlags.includes('BRAND_MISMATCH')) throw new Error('generic leading word produced BRAND_MISMATCH');
+if (genericLeadingWord.normalized.ebayModelTokens.includes('7600MAH')) throw new Error('capacity token should not be treated as eBay model');
+
+const numericPrefix = evaluateProductIdentity(
+  { title: '800KG Electric Hoist Lift Remote Control', soldPrice: 220 },
+  { ...amazonExact, asin: 'B000HOIST', title: 'Electric Hoist Lift Remote Control', brand: 'Acme', model: undefined }
+);
+assertEqual(numericPrefix.status, 'REVIEW', 'numeric title prefix should not create brand mismatch');
+if (numericPrefix.riskFlags.includes('BRAND_MISMATCH')) throw new Error('numeric prefix produced BRAND_MISMATCH');
+
+const diacriticBrand = evaluateProductIdentity(
+  { title: 'Rode Wireless Microphone System', soldPrice: 180 },
+  { ...amazonExact, asin: 'B000RODE', title: 'RODE Wireless Microphone System', brand: 'RØDE', model: undefined }
+);
+if (!diacriticBrand.evidence.some((item) => item.includes('Brand matched: rode'))) {
+  throw new Error(`expected RØDE brand normalization evidence, got ${diacriticBrand.evidence.join(' | ')}`);
+}
+
 const baseDecision: OpportunityDecision = {
   decision: 'LIST',
   confidence: 0.9,

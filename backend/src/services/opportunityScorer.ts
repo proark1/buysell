@@ -52,6 +52,8 @@ function riskPenalty(riskFlags: string[]): number {
     if (['PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag)) return penalty + 100;
     if (flag === 'PRODUCT_IDENTITY_UNVERIFIED' || flag === 'BRAND_NOT_VERIFIED' || flag === 'MODEL_NOT_VERIFIED') return penalty + 24;
     if (flag === 'AMAZON_COST_TOO_HIGH') return penalty + 40;
+    if (flag === 'AMAZON_OUT_OF_STOCK') return penalty + 36;
+    if (flag === 'AMAZON_COST_ABOVE_PROFILE') return penalty + 14;
     if (flag.startsWith('MISSING_')) return penalty + 30;
     if (flag === 'LOW_MATCH_CONFIDENCE') return penalty + 18;
     if (flag === 'LOW_PROFIT' || flag === 'LOW_ROI') return penalty + 16;
@@ -62,6 +64,7 @@ function riskPenalty(riskFlags: string[]): number {
     if (flag === 'TARGET_PRICE_ABOVE_MARKET') return penalty + 8;
     if (flag === 'NO_SOLD_MARKET_SAMPLE') return penalty + 10;
     if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 6;
+    if (flag === 'CATEGORY_UNKNOWN') return penalty + 4;
     return penalty + 4;
   }, 0);
 }

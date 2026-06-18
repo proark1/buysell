@@ -3,6 +3,7 @@ import type { AmazonMatchInput, EbayCandidateInput, ProductOpportunity } from '.
 import { findAmazonMatches } from '../clients/keepaClient.js';
 import { searchEbayCandidates, SerpApiError } from '../clients/serpApiClient.js';
 import { createActionForDecision } from '../repositories/actionRepository.js';
+import { recordDiscoveryCandidateLearning } from '../repositories/learningRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { calculateProfit } from './profitCalculator.js';
@@ -12,6 +13,8 @@ import {
   evaluateProductSafety,
   getEbayDiscoveryCategory,
   getEbayDiscoveryProfile,
+  hardSafetyRejectFlags,
+  rejectionStageForFlag,
   type SafetyPolicy
 } from './discoveryPolicy.js';
 import { scoreAmazonMatch } from './matchScorer.js';
@@ -289,6 +292,9 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
       riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
       reasons.push('eBay category is outside the safe-mode allow list.');
     }
+  } else if (policy.safeMode && policy.allowedCategories.length > 0 && !categoryText) {
+    riskFlags.push('CATEGORY_UNKNOWN');
+    reasons.push('eBay category is missing, so safe-mode category fit needs review.');
   }
 
   if (!ebay.soldPrice) {
@@ -296,7 +302,7 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
     reasons.push('Missing eBay sold price.');
   }
 
-  const status = riskFlags.some((flag) => ['BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'MISSING_EBAY_PRICE', 'EBAY_NOT_NEW', 'EBAY_AUCTION_FORMAT'].includes(flag))
+  const status = riskFlags.includes('MISSING_EBAY_PRICE') || hardSafetyRejectFlags(riskFlags).length > 0
     ? 'REJECT'
     : riskFlags.length > 0 ? 'WARN' : 'PASS';
   return { status, riskFlags, reasons };
@@ -371,7 +377,8 @@ function scoreEbayDiscoveryCandidate(
     if (flag === 'DAMAGED_OR_PARTS') return penalty + 25;
     if (flag === 'SOLD_PRICE_BELOW_MIN') return penalty + 18;
     if (flag === 'SOLD_PRICE_ABOVE_MAX') return penalty + 10;
-    if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 6;
+    if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return penalty + 3;
+    if (flag === 'CATEGORY_UNKNOWN') return penalty + 2;
     return penalty + 4;
   }, 0);
 
@@ -397,6 +404,23 @@ function ebayRejectionReasons(
     reasons.push(`eBay score ${candidate.score.total} is below minimum ${minimumEbayScore}.`);
   }
   return [...new Set(reasons)];
+}
+
+function rejectionDiagnostics(riskFlags: string[], reasons: string[]): Record<string, unknown> {
+  const stages = riskFlags.reduce<Record<string, number>>((counts, flag) => {
+    const stage = rejectionStageForFlag(flag);
+    counts[stage] = (counts[stage] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    riskFlagStages: stages,
+    sourceDataFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_DATA'),
+    sourceFormatFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_FORMAT'),
+    safetyFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SAFETY'),
+    matchingFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'MATCHING'),
+    sourceCostFlags: riskFlags.filter((flag) => rejectionStageForFlag(flag) === 'SOURCE_COST'),
+    diagnostics: reasons
+  };
 }
 
 export function selectEbayDiscoveryQueries(
@@ -621,7 +645,7 @@ export async function persistEbayDiscoveryRun(
     });
 
     const persistCandidate = async (candidate: EbayDiscoveryCandidateResult, accepted: boolean): Promise<void> => {
-      await tx.ebayDiscoveryCandidate.create({
+      const persisted = await tx.ebayDiscoveryCandidate.create({
         data: {
           runId: run.id,
           ebayItemId: candidate.ebay.itemId,
@@ -644,13 +668,32 @@ export async function persistEbayDiscoveryRun(
           scoreBreakdown: {
             ...candidate.score,
             family: candidate.family,
-            rejectionReasons: candidate.rejectionReasons
+            rejectionReasons: candidate.rejectionReasons,
+            ...rejectionDiagnostics(candidate.safety.riskFlags, candidate.safety.reasons)
           },
           selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
           comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
           rawSerpapiJson: candidate.ebay.raw
         }
       });
+      if (!accepted) {
+        await recordDiscoveryCandidateLearning(tx, {
+          marketplace: 'EBAY',
+          title: candidate.ebay.title,
+          familyKey: candidate.family.key,
+          ebayCandidateId: persisted.id,
+          source: 'ebay-discovery',
+          accepted,
+          score: candidate.score.total,
+          riskFlags: candidate.safety.riskFlags,
+          rejectionReasons: candidate.rejectionReasons,
+          metadata: {
+            family: candidate.family,
+            score: candidate.score,
+            safety: candidate.safety
+          }
+        });
+      }
     };
 
     for (const candidate of result.candidates) await persistCandidate(candidate, true);
@@ -732,7 +775,10 @@ function comparisonRejectionReasons(opportunity: ProductOpportunity, ruleConfig:
   }
   if (opportunity.decision.riskFlags.includes('MISSING_EBAY_PRICE')) reasons.push('The eBay result did not include a usable sold price.');
   if (opportunity.decision.riskFlags.includes('MISSING_AMAZON_PRICE')) reasons.push('Amazon price is missing, so profit cannot be calculated safely.');
-  if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) reasons.push('Amazon stock status is not confirmed as in stock.');
+  if (opportunity.decision.riskFlags.includes('AMAZON_COST_ABOVE_PROFILE')) reasons.push('Amazon source price is above the profile budget, but profit may justify manual review.');
+  if (opportunity.decision.riskFlags.includes('AMAZON_OUT_OF_STOCK')) reasons.push('Amazon source appears out of stock.');
+  if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) reasons.push('Amazon stock status is unknown; verify live availability before listing.');
+  if (opportunity.decision.riskFlags.includes('CATEGORY_UNKNOWN')) reasons.push('Marketplace category is missing, so safe-mode category fit needs review.');
   if (opportunity.decision.riskFlags.includes('LOW_OPPORTUNITY_SCORE') && opportunity.score) {
     reasons.push(`Overall comparison score ${opportunity.score.total} is below the ${ruleConfig.minimumOpportunityScore} minimum after profit, ROI, demand, match, and risk scoring.`);
   }
@@ -744,7 +790,7 @@ function comparisonRejectionReasons(opportunity: ProductOpportunity, ruleConfig:
 
 function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): boolean {
   const flags = opportunity.decision.riskFlags;
-  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
+  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'AMAZON_OUT_OF_STOCK', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
     return false;
   }
 

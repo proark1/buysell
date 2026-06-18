@@ -38,9 +38,12 @@ function riskPenalty(riskFlags: string[]): number {
   return riskFlags.reduce((total, flag) => {
     if (['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD'].includes(flag)) return total + 100;
     if (flag === 'AMAZON_COST_TOO_HIGH') return total + 40;
+    if (flag === 'AMAZON_OUT_OF_STOCK') return total + 35;
     if (flag === 'MISSING_AMAZON_PRICE') return total + 35;
+    if (flag === 'AMAZON_COST_ABOVE_PROFILE') return total + 14;
     if (flag === 'AMAZON_STOCK_UNKNOWN') return total + 10;
     if (flag === 'OUTSIDE_ALLOWED_CATEGORY') return total + 8;
+    if (flag === 'CATEGORY_UNKNOWN') return total + 4;
     return total + 4;
   }, 0);
 }

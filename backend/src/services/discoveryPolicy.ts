@@ -66,6 +66,8 @@ export interface SafetyReview {
   reasons: string[];
 }
 
+export type RejectionStage = 'SOURCE_DATA' | 'SOURCE_FORMAT' | 'SAFETY' | 'SOURCE_COST' | 'MATCHING' | 'ECONOMICS' | 'REVIEW_NEEDED' | 'SCORING';
+
 export const defaultBlockedCategories = [
   'Clothing',
   'Shoes',
@@ -112,13 +114,52 @@ export const defaultBlockedKeywords = [
 
 export const defaultAllowedCategories = [
   'Electronics',
+  'Consumer Electronics',
+  'Computers/Tablets & Networking',
   'Office Products',
   'Tools',
   'Home Improvement',
+  'Business & Industrial',
   'Home & Kitchen',
   'Automotive',
+  'eBay Motors',
+  'Cameras & Photo',
+  'Musical Instruments & Gear',
   'Pet Supplies'
 ];
+
+export function rejectionStageForFlag(flag: string): RejectionStage {
+  if (['MISSING_EBAY_PRICE', 'MISSING_AMAZON_PRICE', 'CATEGORY_UNKNOWN'].includes(flag)) return 'SOURCE_DATA';
+  if (['EBAY_AUCTION_FORMAT', 'EBAY_NOT_NEW', 'DAMAGED_OR_PARTS'].includes(flag)) return 'SOURCE_FORMAT';
+  if (['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'OUTSIDE_ALLOWED_CATEGORY', 'AMAZON_OUT_OF_STOCK'].includes(flag)) return 'SAFETY';
+  if (['AMAZON_COST_TOO_HIGH', 'AMAZON_COST_ABOVE_PROFILE'].includes(flag)) return 'SOURCE_COST';
+  if ([
+    'PRODUCT_IDENTITY_CONFLICT',
+    'BRAND_MISMATCH',
+    'MODEL_MISMATCH',
+    'BUNDLE_OR_QUANTITY_MISMATCH',
+    'VARIANT_MISMATCH',
+    'LOW_MATCH_CONFIDENCE',
+    'PRODUCT_IDENTITY_UNVERIFIED',
+    'BRAND_NOT_VERIFIED',
+    'MODEL_NOT_VERIFIED'
+  ].includes(flag)) return 'MATCHING';
+  if (['LOW_PROFIT', 'LOW_ROI'].includes(flag)) return 'ECONOMICS';
+  if (['AMAZON_STOCK_UNKNOWN'].includes(flag)) return 'REVIEW_NEEDED';
+  return 'SCORING';
+}
+
+export function hardSafetyRejectFlags(flags: string[]): string[] {
+  return flags.filter((flag) => [
+    'BLOCKED_BRAND',
+    'BLOCKED_CATEGORY',
+    'BLOCKED_KEYWORD',
+    'AMAZON_COST_TOO_HIGH',
+    'AMAZON_OUT_OF_STOCK',
+    'EBAY_NOT_NEW',
+    'EBAY_AUCTION_FORMAT'
+  ].includes(flag));
+}
 
 export const discoveryProfiles: DiscoveryProfile[] = [
   {
@@ -459,6 +500,22 @@ const rawText = (value: unknown): string => {
   }
 };
 
+const effectiveAmazonCostLimit = (policy: SafetyPolicy, ebaySoldPrice?: number): number => {
+  if (!ebaySoldPrice || ebaySoldPrice <= 0) return policy.maxAmazonCostUsd;
+  const priceBackedLimit = ebaySoldPrice * 0.65;
+  const capitalGuardrail = Math.max(policy.maxAmazonCostUsd, policy.maxAmazonCostUsd * 1.8);
+  return Math.min(Math.max(policy.maxAmazonCostUsd, priceBackedLimit), capitalGuardrail);
+};
+
+const availabilityRisk = (status: string | undefined): { flag?: string; reason?: string } => {
+  if (!status || status === 'IN_STOCK') return {};
+  const normalized = status.toLowerCase().replace(/[_-]+/g, ' ');
+  if (/\bout\b|\bunavailable\b|\bnot available\b|\bcurrently unavailable\b|\bsold out\b/.test(normalized)) {
+    return { flag: 'AMAZON_OUT_OF_STOCK', reason: 'Amazon source appears out of stock.' };
+  }
+  return { flag: 'AMAZON_STOCK_UNKNOWN', reason: 'Amazon stock status is not confirmed as in stock.' };
+};
+
 const listingEvidenceText = (ebay: EbayCandidateInput): string => [
   ebay.title,
   ebay.condition,
@@ -542,17 +599,28 @@ export function evaluateProductSafety(
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
   }
 
-  if (policy.safeMode && policy.allowedCategories.length > 0 && categoryText) {
-    const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
-    if (!allowedCategory) {
-      riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
-      reasons.push('Category is outside the safe-mode allow list.');
+  if (policy.safeMode && policy.allowedCategories.length > 0) {
+    if (!categoryText) {
+      riskFlags.push('CATEGORY_UNKNOWN');
+      reasons.push('Category is missing, so safe-mode category fit needs review.');
+    } else {
+      const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
+      if (!allowedCategory) {
+        riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
+        reasons.push('Category is outside the safe-mode allow list.');
+      }
     }
   }
 
   if (amazonCost !== undefined && amazonCost > policy.maxAmazonCostUsd) {
-    riskFlags.push('AMAZON_COST_TOO_HIGH');
-    reasons.push(`Amazon cost ${amazonCost.toFixed(2)} is above max ${policy.maxAmazonCostUsd.toFixed(2)}.`);
+    const effectiveLimit = effectiveAmazonCostLimit(policy, ebay.soldPrice);
+    if (amazonCost <= effectiveLimit) {
+      riskFlags.push('AMAZON_COST_ABOVE_PROFILE');
+      reasons.push(`Amazon cost ${amazonCost.toFixed(2)} is above the profile max ${policy.maxAmazonCostUsd.toFixed(2)}, but within the sold-price-backed review limit ${effectiveLimit.toFixed(2)}.`);
+    } else {
+      riskFlags.push('AMAZON_COST_TOO_HIGH');
+      reasons.push(`Amazon cost ${amazonCost.toFixed(2)} is above max ${effectiveLimit.toFixed(2)}.`);
+    }
   }
 
   if (!amazonCost) {
@@ -565,16 +633,17 @@ export function evaluateProductSafety(
     reasons.push('Missing eBay sold price.');
   }
 
-  if (amazon.availabilityStatus && amazon.availabilityStatus !== 'IN_STOCK') {
-    riskFlags.push('AMAZON_STOCK_UNKNOWN');
-    reasons.push('Amazon stock is unknown.');
+  const availability = availabilityRisk(amazon.availabilityStatus);
+  if (availability.flag) {
+    riskFlags.push(availability.flag);
+    if (availability.reason) reasons.push(availability.reason);
   }
 
   const ebayListingRisks = ebayFixedNewListingRisks(ebay);
   riskFlags.push(...ebayListingRisks.riskFlags);
   reasons.push(...ebayListingRisks.reasons);
 
-  const hardReject = riskFlags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'EBAY_NOT_NEW', 'EBAY_AUCTION_FORMAT'].includes(flag));
+  const hardReject = hardSafetyRejectFlags(riskFlags).length > 0;
   const status = hardReject ? 'REJECT' : riskFlags.length > 0 ? 'WARN' : 'PASS';
 
   return { status, riskFlags, reasons };
@@ -608,11 +677,16 @@ export function evaluateAmazonProductSafety(
     reasons.push(`Blocked keyword: ${blockedKeyword}`);
   }
 
-  if (policy.safeMode && policy.allowedCategories.length > 0 && categoryText) {
-    const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
-    if (!allowedCategory) {
-      riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
-      reasons.push('Category is outside the safe-mode allow list.');
+  if (policy.safeMode && policy.allowedCategories.length > 0) {
+    if (!categoryText) {
+      riskFlags.push('CATEGORY_UNKNOWN');
+      reasons.push('Category is missing, so safe-mode category fit needs review.');
+    } else {
+      const allowedCategory = normalizedIncludes(categoryText, policy.allowedCategories);
+      if (!allowedCategory) {
+        riskFlags.push('OUTSIDE_ALLOWED_CATEGORY');
+        reasons.push('Category is outside the safe-mode allow list.');
+      }
     }
   }
 
@@ -626,12 +700,13 @@ export function evaluateAmazonProductSafety(
     reasons.push('Missing Amazon price.');
   }
 
-  if (amazon.availabilityStatus && amazon.availabilityStatus !== 'IN_STOCK') {
-    riskFlags.push('AMAZON_STOCK_UNKNOWN');
-    reasons.push('Amazon stock is unknown.');
+  const availability = availabilityRisk(amazon.availabilityStatus);
+  if (availability.flag) {
+    riskFlags.push(availability.flag);
+    if (availability.reason) reasons.push(availability.reason);
   }
 
-  const hardReject = riskFlags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH'].includes(flag));
+  const hardReject = hardSafetyRejectFlags(riskFlags).length > 0;
   const status = hardReject ? 'REJECT' : riskFlags.length > 0 ? 'WARN' : 'PASS';
 
   return { status, riskFlags, reasons };

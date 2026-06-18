@@ -9,6 +9,11 @@ const stopWords = new Set([
   'used',
   'brand',
   'model',
+  'compatible',
+  'replacement',
+  'akku',
+  'battery',
+  'batterie',
   'wireless',
   'bluetooth',
   'usb',
@@ -16,20 +21,35 @@ const stopWords = new Set([
   'white'
 ]);
 
+const normalizeText = (value: string): string => value
+  .toLowerCase()
+  .replace(/ø/g, 'o')
+  .replace(/æ/g, 'ae')
+  .replace(/œ/g, 'oe')
+  .replace(/ß/g, 'ss')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9 ]/g, ' ');
+
 const normalizeWords = (value: string): Set<string> => new Set(
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, ' ')
+  normalizeText(value)
     .split(/\s+/)
     .filter((word) => word.length >= 3 && !stopWords.has(word))
 );
 
 const tokenKey = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+const genericModelTokens = new Set(['1D', '2D', '2G', '3G', '4G', '5G', '24G', 'USB', 'LED', 'LCD', 'HD', '4K', '1080P', '220V', '110V', '32BIT', '64BIT']);
+
+const isSpecificationToken = (token: string): boolean => (
+  /^\d{2,6}(?:MAH|AH|WH|W|KW|V|A|MM|CM|M|IN|INCH|HZ|KHZ|MHZ|GHZ|BIT|GB|TB|MB|DPI|P|K)$/.test(token)
+  || /^(?:STEREO|MONO|AUDIO|VIDEO)\d{2,6}$/.test(token)
+  || /^\d{2,6}(?:PCS|PC|PACK|CT|COUNT)$/.test(token)
+);
 
 const modelTokens = (value: string | undefined): string[] => {
   if (!value) return [];
   const matches = value.match(/\b[A-Z]{1,6}[-_/ ]?\d{2,6}[A-Z0-9]{0,5}\b|\b\d{2,6}[-_/ ]?[A-Z]{1,5}\b/gi) ?? [];
-  return [...new Set(matches.map(tokenKey).filter((token) => token.length >= 3))];
+  return [...new Set(matches.map(tokenKey).filter((token) => token.length >= 3 && !genericModelTokens.has(token) && !isSpecificationToken(token)))];
 };
 
 const packCount = (value: string | undefined): number | undefined => {
@@ -51,8 +71,9 @@ export function scoreAmazonMatch(ebay: EbayCandidateInput, amazon: AmazonMatchIn
   const intersectionSize = [...ebayWords].filter((word) => amazonWords.has(word)).length;
   const unionSize = new Set([...ebayWords, ...amazonWords]).size;
   const titleScore = unionSize > 0 ? intersectionSize / unionSize : 0;
-  const ebayTitle = ebay.title.toLowerCase();
-  const brandScore = amazon.brand && ebayTitle.includes(amazon.brand.toLowerCase()) ? 0.18 : amazon.brand ? -0.08 : 0;
+  const ebayTitle = normalizeText(ebay.title);
+  const amazonBrand = amazon.brand ? normalizeText(amazon.brand).trim() : undefined;
+  const brandScore = amazonBrand && ebayTitle.includes(amazonBrand) ? 0.18 : amazon.brand ? -0.08 : 0;
   const ebayModels = modelTokens(ebay.title);
   const amazonModels = [...new Set([...modelTokens(amazon.model), ...modelTokens(amazon.title)])];
   const modelOverlap = overlap(ebayModels, amazonModels);

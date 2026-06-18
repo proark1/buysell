@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { rejectionStageForFlag } from '../services/discoveryPolicy.js';
 
 type EbayAmazonComparisonRunDashboardDelegate = {
   findMany(args: { orderBy: { startedAt: 'desc' }; take: number }): Promise<unknown[]>;
@@ -77,6 +78,18 @@ const numberValue = (value: unknown): number => {
   return 0;
 };
 
+const stringArray = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((item): item is string => typeof item === 'string')
+  : [];
+
+function countRejectedStage(rows: Array<{ riskFlags: unknown }>, stages: string[]): number {
+  const stageSet = new Set(stages);
+  return rows.filter((row) => {
+    const rowStages = stringArray(row.riskFlags).map(rejectionStageForFlag);
+    return rowStages.some((stage) => stageSet.has(stage));
+  }).length;
+}
+
 export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
   const dashboardDb = db as DashboardPrismaClient;
   const [
@@ -85,6 +98,7 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     ebayOpportunities,
     ebayManualReview,
     ebayRejected,
+    rejectedEbayRows,
     ebayErrors,
     verifyActions,
     listingActions,
@@ -106,6 +120,11 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'OPPORTUNITY' } }),
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'MANUAL_REVIEW' } }),
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'REJECTED' } }),
+    db.ebayDiscoveryCandidate.findMany({
+      where: { comparisonStatus: 'REJECTED' },
+      select: { riskFlags: true },
+      take: 5000
+    }),
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'ERROR' } }),
     db.actionItem.count({ where: { type: 'VERIFY', status: { in: ['PENDING', 'APPROVED'] } } }),
     db.actionItem.count({ where: { type: 'LIST', status: { in: ['PENDING', 'APPROVED'] } } }),
@@ -142,6 +161,10 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
       ebayOpportunities,
       ebayManualReview,
       ebayRejected,
+      ebaySourceRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['SOURCE_DATA', 'SOURCE_FORMAT']),
+      ebaySafetyRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['SAFETY', 'SOURCE_COST']),
+      ebayMatchingRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['MATCHING']),
+      ebayEconomicsRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['ECONOMICS', 'SCORING']),
       ebayErrors,
       verifyActions,
       listingActions,

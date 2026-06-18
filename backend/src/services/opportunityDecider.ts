@@ -13,6 +13,13 @@ const defaultThresholds: OpportunityThresholds = {
   minimumMatchConfidence: 0.75
 };
 
+const availabilityRiskFlag = (status: string | undefined): string | undefined => {
+  if (!status || status === 'IN_STOCK') return undefined;
+  const normalized = status.toLowerCase().replace(/[_-]+/g, ' ');
+  if (/\bout\b|\bunavailable\b|\bnot available\b|\bcurrently unavailable\b|\bsold out\b/.test(normalized)) return 'AMAZON_OUT_OF_STOCK';
+  return 'AMAZON_STOCK_UNKNOWN';
+};
+
 export function decideOpportunity(
   ebay: EbayCandidateInput,
   amazon: AmazonMatchInput,
@@ -26,7 +33,8 @@ export function decideOpportunity(
   if (profit.roiPercent < thresholds.minimumRoiPercent) riskFlags.push('LOW_ROI');
   if (!amazon.currentPrice && !amazon.buyBoxPrice) riskFlags.push('MISSING_AMAZON_PRICE');
   if (!ebay.soldPrice) riskFlags.push('MISSING_EBAY_PRICE');
-  if (amazon.availabilityStatus && amazon.availabilityStatus !== 'IN_STOCK') riskFlags.push('AMAZON_STOCK_UNKNOWN');
+  const availabilityRisk = availabilityRiskFlag(amazon.availabilityStatus);
+  if (availabilityRisk) riskFlags.push(availabilityRisk);
 
   if (riskFlags.includes('MISSING_AMAZON_PRICE') || riskFlags.includes('MISSING_EBAY_PRICE')) {
     return {
