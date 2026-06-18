@@ -119,6 +119,38 @@ const dashboardHtml = `<!doctype html>
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .tab-btn{border:1px solid var(--border-strong);background:rgba(148,163,184,.06);color:var(--muted);border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
     .tab-btn.active{background:rgba(14,165,233,.16);color:var(--text);border-color:rgba(14,165,233,.34)}
+    .discover-tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .discover-command{display:none}
+    .discover-command.active{display:block}
+    .discover-mode-panel{display:none}
+    .discover-mode-panel.active{display:block}
+    .discover-command-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
+    .discover-primary-field{grid-column:span 2}
+    .discover-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:10px}
+    .discover-metric{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.24);padding:11px 12px;min-height:74px}
+    .discover-metric-value{font-size:22px;font-weight:800;line-height:1;color:var(--text)}
+    .discover-metric-label{margin-top:7px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+    .discover-workbench{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.7fr);gap:14px;align-items:start}
+    .discover-main,.discover-side{display:grid;gap:14px;min-width:0}
+    .discover-panel-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;min-width:0}
+    .discover-panel-head h3{margin:0;font-size:14px}
+    .discover-panel-head .hint{color:var(--muted);font-size:12px}
+    .discover-inspector{position:sticky;top:92px;max-height:calc(100vh - 124px);overflow:auto}
+    .inspector-title{font-weight:800;font-size:15px;line-height:1.35}
+    .inspector-meta{color:var(--muted);font-size:12px;margin-top:4px}
+    .inspector-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px;display:grid;gap:8px}
+    .inspector-section-title{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+    .queue-row{width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);padding:10px;display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+    .queue-row:hover,.queue-row.active{border-color:var(--border-strong);background:rgba(15,23,42,.62)}
+    .queue-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .queue-meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+    .queue-stats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .activity-list{display:grid;gap:8px}
+    .activity-row{border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.22);padding:10px;display:grid;gap:6px}
+    .activity-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .activity-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .activity-meta{color:var(--muted);font-size:12px}
+    .advanced-data{margin-top:0}
     .setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
     .setup-card{border:1px solid var(--border);background:rgba(2,6,23,.24);border-radius:12px;padding:13px;display:grid;gap:8px}
     .setup-card .setup-status{display:inline-flex;width:max-content;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800;border:1px solid var(--border-strong);color:var(--muted)}
@@ -185,6 +217,8 @@ const dashboardHtml = `<!doctype html>
     .score.mid{background:var(--amber)}.score.low{background:var(--red);color:#fff}
     .result-list{display:grid;gap:12px}
     .result-card{border:1px solid var(--border);border-radius:14px;background:rgba(2,6,23,.28);padding:14px;display:grid;gap:10px}
+    .result-card.workbench-card{cursor:pointer}
+    .result-card.workbench-card.active{border-color:var(--border-strong);background:rgba(15,23,42,.62)}
     .result-card.rejected{border-color:rgba(248,113,113,.32);background:rgba(127,29,29,.08)}
     .result-card.review{border-color:rgba(251,191,36,.36);background:rgba(120,53,15,.10)}
     .result-card.error{border-color:rgba(248,113,113,.44);background:rgba(127,29,29,.12)}
@@ -238,7 +272,8 @@ const dashboardHtml = `<!doctype html>
     .pager .btn{min-width:34px;justify-content:center}
     .settings-group{margin-top:0;margin-bottom:12px}
     .settings-group:last-child{margin-bottom:0}
-    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}}
+    @media(max-width:1100px){.discover-workbench{grid-template-columns:1fr}.discover-inspector{position:static;max-height:none}}
+    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}.queue-row{grid-template-columns:38px minmax(0,1fr)}.queue-stats{grid-column:1/-1;justify-content:flex-start}.discover-primary-field{grid-column:auto}}
     @media(max-width:760px){.list-controls{grid-template-columns:1fr 1fr}.pager{justify-content:flex-start;flex-wrap:wrap}}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
@@ -493,70 +528,192 @@ const dashboardHtml = `<!doctype html>
       </section>
 
       <!-- DISCOVERY -->
-      <section class="view" id="view-discovery">
-        <div class="tabs">
-          <button class="tab-btn" onclick="navigate('ebayDiscovery')">eBay-first</button>
-          <button class="tab-btn active" onclick="navigate('discovery')">Amazon-first</button>
-        </div>
+      <section class="view" id="view-ebayDiscovery">
         <div class="panel">
-          <div class="panel-head"><h2>Amazon Scout</h2><span class="hint">Find promising Amazon products before spending eBay checks</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
+          <div class="panel-head"><h2>Discover Workbench</h2><span class="hint" id="discoverModeHint">Start from sold eBay demand, then compare with Amazon.</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
           <div class="panel-body">
-            <div class="settings-strip">
-              <div class="field"><label>Market</label><select id="amazonScoutMarket"></select></div>
-              <div class="field"><label>eBay Preset</label><select id="amazonScoutEbayPreset"></select></div>
+            <div class="discover-tabs">
+              <button class="tab-btn active" data-discover-mode="ebay" onclick="setDiscoverMode('ebay')">eBay-first</button>
+              <button class="tab-btn" data-discover-mode="amazon" onclick="setDiscoverMode('amazon')">Amazon-first</button>
+              <button class="tab-btn" data-discover-mode="queue" onclick="setDiscoverMode('queue')">Comparison Queue</button>
             </div>
-            <div class="subsection-title">Amazon search</div>
-            <div class="form-grid">
-              <div class="field"><label>Scout Profile</label><select id="amazonScoutProfile"></select></div>
-              <div class="field"><label>Category</label><select id="amazonScoutCategory"></select></div>
-              <div class="field" style="grid-column:span 2"><label>Optional Amazon Keywords</label><input id="amazonScoutQuery" placeholder="thermal label printer"></div>
-              <div class="field"><label>Amazon Products To Check</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSafeMode" type="checkbox" checked> Safe mode</label></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutAuto" type="checkbox"> Auto compare top candidates</label></div>
+
+            <div class="discover-command active" data-discover-command="ebay">
+              <div class="subsection-title">Sold eBay search</div>
+              <div class="discover-command-grid">
+                <div class="field"><label>Market</label><select id="ebayDiscoveryMarket"></select></div>
+                <div class="field"><label>Profile</label><select id="ebayDiscoveryProfile"></select></div>
+                <div class="field"><label>Category</label><select id="ebayDiscoveryCategory"></select></div>
+                <div class="field discover-primary-field"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
+                <div class="field"><label>Sold Products</label><input id="ebayDiscoveryLimit" type="number" min="1" max="100" value="25"></div>
+                <div class="field"><label>Query Breadth</label><select id="ebayDiscoveryQueryBreadth"><option value="BALANCED" selected>Balanced</option><option value="WIDE">Wide</option><option value="FOCUSED">Focused</option></select></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySafeMode" type="checkbox" checked> Safe mode</label></div>
+              </div>
+              <details class="advanced">
+                <summary>Search rules and thresholds</summary>
+                <div class="subsection-title">eBay filters</div>
+                <div class="form-grid compact">
+                  <div class="field"><label>eBay Category ID</label><input id="ebayDiscoveryCategoryId" placeholder="optional"></div>
+                  <div class="field"><label>Min eBay Score</label><input id="ebayDiscoveryMinScore" type="number" min="0" max="100" value="50"></div>
+                  <div class="field"><label>Min Sold Price</label><input id="ebayDiscoveryMinSold" type="number" min="0" step="1" value="25"></div>
+                  <div class="field"><label>Max Sold Price</label><input id="ebayDiscoveryMaxSold" type="number" min="0" step="1" value="250"></div>
+                  <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+                  <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
+                  <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
+                  <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold listings only</label></div>
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed listings only</label></div>
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySkipExisting" type="checkbox" checked> Skip known products</label></div>
+                </div>
+                <div class="subsection-title">Amazon comparison gates</div>
+                <div class="form-grid compact">
+                  <div class="field"><label>Max Amazon Comparisons</label><input id="ebayDiscoveryCompareLimit" type="number" min="1" max="50" value="10"></div>
+                  <div class="field"><label>Amazon Matches Per Product</label><input id="ebayDiscoveryAmazonMatches" type="number" min="1" max="10" value="3"></div>
+                  <div class="field"><label>Min Profit</label><input id="ebayDiscoveryMinProfit" type="number" min="0" step="1" value="10"></div>
+                  <div class="field"><label>Min ROI %</label><input id="ebayDiscoveryMinRoi" type="number" min="0" max="500" step="1" value="25"></div>
+                  <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
+                  <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" value="65"></div>
+                </div>
+                <div class="subsection-title">Run behavior</div>
+                <div class="form-grid compact">
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Compare top candidates after this scan</label></div>
+                </div>
+              </details>
+              <div class="actions-row">
+                <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find Sold Products</button>
+                <button class="btn" id="ebayDiscoverySelectBtn" onclick="selectHighEbayScores()">Select High-Score Products</button>
+                <button class="btn primary" id="ebayDiscoveryCompareBtn" onclick="compareSelectedEbay()">Compare Selected With Amazon</button>
+                <span class="hint" id="ebayDiscoveryHint"></span>
+              </div>
             </div>
-            <details class="advanced">
-              <summary>Advanced filters</summary>
-              <div class="subsection-title">Amazon score filters</div>
-              <div class="form-grid compact">
-                <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
-                <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
-                <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
+
+            <div class="discover-command" data-discover-command="amazon">
+              <div class="subsection-title">Amazon scout</div>
+              <div class="discover-command-grid">
+                <div class="field"><label>Market</label><select id="amazonScoutMarket"></select></div>
+                <div class="field"><label>eBay Preset</label><select id="amazonScoutEbayPreset"></select></div>
+                <div class="field"><label>Scout Profile</label><select id="amazonScoutProfile"></select></div>
+                <div class="field"><label>Category</label><select id="amazonScoutCategory"></select></div>
+                <div class="field discover-primary-field"><label>Optional Amazon Keywords</label><input id="amazonScoutQuery" placeholder="thermal label printer"></div>
+                <div class="field"><label>Amazon Products</label><input id="amazonScoutLimit" type="number" min="1" max="100" value="40"></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSafeMode" type="checkbox" checked> Safe mode</label></div>
+                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutAuto" type="checkbox"> Auto compare top candidates</label></div>
               </div>
-              <div class="subsection-title">eBay comparison gates</div>
-              <div class="form-grid compact">
-                <div class="field"><label>Max eBay Comparisons</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
-                <div class="field"><label>eBay Results Per Product</label><input id="amazonScoutEbayResults" type="number" min="1" max="50" value="10"></div>
-                <div class="field"><label>Min Profit</label><input id="amazonScoutMinProfit" type="number" min="0" step="1" value="10"></div>
-                <div class="field"><label>Min ROI %</label><input id="amazonScoutMinRoi" type="number" min="0" max="500" step="1" value="20"></div>
-                <div class="field"><label>Min Match %</label><input id="amazonScoutMinMatch" type="number" min="0" max="100" step="1" value="60"></div>
-                <div class="field"><label>Min Compare Score</label><input id="amazonScoutMinCompareScore" type="number" min="0" max="100" step="1" value="55"></div>
-                <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
-                <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="NEW" selected>New</option></select></div>
-                <div class="field"><label>eBay Location</label><select id="amazonScoutLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
-                <div class="field"><label>Postal Code</label><input id="amazonScoutPostalCode" placeholder="10115"></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSoldOnly" type="checkbox" checked> Sold</label></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutCompletedOnly" type="checkbox" checked> Completed</label></div>
+              <details class="advanced">
+                <summary>Amazon filters and eBay gates</summary>
+                <div class="subsection-title">Amazon score filters</div>
+                <div class="form-grid compact">
+                  <div class="field"><label>Min Amazon Score</label><input id="amazonScoutMinScore" type="number" min="0" max="100" value="62"></div>
+                  <div class="field"><label>Max Amazon Cost</label><input id="amazonScoutMaxCost" type="number" min="1" step="1" value="150"></div>
+                  <div class="field"><label>Min Price Drop %</label><input id="amazonScoutMinDrop" type="number" min="0" max="100" step="1" value="5"></div>
+                </div>
+                <div class="subsection-title">eBay comparison gates</div>
+                <div class="form-grid compact">
+                  <div class="field"><label>Max eBay Comparisons</label><input id="amazonScoutCompareLimit" type="number" min="1" max="50" value="12"></div>
+                  <div class="field"><label>eBay Results Per Product</label><input id="amazonScoutEbayResults" type="number" min="1" max="50" value="10"></div>
+                  <div class="field"><label>Min Profit</label><input id="amazonScoutMinProfit" type="number" min="0" step="1" value="10"></div>
+                  <div class="field"><label>Min ROI %</label><input id="amazonScoutMinRoi" type="number" min="0" max="500" step="1" value="20"></div>
+                  <div class="field"><label>Min Match %</label><input id="amazonScoutMinMatch" type="number" min="0" max="100" step="1" value="60"></div>
+                  <div class="field"><label>Min Compare Score</label><input id="amazonScoutMinCompareScore" type="number" min="0" max="100" value="55"></div>
+                  <div class="field"><label>Buying Format</label><select id="amazonScoutBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
+                  <div class="field"><label>Condition</label><select id="amazonScoutCondition"><option value="NEW" selected>New</option></select></div>
+                  <div class="field"><label>eBay Location</label><select id="amazonScoutLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
+                  <div class="field"><label>Postal Code</label><input id="amazonScoutPostalCode" placeholder="10115"></div>
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutSoldOnly" type="checkbox" checked> Sold</label></div>
+                  <div class="field"><label>&nbsp;</label><label class="check"><input id="amazonScoutCompletedOnly" type="checkbox" checked> Completed</label></div>
+                </div>
+              </details>
+              <div class="actions-row">
+                <button class="btn primary" id="amazonScoutRunBtn" onclick="runAmazonScout()">Find Amazon Candidates</button>
+                <button class="btn" id="amazonScoutSelectBtn" onclick="selectHighAmazonScores()">Select High Score</button>
+                <button class="btn primary" id="amazonScoutCompareBtn" onclick="compareSelectedAmazon()">Compare Selected With eBay</button>
+                <span class="hint" id="amazonScoutHint"></span>
               </div>
-            </details>
-            <div class="actions-row">
-              <button class="btn primary" id="amazonScoutRunBtn" onclick="runAmazonScout()">Find Amazon Candidates</button>
-              <button class="btn" id="amazonScoutSelectBtn" onclick="selectHighAmazonScores()">Select High Score</button>
-              <button class="btn primary" id="amazonScoutCompareBtn" onclick="compareSelectedAmazon()">Compare Selected With eBay</button>
-              <span class="hint" id="amazonScoutHint"></span>
+            </div>
+
+            <div class="discover-command" data-discover-command="queue">
+              <div class="subsection-title">Comparison queue</div>
+              <div class="discover-command-grid">
+                <div class="field discover-primary-field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
+                <div class="field"><label>Status</label><select id="ebayCompareStatus" onchange="updateEbayCompareFilters()"><option value="ALL">All</option><option value="QUEUED">Queued</option><option value="COMPARING">Comparing</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
+                <div class="field"><label>Min Score</label><input id="ebayCompareMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompareFilters()"></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompareFilters()">Clear</button></div>
+              </div>
+              <div class="mini-summary" id="ebayCompareTimerInfo"></div>
+              <div class="actions-row">
+                <button class="btn primary" onclick="startEbayAmazonCompareQueue()">Start Queue</button>
+                <button class="btn" onclick="runEbayAmazonCompareNow()">Run Batch Now</button>
+                <button class="btn" onclick="navigate('settings')">Schedule Settings</button>
+              </div>
+            </div>
+
+            <div class="discover-summary" id="discoverSummaryStrip"></div>
+          </div>
+        </div>
+
+        <div class="discover-workbench">
+          <div class="discover-main">
+            <div class="subtle-box">
+              <div class="discover-panel-head">
+                <h3 id="discoverQueueTitle">Sold Product Shortlist</h3>
+                <span class="hint" id="ebayDiscoverySummary">Run a sold-products search to build a shortlist.</span>
+                <span class="hint hidden" id="amazonScoutSummary">Run Amazon Scout to build a shortlist.</span>
+                <span class="hint hidden" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span>
+              </div>
+              <div class="discover-mode-panel active" data-discover-panel="ebay">
+                <div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div>
+              </div>
+              <div class="discover-mode-panel" data-discover-panel="amazon">
+                <div id="amazonScoutResults" class="result-list"><div class="empty">No Amazon scout results yet.</div></div>
+              </div>
+              <div class="discover-mode-panel" data-discover-panel="queue">
+                <div id="ebayCompareJobStatus" class="job-status-grid"></div>
+                <div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div>
+                <div id="ebayComparePager" class="pager"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="discover-side">
+            <div class="subtle-box discover-inspector">
+              <div class="discover-panel-head"><h3>Inspector</h3><span class="hint">Selected product</span></div>
+              <div id="discoverInspector"><div class="empty">Select a product row to inspect pricing, match quality, and decision reasons.</div></div>
+            </div>
+            <div class="subtle-box">
+              <div class="discover-panel-head"><h3>Activity</h3><span class="hint">Recent discovery and comparison jobs</span></div>
+              <div id="discoverActivityTimeline" class="activity-list"><div class="empty">No job activity yet.</div></div>
             </div>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Amazon Candidates</h2><span class="hint" id="amazonScoutSummary">Run Amazon Scout to build a shortlist.</span></div>
-          <div class="panel-body"><div id="amazonScoutResults" class="result-list"><div class="empty">No Amazon scout results yet.</div></div></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Recent Amazon Scout Runs</h2></div>
-          <div class="panel-body"><div class="table-wrap"><div id="amazonScoutRunsTable"></div></div></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Guided Discovery</h2><span class="hint">Rank safe, explainable product opportunities</span></div>
-          <div class="panel-body">
+
+        <details class="advanced advanced-data">
+          <summary>Advanced data</summary>
+          <div class="subsection-title">All eBay product lines</div>
+          <div id="ebayCompactPanel" class="hidden">
+            <div class="list-controls">
+              <div class="field"><label>Search</label><input id="ebayCompactSearch" placeholder="title, family, category, source" oninput="updateEbayCompactFilters()"></div>
+              <div class="field"><label>Status</label><select id="ebayCompactStatus" onchange="updateEbayCompactFilters()"><option value="ALL">All</option><option value="NOT_COMPARED">Queued</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
+              <div class="field"><label>Min Score</label><input id="ebayCompactMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompactFilters()"></div>
+              <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompactFilters()">Clear</button></div>
+            </div>
+            <div class="mini-summary" id="ebayCompactSummary">Compact one-line view across recent discovery products.</div>
+            <div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div>
+            <div id="ebayCompactPager" class="pager"></div>
+          </div>
+          <div class="grid-2" style="margin-top:14px">
+            <div id="ebayRunsPanel" class="hidden">
+              <div class="subsection-title">Recent eBay searches</div>
+              <div class="table-wrap"><div id="ebayDiscoveryRunsTable"></div></div>
+            </div>
+            <div id="ebayCompareRunsPanel" class="hidden">
+              <div class="subsection-title">Recent Amazon comparison jobs</div>
+              <div class="table-wrap"><div id="ebayAmazonComparisonRunsTable"></div></div>
+            </div>
+          </div>
+          <div class="subsection-title">Amazon Scout runs</div>
+          <div class="table-wrap"><div id="amazonScoutRunsTable"></div></div>
+          <details class="advanced">
+            <summary>Guided Discovery</summary>
             <div class="form-grid">
               <div class="field"><label>Profile</label><select id="scanProfile"></select></div>
               <div class="field" style="grid-column:span 2"><label>Optional Keywords</label><input id="searchQuery" placeholder="wireless barcode scanner"></div>
@@ -571,129 +728,16 @@ const dashboardHtml = `<!doctype html>
                 <div class="field"><label>Max Amazon Cost</label><input id="scanMaxCost" type="number" min="1" step="1" value="150"></div>
               </div>
             </details>
-            <div class="actions-row"><button class="btn primary" onclick="searchOpportunities()">⌕ Find Opportunities</button><span class="hint" id="scanHint"></span></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Ranked Results</h2><span class="hint" id="scanSummary">Run a scan to see scored opportunities.</span></div>
-          <div class="panel-body"><div id="scanResults" class="result-list"><div class="empty">No scan results yet.</div></div></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Recent Scans</h2></div>
-          <div class="panel-body"><div class="table-wrap"><div id="scanRunsTable"></div></div></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Product Candidates</h2></div>
-          <div class="panel-body"><div class="table-wrap"><div id="productsTable"></div></div></div>
-        </div>
-      </section>
-
-      <!-- EBAY DISCOVERY -->
-      <section class="view" id="view-ebayDiscovery">
-        <div class="tabs">
-          <button class="tab-btn active" onclick="navigate('ebayDiscovery')">eBay-first</button>
-          <button class="tab-btn" onclick="navigate('discovery')">Amazon-first</button>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Find Products From eBay Demand</h2><span class="hint">Start with sold listings, then check Amazon source prices.</span></div>
-          <div class="panel-body">
-            <div class="workflow-steps">
-              <div class="workflow-step primary-flow"><b>1. Search sold eBay items</b><span>Pick a market and product area.</span></div>
-              <div class="workflow-step"><b>2. Read the shortlist</b><span>Accepted, review, and rejected products are explained.</span></div>
-              <div class="workflow-step"><b>3. Select candidates</b><span>Use high score or choose rows manually.</span></div>
-              <div class="workflow-step"><b>4. Compare Amazon</b><span>Check source price, match quality, profit, and ROI.</span></div>
-              <div class="workflow-step"><b>5. Review winners</b><span>Safe opportunities move to the review queue.</span></div>
-            </div>
-            <div class="settings-strip">
-              <div class="field"><label>Market</label><select id="ebayDiscoveryMarket"></select></div>
-              <div class="field"><label>Profile</label><select id="ebayDiscoveryProfile"></select></div>
-            </div>
-            <div class="subsection-title">Step 1: Search setup</div>
-            <div class="compact-form">
-              <div class="field"><label>Category</label><select id="ebayDiscoveryCategory"></select></div>
-              <div class="field"><label>Optional eBay Keywords</label><input id="ebayDiscoveryQuery" placeholder="wireless barcode scanner"></div>
-              <div class="field"><label>Sold Products To Check</label><input id="ebayDiscoveryLimit" type="number" min="1" max="100" value="25"></div>
-              <div class="field"><label>Query Breadth</label><select id="ebayDiscoveryQueryBreadth"><option value="BALANCED" selected>Balanced</option><option value="WIDE">Wide</option><option value="FOCUSED">Focused</option></select></div>
-              <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySafeMode" type="checkbox" checked> Safe mode</label></div>
-            </div>
-            <details class="advanced">
-              <summary>Search rules and thresholds</summary>
-              <div class="subsection-title">eBay filters</div>
-              <div class="form-grid compact">
-                <div class="field"><label>eBay Category ID</label><input id="ebayDiscoveryCategoryId" placeholder="optional"></div>
-                <div class="field"><label>Min eBay Score</label><input id="ebayDiscoveryMinScore" type="number" min="0" max="100" value="50"></div>
-                <div class="field"><label>Min Sold Price</label><input id="ebayDiscoveryMinSold" type="number" min="0" step="1" value="25"></div>
-                <div class="field"><label>Max Sold Price</label><input id="ebayDiscoveryMaxSold" type="number" min="0" step="1" value="250"></div>
-                <div class="field"><label>Buying Format</label><select id="ebayDiscoveryBuyingFormat"><option value="BIN" selected>Buy It Now</option></select></div>
-                <div class="field"><label>Condition</label><select id="ebayDiscoveryCondition"><option value="NEW" selected>New</option></select></div>
-                <div class="field"><label>Location</label><select id="ebayDiscoveryLocation"><option value="Domestic">Domestic</option><option value="Regional">Regional</option><option value="Worldwide">Worldwide</option><option value="ANY">Any</option></select></div>
-                <div class="field"><label>Postal Code</label><input id="ebayDiscoveryPostalCode" placeholder="10115"></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySoldOnly" type="checkbox" checked> Sold listings only</label></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryCompletedOnly" type="checkbox" checked> Completed listings only</label></div>
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoverySkipExisting" type="checkbox" checked> Skip known products</label></div>
-              </div>
-              <div class="subsection-title">Amazon comparison gates</div>
-              <div class="form-grid compact">
-                <div class="field"><label>Max Amazon Comparisons</label><input id="ebayDiscoveryCompareLimit" type="number" min="1" max="50" value="10"></div>
-                <div class="field"><label>Amazon Matches Per Product</label><input id="ebayDiscoveryAmazonMatches" type="number" min="1" max="10" value="3"></div>
-                <div class="field"><label>Min Profit</label><input id="ebayDiscoveryMinProfit" type="number" min="0" step="1" value="10"></div>
-                <div class="field"><label>Min ROI %</label><input id="ebayDiscoveryMinRoi" type="number" min="0" max="500" step="1" value="25"></div>
-                <div class="field"><label>Min Match %</label><input id="ebayDiscoveryMinMatch" type="number" min="0" max="100" step="1" value="75"></div>
-                <div class="field"><label>Min Compare Score</label><input id="ebayDiscoveryMinCompareScore" type="number" min="0" max="100" step="1" value="65"></div>
-              </div>
-              <div class="subsection-title">Run behavior</div>
-              <div class="form-grid compact">
-                <div class="field"><label>&nbsp;</label><label class="check"><input id="ebayDiscoveryAuto" type="checkbox"> Compare top candidates after this scan</label></div>
-              </div>
-            </details>
-            <div class="actions-row">
-              <button class="btn primary" id="ebayDiscoveryRunBtn" onclick="runEbayDiscovery()">Find Sold Products</button>
-              <button class="btn" id="ebayDiscoverySelectBtn" onclick="selectHighEbayScores()">Select High-Score Products</button>
-              <button class="btn primary" id="ebayDiscoveryCompareBtn" onclick="compareSelectedEbay()">Compare Selected With Amazon</button>
-              <span class="hint" id="ebayDiscoveryHint"></span>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Sold Product Shortlist</h2><span class="hint" id="ebayDiscoverySummary">Run a sold-products search to build a shortlist.</span></div>
-          <div class="panel-body"><div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div></div>
-        </div>
-        <div class="panel hidden" id="ebayCompactPanel">
-          <div class="panel-head"><h2>All eBay Product Lines</h2><span class="hint" id="ebayCompactSummary">Compact one-line view across recent discovery products.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayCompactProducts',false)">Collapse all</button></span></div>
-          <div class="panel-body">
-            <div class="list-controls">
-              <div class="field"><label>Search</label><input id="ebayCompactSearch" placeholder="title, family, category, source" oninput="updateEbayCompactFilters()"></div>
-              <div class="field"><label>Status</label><select id="ebayCompactStatus" onchange="updateEbayCompactFilters()"><option value="ALL">All</option><option value="NOT_COMPARED">Queued</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
-              <div class="field"><label>Min Score</label><input id="ebayCompactMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompactFilters()"></div>
-              <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompactFilters()">Clear</button></div>
-            </div>
-            <div id="ebayCompactProducts" class="compact-products"><div class="empty">No product lines yet.</div></div>
-            <div id="ebayCompactPager" class="pager"></div>
-          </div>
-        </div>
-        <div class="panel hidden" id="ebayComparePanel">
-          <div class="panel-head"><h2>Amazon Comparison Queue</h2><span class="hint" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span><span class="list-actions"><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',true)">Expand all</button><button class="btn sm" onclick="setListRowsExpanded('ebayAmazonComparisonRows',false)">Collapse all</button></span></div>
-          <div class="panel-body">
-            <div class="list-controls">
-              <div class="field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
-              <div class="field"><label>Status</label><select id="ebayCompareStatus" onchange="updateEbayCompareFilters()"><option value="ALL">All</option><option value="QUEUED">Queued</option><option value="COMPARING">Comparing</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
-              <div class="field"><label>Min Score</label><input id="ebayCompareMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompareFilters()"></div>
-              <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompareFilters()">Clear</button></div>
-            </div>
-            <div id="ebayCompareTimerInfo" class="mini-summary"></div>
-            <div id="ebayCompareJobStatus" class="job-status-grid"></div>
-            <div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div>
-            <div id="ebayComparePager" class="pager"></div>
-          </div>
-        </div>
-        <div class="panel hidden" id="ebayRunsPanel">
-          <div class="panel-head"><h2>Recent eBay Searches</h2></div>
-          <div class="panel-body"><div class="table-wrap"><div id="ebayDiscoveryRunsTable"></div></div></div>
-        </div>
-        <div class="panel hidden" id="ebayCompareRunsPanel">
-          <div class="panel-head"><h2>Recent Amazon Comparison Jobs</h2><span class="hint">Timer and manual eBay-to-Amazon comparison runs.</span></div>
-          <div class="panel-body"><div class="table-wrap"><div id="ebayAmazonComparisonRunsTable"></div></div></div>
-        </div>
+            <div class="actions-row"><button class="btn primary" onclick="searchOpportunities()">Find Opportunities</button><span class="hint" id="scanHint"></span></div>
+            <div class="subsection-title">Ranked results</div>
+            <div class="mini-summary" id="scanSummary">Run a scan to see scored opportunities.</div>
+            <div id="scanResults" class="result-list"><div class="empty">No scan results yet.</div></div>
+            <div class="subsection-title">Recent scans</div>
+            <div class="table-wrap"><div id="scanRunsTable"></div></div>
+          </details>
+          <div class="subsection-title">Product candidates</div>
+          <div class="table-wrap"><div id="productsTable"></div></div>
+        </details>
       </section>
 
       <!-- SETTINGS -->
@@ -772,7 +816,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,discoverMode:'ebay',discoverSelection:null,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
 var pageSize=20;
 var tablePageSize=12;
 var cardPageSize=8;
@@ -823,6 +867,7 @@ function toast(title,msg,kind){
   box.appendChild(el);setTimeout(function(){el.style.transition='.3s';el.style.opacity='0';el.style.transform='translateY(6px)';setTimeout(function(){el.remove()},300)},kind==='err'?7000:4200);
 }
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function jsString(s){return JSON.stringify(String(s||''))}
 function shortId(v){if(!v)return '—';v=String(v);return v.length>12?'<span class="mono">'+esc(v.slice(0,8))+'…</span>':'<span class="mono">'+esc(v)+'</span>'}
 function money(v){if(v===null||v===undefined||v==='')return '—';var n=Number(v);return isNaN(n)?esc(v):'$'+n.toFixed(2)}
 function when(v){if(!v)return '—';var d=new Date(v);return isNaN(d.getTime())?esc(v):d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
@@ -1490,6 +1535,7 @@ function renderAmazonCandidateCard(c){
   var rejected=isRejectedAmazonCandidate(c);
   var review=isManualReviewAmazonCandidate(c);
   var selectable=isSelectableAmazonCandidate(c);
+  var discoverId=discoverKey('amazon',c);
   var selected=selectable&&(!!state.selectedAmazon[c.id]||!!c.selected);
   if(selectable)state.selectedAmazon[c.id]=selected;
   var score=amazonCandidateScore(c);
@@ -1511,7 +1557,7 @@ function renderAmazonCandidateCard(c){
   if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   actions+='</div>';
-  return '<div class="result-card '+(review?'review':(rejected?'rejected':''))+'"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="amazon" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'amazon\\','+jsString(discoverId)+',event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
     '<div class="result-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(c))+'</span> · Amazon '+marketMoney(amazonCandidatePrice(c),market)+' · Avg90 '+marketMoney(amazonCandidateAvg90(c),market)+' · Rank '+txt(amazonCandidateRank(c))+dropText+'</div>'+
     '</div>'+badge(amazonCandidateStatus(c))+'</div>'+
@@ -1540,6 +1586,7 @@ function renderAmazonScoutReport(candidates,rejectedExtra,preserveSelection){
   state.amazonScoutCandidates.forEach(function(c){if(c.id&&previous[c.id])state.selectedAmazon[c.id]=true;else if(c.id&&c.selected)state.selectedAmazon[c.id]=true});
   renderAmazonScoutSections();
   updateAmazonScoutActions();
+  if(state.discoverMode==='amazon')renderDiscoverMode();
 }
 function renderAmazonScoutSections(){
   var el=document.getElementById('amazonScoutResults');
@@ -1662,6 +1709,7 @@ function renderEbayCandidateCard(c){
   var rejected=isRejectedEbayCandidate(c);
   var review=isManualReviewEbayCandidate(c);
   var selectable=isSelectableEbayCandidate(c);
+  var discoverId=discoverKey('ebay',c);
   var selected=selectable&&(!!state.selectedEbay[c.id]||!!c.selected);
   if(selectable)state.selectedEbay[c.id]=selected;
   var score=ebayCandidateScore(c);
@@ -1684,7 +1732,7 @@ function renderEbayCandidateCard(c){
   if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   actions+='</div>';
-  return '<div class="result-card '+(review?'review':(rejected?'rejected':''))+'"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
     '<div class="result-meta">eBay sold '+marketMoney(ebayCandidatePrice(c),market)+shipping+' · '+txt(ebayCandidateCondition(c))+category+item+'</div>'+
     '</div>'+badge(ebayCandidateStatus(c))+'</div>'+
@@ -1713,6 +1761,7 @@ function renderEbayDiscoveryReport(candidates,rejectedExtra,preserveSelection){
   state.ebayDiscoveryCandidates.forEach(function(c){if(c.id&&previous[c.id])state.selectedEbay[c.id]=true;else if(c.id&&c.selected)state.selectedEbay[c.id]=true});
   renderEbayDiscoverySections();
   updateEbayDiscoveryActions();
+  if(state.discoverMode==='ebay')renderDiscoverMode();
 }
 function renderEbayDiscoverySections(){
   var el=document.getElementById('ebayDiscoveryResults');
@@ -1791,6 +1840,210 @@ function currentAllEbayRows(){
 function showPanel(id,visible){
   var el=document.getElementById(id);
   if(el)el.classList.toggle('hidden',!visible);
+}
+function discoverKey(type,c){
+  if(!c)return '';
+  if(type==='amazon')return c.id||amazonCandidateAsin(c)||amazonCandidateTitle(c)||'';
+  return c.id||ebayCandidateItemId(c)||ebayCandidateTitle(c)||'';
+}
+function selectedDiscoverKey(){
+  return state.discoverSelection ? state.discoverSelection.type+'|'+state.discoverSelection.key : '';
+}
+function renderDiscoverSelectionStyles(){
+  var selected=selectedDiscoverKey();
+  document.querySelectorAll('[data-discover-key]').forEach(function(el){
+    var key=el.getAttribute('data-discover-type')+'|'+el.getAttribute('data-discover-key');
+    el.classList.toggle('active',!!selected&&key===selected);
+  });
+}
+function selectDiscoverItem(type,key,event){
+  if(event&&event.target&&event.target.closest&&event.target.closest('a,button,input,label,select,textarea'))return;
+  state.discoverSelection={type:type,key:key};
+  renderDiscoverInspector();
+  renderDiscoverSelectionStyles();
+}
+function discoverRowsForMode(mode){
+  mode=mode||state.discoverMode||'ebay';
+  if(mode==='amazon')return state.amazonScoutCandidates.concat(state.amazonScoutReview,state.amazonScoutRejected);
+  if(mode==='queue')return filteredAmazonComparisonRows();
+  return state.ebayDiscoveryCandidates.concat(state.ebayDiscoveryReview,state.ebayDiscoveryRejected);
+}
+function findDiscoverItem(selection){
+  if(!selection)return null;
+  var rows=selection.type==='amazon'
+    ? state.amazonScoutCandidates.concat(state.amazonScoutReview,state.amazonScoutRejected)
+    : currentAllEbayRows();
+  return rows.find(function(row){return discoverKey(selection.type,row)===selection.key})||null;
+}
+function ensureDiscoverSelection(){
+  var mode=state.discoverMode||'ebay';
+  var type=mode==='amazon'?'amazon':'ebay';
+  if(state.discoverSelection&&state.discoverSelection.type===type&&findDiscoverItem(state.discoverSelection))return;
+  var rows=discoverRowsForMode(mode);
+  var first=rows.find(function(row){return discoverKey(type,row)});
+  state.discoverSelection=first?{type:type,key:discoverKey(type,first)}:null;
+}
+function discoverMetric(label,value,color){
+  return '<div class="discover-metric" style="border-color:'+(color||'var(--border)')+'40"><div class="discover-metric-value" style="color:'+(color||'var(--text)')+'">'+esc(value===undefined||value===null?0:value)+'</div><div class="discover-metric-label">'+esc(label)+'</div></div>';
+}
+function renderDiscoverSummary(){
+  var el=document.getElementById('discoverSummaryStrip');
+  if(!el)return;
+  var d=state.data||{};
+  var f=(d.pipeline&&d.pipeline.funnel)||{};
+  if(state.discoverMode==='amazon'){
+    el.innerHTML=[
+      discoverMetric('Accepted',state.amazonScoutCandidates.length,COLORS.green),
+      discoverMetric('Review',state.amazonScoutReview.length,COLORS.amber),
+      discoverMetric('Rejected',state.amazonScoutRejected.length,COLORS.red),
+      discoverMetric('Selected',selectedAmazonIds().length,COLORS.blue),
+      discoverMetric('Scout Runs',(d.amazonDiscoveryRuns||[]).length,COLORS.teal)
+    ].join('');
+    return;
+  }
+  el.innerHTML=[
+    discoverMetric('Queued',f.ebayQueued||0,COLORS.slate),
+    discoverMetric('Comparing',f.ebayComparing||0,COLORS.blue),
+    discoverMetric('Opportunities',f.ebayOpportunities||0,COLORS.green),
+    discoverMetric('Review',f.ebayManualReview||0,COLORS.amber),
+    discoverMetric('Rejected',f.ebayRejected||0,COLORS.red),
+    discoverMetric('Errors',f.ebayErrors||0,COLORS.red)
+  ].join('');
+}
+function activityCountText(run){
+  var parts=[];
+  if(run.scannedCount!==undefined)parts.push('scanned '+(run.scannedCount||0));
+  if(run.acceptedCount!==undefined)parts.push('accepted '+(run.acceptedCount||0));
+  if(run.selectedCount!==undefined)parts.push('selected '+(run.selectedCount||0));
+  if(run.comparedCount!==undefined)parts.push('compared '+(run.comparedCount||0));
+  if(run.opportunityCount!==undefined)parts.push('opps '+(run.opportunityCount||0));
+  if(run.manualReviewCount!==undefined)parts.push('review '+(run.manualReviewCount||0));
+  if(run.rejectedCount!==undefined)parts.push('rejected '+(run.rejectedCount||0));
+  if(run.keepaTokensLeft!==undefined&&run.keepaTokensLeft!==null)parts.push('Keepa '+run.keepaTokensLeft);
+  var reason=run.error||run.reason;
+  if(reason)parts.push(reason);
+  return parts.join(' · ')||'No counts recorded';
+}
+function renderActivityRow(item){
+  var run=item.run;
+  var title=item.kind+' · '+(run.query||run.categoryKey||run.profileKey||run.mode||'run');
+  return '<div class="activity-row"><div class="activity-row-head"><div class="activity-title" title="'+esc(title)+'">'+esc(title)+'</div>'+badge(run.status||'COMPLETED')+'</div>'+
+    '<div class="activity-meta">'+esc(activityCountText(run))+'</div>'+
+    '<div class="activity-meta">'+esc(when(run.startedAt))+'</div></div>';
+}
+function renderDiscoverActivity(){
+  var el=document.getElementById('discoverActivityTimeline');
+  if(!el)return;
+  var d=state.data||{};
+  var rows=[];
+  (d.ebayAmazonComparisonRuns||[]).forEach(function(run){rows.push({kind:'Amazon compare',run:run})});
+  (d.ebayDiscoveryRuns||[]).forEach(function(run){rows.push({kind:'eBay search',run:run})});
+  (d.amazonDiscoveryRuns||[]).forEach(function(run){rows.push({kind:'Amazon scout',run:run})});
+  rows.sort(function(a,b){return new Date(b.run.startedAt||0)-new Date(a.run.startedAt||0)});
+  el.innerHTML=rows.length?rows.slice(0,8).map(renderActivityRow).join(''):'<div class="empty">No job activity yet.</div>';
+}
+function reasonsHtml(reasons,fallback){
+  var list=unique(reasons||[]).slice(0,8);
+  if(!list.length&&fallback)list=[fallback];
+  return list.length?'<div class="chips">'+list.map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>':'';
+}
+function inspectorActionsForEbay(c){
+  var id=c&&c.id;
+  var url=ebayCandidateUrl(c);
+  var comparison=ebayComparison(c);
+  var html='<div class="card-actions">';
+  if(id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
+  if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(id)+'\\')">Recompare</button>';
+  if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(comparison&&comparison.best&&comparison.best.url)html+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  return html+'</div>';
+}
+function inspectorActionsForAmazon(c){
+  var id=c&&c.id;
+  var url=amazonCandidateUrl(c);
+  var comparison=amazonComparison(c);
+  var html='<div class="card-actions">';
+  if(id&&(isRejectedAmazonCandidate(c)||isManualReviewAmazonCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerAmazonCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
+  if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareAmazonCandidate(\\''+esc(id)+'\\')">Recompare</button>';
+  if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(comparison&&comparison.best&&comparison.best.url)html+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  return html+'</div>';
+}
+function renderDiscoverInspector(){
+  var el=document.getElementById('discoverInspector');
+  if(!el)return;
+  ensureDiscoverSelection();
+  var selection=state.discoverSelection;
+  var item=findDiscoverItem(selection);
+  if(!selection||!item){
+    el.innerHTML='<div class="empty">Select a product row to inspect pricing, match quality, and decision reasons.</div>';
+    renderDiscoverSelectionStyles();
+    return;
+  }
+  if(selection.type==='amazon'){
+    var aMarket=amazonCandidateMarket(item);
+    var aRejected=isRejectedAmazonCandidate(item);
+    var aReview=isManualReviewAmazonCandidate(item);
+    el.innerHTML='<div class="inspector-title">'+esc(amazonCandidateTitle(item))+'</div>'+
+      '<div class="inspector-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(item)||'unknown')+'</span> · '+badge(amazonCandidateStatus(item))+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Economics</div><div class="comparison-grid">'+
+      metric('Amazon cost',marketMoney(amazonCandidatePrice(item),aMarket))+
+      metric('Avg90',marketMoney(amazonCandidateAvg90(item),aMarket))+
+      metric('Drop',amazonCandidateDrop(item)?Number(amazonCandidateDrop(item)).toFixed(1)+'%':'—')+
+      metric('Rank',txt(amazonCandidateRank(item)))+'</div></div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Decision Reasons</div>'+reasonsHtml(aRejected||aReview?amazonCandidateReasons(item):amazonPositiveReasons(item),'No reasons captured yet')+'</div>'+
+      renderEbayComparison(item,aRejected,aReview)+
+      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForAmazon(item)+'</div>';
+  }else{
+    var eMarket=ebayCandidateMarket(item);
+    var eRejected=isRejectedEbayCandidate(item);
+    var eReview=isManualReviewEbayCandidate(item);
+    el.innerHTML='<div class="inspector-title">'+esc(ebayCandidateTitle(item))+'</div>'+
+      '<div class="inspector-meta">Item <span class="mono">'+esc(ebayCandidateItemId(item)||'unknown')+'</span> · '+badge(ebayCandidateStatus(item))+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Demand</div><div class="comparison-grid">'+
+      metric('Sold price',marketMoney(ebayCandidatePrice(item),eMarket))+
+      metric('Shipping',marketMoney(ebayCandidateShipping(item),eMarket))+
+      metric('Condition',txt(ebayCandidateCondition(item)))+
+      metric('Score',String(ebayCandidateScore(item)))+'</div></div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Decision Reasons</div>'+reasonsHtml(eRejected||eReview?ebayCandidateReasons(item):ebayPositiveReasons(item),'No reasons captured yet')+'</div>'+
+      renderAmazonComparisonForEbay(item,eRejected,eReview)+
+      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForEbay(item)+'</div>';
+  }
+  renderDiscoverSelectionStyles();
+}
+function filteredAmazonComparisonRows(){
+  var allRows=currentAllEbayRows().slice().sort(function(a,b){
+    return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
+  });
+  return filterEbayRows(allRows,{
+    text:inputValue('ebayCompareSearch'),
+    status:selectValue('ebayCompareStatus','ALL'),
+    minScore:inputValue('ebayCompareMinScore')
+  });
+}
+function setDiscoverMode(mode){
+  state.discoverMode=mode||'ebay';
+  state.discoverSelection=null;
+  renderDiscoverMode();
+}
+function renderDiscoverMode(){
+  var mode=state.discoverMode||'ebay';
+  document.querySelectorAll('[data-discover-mode]').forEach(function(btn){btn.classList.toggle('active',btn.getAttribute('data-discover-mode')===mode)});
+  document.querySelectorAll('[data-discover-command]').forEach(function(panel){panel.classList.toggle('active',panel.getAttribute('data-discover-command')===mode)});
+  document.querySelectorAll('[data-discover-panel]').forEach(function(panel){panel.classList.toggle('active',panel.getAttribute('data-discover-panel')===mode)});
+  var title=document.getElementById('discoverQueueTitle');
+  var hint=document.getElementById('discoverModeHint');
+  var ebaySummary=document.getElementById('ebayDiscoverySummary');
+  var amazonSummary=document.getElementById('amazonScoutSummary');
+  var queueSummary=document.getElementById('ebayAmazonComparisonSummary');
+  if(title)title.textContent=mode==='amazon'?'Amazon Candidates':(mode==='queue'?'Amazon Comparison Queue':'Sold Product Shortlist');
+  if(hint)hint.textContent=mode==='amazon'?'Start from Amazon source products, then check eBay demand.':(mode==='queue'?'Work through queued sold eBay products against Amazon source matches.':'Start from sold eBay demand, then compare with Amazon.');
+  if(ebaySummary)ebaySummary.classList.toggle('hidden',mode!=='ebay');
+  if(amazonSummary)amazonSummary.classList.toggle('hidden',mode!=='amazon');
+  if(queueSummary)queueSummary.classList.toggle('hidden',mode!=='queue');
+  renderDiscoverSummary();
+  renderDiscoverActivity();
+  renderDiscoverInspector();
 }
 function renderEbayCompactProducts(candidates){
   var el=document.getElementById('ebayCompactProducts');
@@ -1874,7 +2127,6 @@ function renderEbayAmazonComparisonRows(candidates){
     return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
   });
   var jobBuckets=comparisonJobBuckets();
-  showPanel('ebayComparePanel',allRows.length>0||jobBuckets.running.length>0||jobBuckets.paused.length>0||jobBuckets.stopped.length>0);
   var rows=filterEbayRows(allRows,{
     text:inputValue('ebayCompareSearch'),
     status:selectValue('ebayCompareStatus','ALL'),
@@ -1892,6 +2144,7 @@ function renderEbayAmazonComparisonRows(candidates){
   if(!rows.length){
     el.innerHTML='<div class="empty">No comparison rows yet.</div>';
     renderPager('ebayComparePager',state.ebayComparePage,0,'setEbayComparePage');
+    if(state.discoverMode==='queue')renderDiscoverInspector();
     return;
   }
   el.innerHTML=pageRows.map(function(c){
@@ -1904,32 +2157,15 @@ function renderEbayAmazonComparisonRows(candidates){
     var roi=best.roiPercent!==undefined?Number(best.roiPercent).toFixed(1)+'%':'—';
     var cost=sourcePrice!==undefined?marketMoney(sourcePrice,market):'—';
     var match=best.matchConfidence!==undefined?pct(Number(best.matchConfidence)*100):'—';
-    var url=ebayCandidateUrl(c);
-    var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
-    var reasons=ebayCandidateReasons(c).slice(0,5).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-    var actions='<div class="card-actions">';
-    if(c.id&&(ebayCandidateStatus(c)==='NOT_COMPARED'||ebayCandidateStatus(c)==='ERROR'))actions+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(c.id)+'\\')">Compare Now</button>';
-    if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c))&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
-    else if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
-    if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
-    if(best.url)actions+='<a class="btn sm" href="'+esc(best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
-    actions+='</div>';
-    return '<details class="compact-product"><summary>'+
+    var discoverId=discoverKey('ebay',c);
+    return '<button type="button" class="queue-row" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)">'+
       '<span class="'+scoreClass(score)+'">'+score+'</span>'+
-      '<span class="compact-title">'+title+'</span>'+
-      '<span class="compact-cell">'+badge(ebayCandidateStatus(c))+'</span>'+
-      '<span class="compact-cell compact-hide-sm">Cost '+cost+'</span>'+
-      '<span class="compact-cell compact-hide-sm">Profit '+profit+'</span>'+
-      '<span class="compact-cell compact-hide-sm">ROI '+roi+' · Match '+match+'</span>'+
-      '</summary><div class="compact-detail">'+
-      '<div class="result-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Updated '+when(c.updatedAt||c.createdAt)+' · Item <span class="mono">'+esc(ebayCandidateItemId(c)||'unknown')+'</span></div>'+
-      renderAmazonComparisonForEbay(c,isRejectedEbayCandidate(c),isManualReviewEbayCandidate(c))+
-      (reasons?'<div class="chips">'+reasons+'</div>':'')+
-      actions+
-      '</div></details>';
+      '<span><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span></span>'+
+      '<span class="queue-stats">'+badge(ebayCandidateStatus(c))+'</span>'+
+      '</button>';
   }).join('');
-  applyListRowsExpanded('ebayAmazonComparisonRows');
   renderPager('ebayComparePager',state.ebayComparePage,rows.length,'setEbayComparePage');
+  if(state.discoverMode==='queue')renderDiscoverInspector();
 }
 function setEbayCompactPage(page){
   state.ebayCompactPage=page;
@@ -1955,6 +2191,7 @@ function setEbayComparePage(page){
 function updateEbayCompareFilters(){
   state.ebayComparePage=1;
   renderEbayAmazonComparisonRows(currentAllEbayRows());
+  renderDiscoverSummary();
 }
 function clearEbayCompareFilters(){
   var search=document.getElementById('ebayCompareSearch');
@@ -2131,6 +2368,7 @@ function render(){
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
   renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
   renderEbayAmazonComparisonRows((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
+  renderDiscoverMode();
 
   var rc=d.ruleConfig||{};
   if(rc.amazonPriceCheckIntervalMinutes)document.getElementById('interval').value=rc.amazonPriceCheckIntervalMinutes;
@@ -2179,13 +2417,24 @@ function updateActionButtons(){
 function selectAction(id){document.getElementById('actionId').value=id;updateActionButtons();navigate('actions')}
 
   function navigate(view){
+    if(view==='discovery'){
+      state.discoverMode='amazon';
+    }
     var navView=activeNavView(view);
+    var previousActive=document.querySelector('.view.active');
+    var targetView='view-'+navView;
     document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===navView)});
-    document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id==='view-'+view)});
+    document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id===targetView)});
+    if(!previousActive||previousActive.id!==targetView){
+      window.scrollTo({top:0,left:0,behavior:'auto'});
+      var main=document.querySelector('main');if(main)main.scrollTop=0;
+    }
     var mobile=document.getElementById('mobileNav');if(mobile)mobile.value=navView;
-    document.getElementById('viewTitle').textContent=META[view][0];
-    document.getElementById('viewSub').textContent=META[view][1];
-    if(view==='settings')loadCredentials();
+    var meta=META[view]||META[navView];
+    document.getElementById('viewTitle').textContent=meta[0];
+    document.getElementById('viewSub').textContent=meta[1];
+    if(navView==='ebayDiscovery')renderDiscoverMode();
+    if(navView==='settings')loadCredentials();
 }
 
 function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
