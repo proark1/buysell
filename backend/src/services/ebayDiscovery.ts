@@ -30,6 +30,7 @@ import {
   emptyEbaySourceDropStats,
   filterEbaySourceCandidates,
   mergeEbaySourceDropStats,
+  type EbaySourceDropReason,
   type EbaySourceDropStats
 } from './ebaySourceFilters.js';
 
@@ -401,6 +402,38 @@ function ebayRejectionReasons(
   return [...new Set(reasons)];
 }
 
+function sourceDropCandidateResult(
+  ebay: EbayCandidateInput,
+  sourceQuery: string,
+  reason: EbaySourceDropReason,
+  policy: SafetyPolicy,
+  minSoldPrice: number,
+  maxSoldPrice: number,
+  minimumEbayScore: number
+): EbayDiscoveryCandidateResult {
+  const family: EbayDiscoveryFamilySummary = {
+    key: productFamilyKeyForEbayCandidate(ebay),
+    sourceQuery,
+    soldCount: 1,
+    minSoldPrice: ebay.soldPrice,
+    medianSoldPrice: ebay.soldPrice,
+    maxSoldPrice: ebay.soldPrice,
+    duplicateItemCount: 0
+  };
+  const safety = evaluateEbayCandidateSafety(ebay, policy);
+  const score = scoreEbayDiscoveryCandidate(ebay, { minSoldPrice, maxSoldPrice, family }, safety.riskFlags);
+  const base = { ebay, family, score, safety };
+  const fallbackReason = reason === 'MISSING_SOLD_PRICE'
+    ? 'Dropped before scoring because SerpAPI/eBay did not provide a usable sold price.'
+    : reason === 'AUCTION_FORMAT'
+      ? 'Dropped before scoring because the sold source row looks like an auction or bidding listing.'
+      : 'Dropped before scoring because the sold source row does not look like a new fixed-price listing.';
+  return {
+    ...base,
+    rejectionReasons: [...new Set([...ebayRejectionReasons(base, minimumEbayScore), fallbackReason])]
+  };
+}
+
 function rejectionDiagnostics(riskFlags: string[], reasons: string[]): Record<string, unknown> {
   const stages = riskFlags.reduce<Record<string, number>>((counts, flag) => {
     const stage = rejectionStageForFlag(flag);
@@ -490,6 +523,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   queries: string[];
   candidates: EbayDiscoveryCandidateResult[];
   rejected: EbayDiscoveryCandidateResult[];
+  sourceDropCandidates: EbayDiscoveryCandidateResult[];
   sourceDrops: EbaySourceDropStats;
   skippedExisting: number;
   filters: Record<string, unknown>;
@@ -517,6 +551,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const existingItemIds = asSet(options.existingEbayItemIds);
   const rawResultMultiplier = queryBreadth === 'WIDE' ? 4 : queryBreadth === 'BALANCED' ? 3 : 2;
   const sourceDrops = emptyEbaySourceDropStats();
+  const sourceDropCandidates: EbayDiscoveryCandidateResult[] = [];
 
   const byKey = new Map<string, { ebay: EbayCandidateInput; sourceQuery: string }>();
   for (const seed of queries) {
@@ -537,6 +572,15 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
     });
     const ebaySource = filterEbaySourceCandidates(rawEbayCandidates, seed);
     mergeEbaySourceDropStats(sourceDrops, ebaySource.dropped);
+    sourceDropCandidates.push(...ebaySource.droppedCandidates.map((item) => sourceDropCandidateResult(
+      item.candidate,
+      seed,
+      item.reason,
+      policy,
+      minSoldPrice,
+      maxSoldPrice,
+      minimumEbayScore
+    )));
 
     for (const ebay of ebaySource.candidates) {
       const key = ebay.itemId ?? `${ebay.title.toLowerCase()}|${ebay.soldPrice ?? ''}`;
@@ -591,6 +635,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
     queries,
     candidates,
     rejected,
+    sourceDropCandidates,
     sourceDrops,
     skippedExisting,
     filters: {
@@ -616,6 +661,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       categoryId,
       skipExistingProducts,
       skippedExisting,
+      sourceDropCandidateCount: sourceDropCandidates.length,
       sourceDrops
     }
   };
@@ -640,7 +686,7 @@ export async function persistEbayDiscoveryRun(
         filtersJson: result.filters,
         scannedCount: result.candidates.length + result.rejected.length + result.sourceDrops.total,
         acceptedCount: result.candidates.length,
-        rejectedCount: result.rejected.length,
+        rejectedCount: result.rejected.length + result.sourceDropCandidates.length,
         completedAt: new Date()
       }
     });
@@ -699,6 +745,7 @@ export async function persistEbayDiscoveryRun(
 
     for (const candidate of result.candidates) await persistCandidate(candidate, true);
     for (const candidate of result.rejected) await persistCandidate(candidate, false);
+    for (const candidate of result.sourceDropCandidates) await persistCandidate(candidate, false);
 
     return tx.ebayDiscoveryRun.findUnique({
       where: { id: run.id },
@@ -1061,6 +1108,7 @@ function jsonReady(value: unknown): unknown {
 
 export async function compareEbayDiscoveryCandidates(options: CompareEbayCandidatesOptions): Promise<{
   compared: number;
+  rejectedCount: number;
   opportunities: ProductOpportunity[];
   manualReviews: ProductOpportunity[];
   rejected: ProductOpportunity[];
@@ -1104,6 +1152,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
   const rejected: ProductOpportunity[] = [];
   const reports: AmazonComparisonReport[] = [];
   let compared = 0;
+  let rejectedCount = 0;
 
   for (const candidate of candidates) {
     const ebay = ebayFromRecord(candidate as Record<string, unknown>);
@@ -1120,6 +1169,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
           scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
         }
       });
+      rejectedCount += 1;
       continue;
     }
 
@@ -1171,6 +1221,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
             scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
           }
         });
+        rejectedCount += 1;
         continue;
       }
       if (comparison.report.status === 'MANUAL_REVIEW') {
@@ -1186,6 +1237,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
       }
       if (best.decision.decision === 'REJECT') {
         rejected.push(best);
+        rejectedCount += 1;
         await options.db.ebayDiscoveryCandidate.update({
           where: { id: candidate.id },
           data: {
@@ -1252,7 +1304,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
     });
   }
 
-  return { compared, opportunities, manualReviews, rejected, reports };
+  return { compared, rejectedCount, opportunities, manualReviews, rejected, reports };
 }
 
 export async function considerEbayDiscoveryCandidate(options: ConsiderEbayCandidateOptions): Promise<{

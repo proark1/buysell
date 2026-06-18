@@ -2772,7 +2772,7 @@ function compareSelectedEbay(){
   beginLocalJob('ebayAmazonCompare','Amazon comparison running',ids.length+' selected eBay products','comparison');
   toast('Comparing with Amazon',ids.length+' selected products');
   jpost('/ebay-discovery/compare',{candidateIds:ids,limit:ids.length,marketKey:document.getElementById('ebayDiscoveryMarket').value||'de',amazonMatchLimit:Number(document.getElementById('ebayDiscoveryAmazonMatches').value||3),comparison:ebayDiscoveryComparisonPayload()}).then(function(res){
-    toast('Amazon comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
+    toast('Amazon comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:res.rejectedCount!==undefined?res.rejectedCount:(res.rejected||[]).length},'ok');
     state.ebayDiscoveryCandidates=[];
     state.ebayDiscoveryReview=[];
     state.ebayDiscoveryRejected=[];
@@ -2785,7 +2785,7 @@ function recompareEbayCandidate(id){
   beginLocalJob('ebayAmazonRecompare','Amazon recompare running','One eBay candidate','comparison');
   toast('Recomparing with Amazon','Using the current comparison gates');
   jpost('/ebay-discovery/compare',{candidateIds:[id],limit:1,force:true,marketKey:document.getElementById('ebayDiscoveryMarket').value||'de',amazonMatchLimit:Number(document.getElementById('ebayDiscoveryAmazonMatches').value||3),comparison:ebayDiscoveryComparisonPayload()}).then(function(res){
-    toast('Recompare complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
+    toast('Recompare complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:res.rejectedCount!==undefined?res.rejectedCount:(res.rejected||[]).length},'ok');
     state.ebayDiscoveryCandidates=[];state.ebayDiscoveryReview=[];state.ebayDiscoveryRejected=[];state.selectedEbay={};
     endLocalJob('ebayAmazonRecompare');
     load();

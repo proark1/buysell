@@ -51,10 +51,12 @@ const parseText = (value: unknown): string | undefined => {
   return undefined;
 };
 
+const hasMoneySignal = (value: string): boolean => /[$€£¥]|\b(?:usd|eur|gbp|cad|aud|chf)\b|price|preis|sold for|verkauft/i.test(value);
+
 const parseMoney = (value: unknown, depth = 0): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    if (/free/i.test(value)) return 0;
+    if (/free|kostenlos|gratis/i.test(value)) return 0;
     const text = value.replace(/\s/g, '').replace(/[^0-9.,-]/g, '');
     if (!/\d/.test(text)) return undefined;
     const lastComma = text.lastIndexOf(',');
@@ -92,6 +94,64 @@ const parseMoney = (value: unknown, depth = 0): number | undefined => {
   const text = parseText(value);
   if (!text) return undefined;
   return parseMoney(text);
+};
+
+const parseMoneyWithSignal = (value: unknown): number | undefined => {
+  const text = parseText(value);
+  if (!text || !hasMoneySignal(text)) return undefined;
+  return parseMoney(text);
+};
+
+const moneyKeyPattern = /(price|amount|cost|sold|bid)/i;
+const ignoredMoneyKeyPattern = /(shipping|delivery|postage|tax|saving|discount|seller|rating|review|watch|view|quantity|count|time|date|id$|item)/i;
+
+function findNestedMoney(value: unknown, depth = 0): number | undefined {
+  if (!value || typeof value !== 'object' || depth > 4) return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = parseMoneyWithSignal(item) ?? findNestedMoney(item, depth + 1);
+      if (parsed !== undefined) return parsed;
+    }
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const [key, item] of Object.entries(record)) {
+    if (ignoredMoneyKeyPattern.test(key)) continue;
+    if (moneyKeyPattern.test(key)) {
+      const parsed = parseMoney(item, depth + 1);
+      if (parsed !== undefined) return parsed;
+    }
+  }
+  for (const key of ['detected_extensions', 'rich_snippet', 'extensions', 'details']) {
+    const parsed = findNestedMoney(record[key], depth + 1);
+    if (parsed !== undefined) return parsed;
+  }
+  for (const [key, item] of Object.entries(record)) {
+    if (ignoredMoneyKeyPattern.test(key)) continue;
+    if (!item || typeof item !== 'object') continue;
+    const parsed = findNestedMoney(item, depth + 1);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+const parseResultPrice = (result: Record<string, unknown>): number | undefined => {
+  for (const key of [
+    'extracted_price',
+    'price',
+    'sale_price',
+    'sold_price',
+    'extracted_sold_price',
+    'current_bid',
+    'extracted_current_bid',
+    'buy_it_now_price',
+    'extracted_buy_it_now_price'
+  ]) {
+    const parsed = parseMoney(result[key]);
+    if (parsed !== undefined) return parsed;
+  }
+  return findNestedMoney(result);
 };
 
 const parseCategory = (result: Record<string, unknown>): string | undefined => {
@@ -195,19 +255,20 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   const results = [...(payload.organic_results ?? []), ...(payload.shopping_results ?? [])];
 
   return results.slice(0, limit).flatMap((result) => {
+    const record = result as Record<string, unknown>;
     const title = parseText(result.title);
     if (!title) return [];
     const url = parseText(result.link);
 
     return [{
-      itemId: parseEbayItemId(result, url),
+      itemId: parseEbayItemId(record, url),
       title,
       url,
-      soldPrice: parseMoney(result.extracted_price) ?? parseMoney(result.price),
+      soldPrice: parseResultPrice(record),
       shippingPrice: parseMoney(result.shipping),
-      condition: parseText(result.condition),
-      category: parseCategory(result),
-      categoryId: parseText(result.category_id) ?? parseText(result.categoryId),
+      condition: parseText(record.condition),
+      category: parseCategory(record),
+      categoryId: parseText(record.category_id) ?? parseText(record.categoryId),
       raw: result
     }];
   });

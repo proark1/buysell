@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { getActiveRuleConfig } from './ruleConfigRepository.js';
 import { rejectionStageForFlag } from '../services/discoveryPolicy.js';
 
 type EbayAmazonComparisonRunDashboardDelegate = {
@@ -265,7 +266,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
         }
       }
     }),
-    db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } }),
+    getActiveRuleConfig(db),
     getPipelineSummary(db)
   ]);
   const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];

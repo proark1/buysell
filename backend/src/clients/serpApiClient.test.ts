@@ -40,6 +40,23 @@ globalThis.fetch = (async (input: string | URL | Request) => {
         title: 'EU price scanner',
         price: { raw: '1.234,56 €' },
         shipping: '12,34 €'
+      },
+      {
+        title: 'Nested detected extension scanner',
+        rich_snippet: {
+          bottom: {
+            detected_extensions: {
+              price: 64.95,
+              watchers: 17
+            }
+          }
+        },
+        shipping: 'Kostenloser Versand'
+      },
+      {
+        title: 'Currency extension scanner',
+        extensions: ['EUR 88.40', '12 verkauft', 'Top seller'],
+        shipping: 'EUR 6.90'
       }
     ]
   }), { status: 200 });
@@ -77,7 +94,7 @@ try {
   assertEqual(url.searchParams.get('_udhi'), '150', 'SerpAPI max price filter');
   assertEqual(url.searchParams.get('LH_PrefLoc'), '1', 'SerpAPI location filter');
   assertEqual(url.searchParams.get('_stpos'), '10115', 'SerpAPI postal code filter');
-  assertEqual(candidates.length, 4, 'SerpAPI parsed candidates');
+  assertEqual(candidates.length, 6, 'SerpAPI parsed candidates');
   assertEqual(candidates[0]?.itemId, '123', 'SerpAPI item id');
   assertEqual(candidates[0]?.soldPrice, 42.5, 'SerpAPI object price');
   assertEqual(candidates[0]?.shippingPrice, 0, 'SerpAPI free shipping');
@@ -91,6 +108,10 @@ try {
   assertEqual(candidates[2]?.soldPrice, 18.75, 'SerpAPI shopping result object price');
   assertEqual(candidates[3]?.soldPrice, 1234.56, 'SerpAPI EU money format price');
   assertEqual(candidates[3]?.shippingPrice, 12.34, 'SerpAPI EU money format shipping');
+  assertEqual(candidates[4]?.soldPrice, 64.95, 'SerpAPI nested detected extension price');
+  assertEqual(candidates[4]?.shippingPrice, 0, 'SerpAPI localized free shipping');
+  assertEqual(candidates[5]?.soldPrice, 88.4, 'SerpAPI currency extension price');
+  assertEqual(candidates[5]?.shippingPrice, 6.9, 'SerpAPI currency extension shipping');
 } finally {
   globalThis.fetch = originalFetch;
 }

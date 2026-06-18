@@ -977,6 +977,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       }
     }
 
+    const rejectedCandidates = [...result.rejected, ...result.sourceDropCandidates];
+
     return {
       run: sanitizePersistedRun(persistedRun),
       profile: result.profile,
@@ -984,23 +986,24 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       summary: {
         scanned: result.candidates.length + result.rejected.length + result.sourceDrops.total,
         accepted: result.candidates.length,
-        rejected: result.rejected.length,
-        sourceRejected: countRejectedByStages(result.rejected, ['SOURCE_DATA', 'SOURCE_FORMAT']) + result.sourceDrops.total,
+        rejected: rejectedCandidates.length,
+        scoredRejected: result.rejected.length,
+        sourceRejected: countRejectedByStages(rejectedCandidates, ['SOURCE_DATA', 'SOURCE_FORMAT']),
         sourceDropped: result.sourceDrops.total,
         auctionDropped: result.sourceDrops.auctionFormat,
         missingPriceDropped: result.sourceDrops.missingSoldPrice,
         nonNewDropped: result.sourceDrops.nonNewCondition,
-        safetyRejected: countRejectedByStages(result.rejected, ['SAFETY']),
+        safetyRejected: countRejectedByStages(rejectedCandidates, ['SAFETY']),
         skippedExisting: result.skippedExisting,
         compared: comparison?.compared ?? 0,
         opportunities: comparison?.opportunities.length ?? 0,
         manualReviews: comparison?.manualReviews.length ?? 0
       },
-      rejected: result.rejected.map(sanitizeEbayDiscoveryCandidate),
-      rejectedPreview: result.rejected.slice(0, 5).map(sanitizeEbayDiscoveryCandidate),
+      rejected: rejectedCandidates.map(sanitizeEbayDiscoveryCandidate),
+      rejectedPreview: rejectedCandidates.slice(0, 5).map(sanitizeEbayDiscoveryCandidate),
       sourceDrops: result.sourceDrops,
-      rejectionBreakdown: buildEbayRejectionBreakdown(result.rejected),
-      rejectionStageBreakdown: buildRejectionStageBreakdown(result.rejected),
+      rejectionBreakdown: buildEbayRejectionBreakdown(rejectedCandidates),
+      rejectionStageBreakdown: buildRejectionStageBreakdown(rejectedCandidates),
       comparison: comparison
         ? {
           ...comparison,

@@ -171,6 +171,8 @@ try {
   assertEqual(grouped.candidates.length, 2, 'eBay discovery groups duplicate product families');
   assertEqual(grouped.sourceDrops.auctionFormat, 1, 'eBay discovery drops auction rows before persistence');
   assertEqual(grouped.sourceDrops.missingSoldPrice, 1, 'eBay discovery drops rows without sold price before persistence');
+  assertEqual(grouped.sourceDropCandidates.length, 2, 'eBay discovery preserves source-dropped rows for diagnostics');
+  assertEqual(grouped.sourceDropCandidates[0]?.rejectionReasons.length > 0, true, 'source-dropped row has rejection reasons');
   const groupedScanner = grouped.candidates.find((candidate) => candidate.family.key === 'tera:x100');
   assertEqual(groupedScanner?.family.soldCount, 2, 'eBay discovery grouped sold count');
 

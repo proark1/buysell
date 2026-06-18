@@ -312,9 +312,9 @@ async function runScheduledEbayDiscoveryUnlocked(): Promise<ScheduledEbayDiscove
   return {
     enabled: true,
     target,
-    scanned: result.candidates.length + result.rejected.length,
+    scanned: result.candidates.length + result.rejected.length + result.sourceDrops.total,
     accepted: result.candidates.length,
-    rejected: result.rejected.length,
+    rejected: result.rejected.length + result.sourceDropCandidates.length,
     skippedExisting: result.skippedExisting,
     compared: 0,
     opportunities: 0,
@@ -496,7 +496,7 @@ async function runScheduledEbayAmazonComparisonUnlocked(options: EbayAmazonCompa
       compared: comparison.compared,
       opportunities: comparison.opportunities.length,
       manualReviews: comparison.manualReviews.length,
-      rejected: comparison.rejected.length,
+      rejected: comparison.rejectedCount,
       keepa: keepaSummary,
       reason: affordableCompareLimit < candidates.length
         ? `Compared ${affordableCompareLimit} products now; ${candidates.length - affordableCompareLimit} remain queued until Keepa tokens refill.`

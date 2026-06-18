@@ -22,6 +22,7 @@ export interface EbaySourceDropStats {
 
 export interface FilteredEbaySourceCandidates {
   candidates: EbayCandidateInput[];
+  droppedCandidates: Array<{ candidate: EbayCandidateInput; reason: EbaySourceDropReason }>;
   dropped: EbaySourceDropStats;
 }
 
@@ -81,14 +82,16 @@ export function filterEbaySourceCandidates(
   const normalizedOptions = typeof options === 'string' ? { sourceQuery: options } : options;
   const requireSoldPrice = normalizedOptions.requireSoldPrice ?? true;
   const kept: EbayCandidateInput[] = [];
+  const droppedCandidates: Array<{ candidate: EbayCandidateInput; reason: EbaySourceDropReason }> = [];
   const dropped = emptyEbaySourceDropStats();
   for (const candidate of candidates) {
     const reason = sourceDropReason(candidate, requireSoldPrice);
     if (reason) {
       recordDrop(dropped, candidate, reason, normalizedOptions.sourceQuery);
+      droppedCandidates.push({ candidate, reason });
       continue;
     }
     kept.push(candidate);
   }
-  return { candidates: kept, dropped };
+  return { candidates: kept, droppedCandidates, dropped };
 }
