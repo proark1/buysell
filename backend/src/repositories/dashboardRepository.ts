@@ -1,5 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 
+type EbayAmazonComparisonRunDashboardDelegate = {
+  findMany(args: { orderBy: { startedAt: 'desc' }; take: number }): Promise<unknown[]>;
+  count(): Promise<number>;
+};
+
+type DashboardPrismaClient = PrismaClient & {
+  ebayAmazonComparisonRun: EbayAmazonComparisonRunDashboardDelegate;
+};
+
 const amazonDiscoveryCandidateSelect = {
   id: true,
   runId: true,
@@ -59,6 +68,7 @@ const ebayDiscoveryCandidateSelect = {
 };
 
 export async function getDashboardData(db: PrismaClient): Promise<unknown> {
+  const dashboardDb = db as DashboardPrismaClient;
   const [
     productCandidates,
     amazonMatches,
@@ -69,6 +79,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     discoveryScanRuns,
     amazonDiscoveryRuns,
     ebayDiscoveryRuns,
+    ebayAmazonComparisonRuns,
     allEbayDiscoveryCandidates,
     automationRuns,
     ruleConfig
@@ -101,6 +112,10 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
           take: 100
         }
       }
+    }),
+    dashboardDb.ebayAmazonComparisonRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: 20
     }),
     db.ebayDiscoveryCandidate.findMany({
       select: ebayDiscoveryCandidateSelect,
@@ -142,6 +157,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
       discoveryScans: await db.discoveryScanRun.count(),
       amazonScouts: await db.amazonDiscoveryRun.count(),
       ebayDiscoveries: await db.ebayDiscoveryRun.count(),
+      ebayAmazonComparisons: await dashboardDb.ebayAmazonComparisonRun.count(),
       automationRuns: await db.automationRun.count(),
       automationNeedsConfirmation: await db.automationRun.count({ where: { status: 'NEEDS_HUMAN_CONFIRMATION' } }),
       automationFailures: await db.automationRun.count({ where: { status: { in: ['FAILED', 'REVIEW_REQUIRED'] } } })
@@ -156,6 +172,7 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     amazonDiscoveryRuns,
     amazonDiscoveryCandidates,
     ebayDiscoveryRuns,
+    ebayAmazonComparisonRuns,
     ebayDiscoveryCandidates,
     allEbayDiscoveryCandidates,
     automationRuns,

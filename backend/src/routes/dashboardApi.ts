@@ -105,6 +105,6 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
 
   app.post('/api/ebay-discovery/amazon-compare-auto-run/run', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
-    return runScheduledEbayAmazonComparison();
+    return runScheduledEbayAmazonComparison({ mode: 'MANUAL' });
   });
 }

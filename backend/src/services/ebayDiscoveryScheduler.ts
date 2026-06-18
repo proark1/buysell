@@ -31,6 +31,58 @@ interface EbayAmazonComparisonCandidate {
   ebayScore: number;
 }
 
+type EbayAmazonComparisonCandidateSnapshot = Array<{
+  id: string;
+  title: string;
+  ebayScore: number;
+}>;
+
+type EbayAmazonComparisonRunDelegate = {
+  create(args: {
+    data: { mode: 'AUTO' | 'MANUAL'; status: 'RUNNING' };
+    select: { id: true };
+  }): Promise<{ id: string }>;
+  update(args: {
+    where: { id: string };
+    data: {
+      status: 'COMPLETED' | 'SKIPPED' | 'FAILED';
+      selectedCount: number;
+      comparedCount: number;
+      opportunityCount: number;
+      manualReviewCount: number;
+      rejectedCount: number;
+      keepaTokensLeft?: number;
+      keepaRetryAfterSeconds?: number;
+      keepaRequestedTokens?: number;
+      selectedCandidates: EbayAmazonComparisonCandidateSnapshot;
+      reason?: string;
+      error?: string;
+      completedAt: Date;
+    };
+  }): Promise<unknown>;
+};
+
+const comparisonRunDb = prisma as typeof prisma & { ebayAmazonComparisonRun: EbayAmazonComparisonRunDelegate };
+
+interface EbayAmazonComparisonRunOptions {
+  mode?: 'AUTO' | 'MANUAL';
+}
+
+interface EbayAmazonComparisonRunResult {
+  enabled: boolean;
+  selected: Array<{ id: string; title: string; ebayScore: number }>;
+  compared: number;
+  opportunities: number;
+  manualReviews: number;
+  rejected: number;
+  keepa?: {
+    tokensLeft?: number;
+    retryAfterSeconds?: number;
+    requestedTokens?: number;
+  };
+  reason?: string;
+}
+
 class SchedulerTimeoutError extends Error {
   constructor(label: string, timeoutMinutes: number) {
     super(`${label} did not finish within ${timeoutMinutes} minutes; releasing scheduler for the next tick.`);
@@ -128,6 +180,43 @@ async function nextAmazonComparisonCandidates(compareLimit: number): Promise<Eba
   }) as EbayAmazonComparisonCandidate[];
 
   return [...freshCandidates, ...retryCandidates];
+}
+
+async function startAmazonComparisonRun(mode: 'AUTO' | 'MANUAL'): Promise<{ id: string }> {
+  return comparisonRunDb.ebayAmazonComparisonRun.create({
+    data: {
+      mode,
+      status: 'RUNNING'
+    },
+    select: { id: true }
+  });
+}
+
+async function finishAmazonComparisonRun(
+  runId: string,
+  status: 'COMPLETED' | 'SKIPPED' | 'FAILED',
+  result: EbayAmazonComparisonRunResult,
+  error?: unknown
+): Promise<void> {
+  const message = error ? publicErrorMessage(error) : undefined;
+  await comparisonRunDb.ebayAmazonComparisonRun.update({
+    where: { id: runId },
+    data: {
+      status,
+      selectedCount: result.selected.length,
+      comparedCount: result.compared,
+      opportunityCount: result.opportunities,
+      manualReviewCount: result.manualReviews,
+      rejectedCount: result.rejected,
+      keepaTokensLeft: result.keepa?.tokensLeft,
+      keepaRetryAfterSeconds: result.keepa?.retryAfterSeconds,
+      keepaRequestedTokens: result.keepa?.requestedTokens,
+      selectedCandidates: result.selected,
+      reason: result.reason,
+      error: message,
+      completedAt: new Date()
+    }
+  });
 }
 
 const schedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProfiles.flatMap((profile) => (
@@ -230,20 +319,7 @@ export async function runScheduledEbayDiscovery(): Promise<{
   };
 }
 
-export async function runScheduledEbayAmazonComparison(): Promise<{
-  enabled: boolean;
-  selected: Array<{ id: string; title: string; ebayScore: number }>;
-  compared: number;
-  opportunities: number;
-  manualReviews: number;
-  rejected: number;
-  keepa?: {
-    tokensLeft?: number;
-    retryAfterSeconds?: number;
-    requestedTokens?: number;
-  };
-  reason?: string;
-}> {
+export async function runScheduledEbayAmazonComparison(options: EbayAmazonComparisonRunOptions = {}): Promise<EbayAmazonComparisonRunResult> {
   const ruleConfig = await getActiveRuleConfig(prisma);
   if (!ruleConfig.ebayAmazonCompareAutoRunEnabled) {
     return {
@@ -257,139 +333,161 @@ export async function runScheduledEbayAmazonComparison(): Promise<{
     };
   }
 
-  const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
-  if (!keepaApiKey) {
-    return {
-      enabled: true,
-      selected: [],
-      compared: 0,
-      opportunities: 0,
-      manualReviews: 0,
-      rejected: 0,
-      reason: 'KEEPA_API_KEY is not configured.'
-    };
-  }
+  const run = await startAmazonComparisonRun(options.mode ?? 'AUTO');
+  const finish = async (
+    result: EbayAmazonComparisonRunResult,
+    status: 'COMPLETED' | 'SKIPPED' | 'FAILED' = result.compared > 0 ? 'COMPLETED' : 'SKIPPED'
+  ): Promise<EbayAmazonComparisonRunResult> => {
+    await finishAmazonComparisonRun(run.id, status, result);
+    return result;
+  };
 
-  const compareLimit = Math.min(Math.max(ruleConfig.ebayAmazonCompareAutoRunLimit, 1), 25);
-  const candidates = await nextAmazonComparisonCandidates(compareLimit);
-
-  const selected = candidates.map((candidate) => ({
-    id: candidate.id,
-    title: candidate.title,
-    ebayScore: candidate.ebayScore
-  }));
-
-  if (!candidates.length) {
-    return {
-      enabled: true,
-      selected,
-      compared: 0,
-      opportunities: 0,
-      manualReviews: 0,
-      rejected: 0,
-      reason: 'No pending eBay products are ready for Amazon comparison.'
-    };
-  }
-
-  const requestedTokens = candidates.length * amazonMatchLimit;
-  let keepaSummary: { tokensLeft?: number; retryAfterSeconds?: number; requestedTokens?: number };
-  let affordableCompareLimit = candidates.length;
   try {
-    const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
-    keepaSummary = {
-      tokensLeft: tokenStatus.tokensLeft,
-      retryAfterSeconds: tokenStatus.retryAfterSeconds,
-      requestedTokens
-    };
-    affordableCompareLimit = Math.min(candidates.length, Math.floor(Math.max(tokenStatus.tokensLeft, 0) / amazonMatchLimit));
-  } catch (error) {
-    if (!(error instanceof KeepaApiError)) throw error;
-    let retryAfterSeconds: number | undefined;
-    let tokensLeft: number | undefined;
-    try {
-      const payload = JSON.parse(error.body) as Record<string, unknown>;
-      tokensLeft = typeof payload.tokensLeft === 'number' ? payload.tokensLeft : undefined;
-      retryAfterSeconds = typeof payload.refillIn === 'number' && payload.refillIn > 0 ? Math.ceil(payload.refillIn / 1000) : undefined;
-    } catch {
-      // Keepa sometimes returns text bodies.
+    const keepaApiKey = await getSecret(prisma, 'KEEPA_API_KEY');
+    if (!keepaApiKey) {
+      return finish({
+        enabled: true,
+        selected: [],
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        reason: 'KEEPA_API_KEY is not configured.'
+      });
     }
-    return {
-      enabled: true,
-      selected,
-      compared: 0,
-      opportunities: 0,
-      manualReviews: 0,
-      rejected: 0,
-      keepa: { tokensLeft, retryAfterSeconds, requestedTokens },
-      reason: retryAfterSeconds
-        ? `Keepa rate limit reached; retry after about ${retryAfterSeconds} seconds.`
-        : 'Keepa rate limit reached.'
-    };
-  }
 
-  if (affordableCompareLimit <= 0) {
-    return {
-      enabled: true,
-      selected,
-      compared: 0,
-      opportunities: 0,
-      manualReviews: 0,
-      rejected: 0,
-      keepa: keepaSummary,
-      reason: keepaSummary.retryAfterSeconds
-        ? `Keepa has ${keepaSummary.tokensLeft} tokens; retry after about ${keepaSummary.retryAfterSeconds} seconds.`
-        : `Keepa has ${keepaSummary.tokensLeft} tokens; Amazon comparison was skipped.`
-    };
-  }
+    const compareLimit = Math.min(Math.max(ruleConfig.ebayAmazonCompareAutoRunLimit, 1), 25);
+    const candidates = await nextAmazonComparisonCandidates(compareLimit);
 
-  const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
-  const comparisonCandidates = candidates.slice(0, affordableCompareLimit);
-  let comparison: Awaited<ReturnType<typeof compareEbayDiscoveryCandidates>>;
-  try {
-    comparison = await compareEbayDiscoveryCandidates({
-      db: prisma,
-      keepaApiKey,
-      serpApiKey,
-      ruleConfig,
-      candidateIds: comparisonCandidates.map((candidate) => candidate.id),
-      limit: comparisonCandidates.length,
-      amazonMatchLimit,
-      force: true
-    });
-  } catch (error) {
-    if (!(error instanceof KeepaApiError)) throw error;
-    return {
+    const selected = candidates.map((candidate) => ({
+      id: candidate.id,
+      title: candidate.title,
+      ebayScore: candidate.ebayScore
+    }));
+
+    if (!candidates.length) {
+      return finish({
+        enabled: true,
+        selected,
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        reason: 'No pending eBay products are ready for Amazon comparison.'
+      });
+    }
+
+    const requestedTokens = candidates.length * amazonMatchLimit;
+    let keepaSummary: { tokensLeft?: number; retryAfterSeconds?: number; requestedTokens?: number };
+    let affordableCompareLimit = candidates.length;
+    try {
+      const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+      keepaSummary = {
+        tokensLeft: tokenStatus.tokensLeft,
+        retryAfterSeconds: tokenStatus.retryAfterSeconds,
+        requestedTokens
+      };
+      affordableCompareLimit = Math.min(candidates.length, Math.floor(Math.max(tokenStatus.tokensLeft, 0) / amazonMatchLimit));
+    } catch (error) {
+      if (!(error instanceof KeepaApiError)) throw error;
+      let retryAfterSeconds: number | undefined;
+      let tokensLeft: number | undefined;
+      try {
+        const payload = JSON.parse(error.body) as Record<string, unknown>;
+        tokensLeft = typeof payload.tokensLeft === 'number' ? payload.tokensLeft : undefined;
+        retryAfterSeconds = typeof payload.refillIn === 'number' && payload.refillIn > 0 ? Math.ceil(payload.refillIn / 1000) : undefined;
+      } catch {
+        // Keepa sometimes returns text bodies.
+      }
+      return finish({
+        enabled: true,
+        selected,
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        keepa: { tokensLeft, retryAfterSeconds, requestedTokens },
+        reason: retryAfterSeconds
+          ? `Keepa rate limit reached; retry after about ${retryAfterSeconds} seconds.`
+          : 'Keepa rate limit reached.'
+      });
+    }
+
+    if (affordableCompareLimit <= 0) {
+      return finish({
+        enabled: true,
+        selected,
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        keepa: keepaSummary,
+        reason: keepaSummary.retryAfterSeconds
+          ? `Keepa has ${keepaSummary.tokensLeft} tokens; retry after about ${keepaSummary.retryAfterSeconds} seconds.`
+          : `Keepa has ${keepaSummary.tokensLeft} tokens; Amazon comparison was skipped.`
+      });
+    }
+
+    const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
+    const comparisonCandidates = candidates.slice(0, affordableCompareLimit);
+    let comparison: Awaited<ReturnType<typeof compareEbayDiscoveryCandidates>>;
+    try {
+      comparison = await compareEbayDiscoveryCandidates({
+        db: prisma,
+        keepaApiKey,
+        serpApiKey,
+        ruleConfig,
+        candidateIds: comparisonCandidates.map((candidate) => candidate.id),
+        limit: comparisonCandidates.length,
+        amazonMatchLimit,
+        force: true
+      });
+    } catch (error) {
+      if (!(error instanceof KeepaApiError)) throw error;
+      return finish({
+        enabled: true,
+        selected: comparisonCandidates.map((candidate) => ({
+          id: candidate.id,
+          title: candidate.title,
+          ebayScore: candidate.ebayScore
+        })),
+        compared: 0,
+        opportunities: 0,
+        manualReviews: 0,
+        rejected: 0,
+        keepa: keepaSummary,
+        reason: 'Keepa rate limit reached during Amazon comparison; selected products remain queued for retry.'
+      });
+    }
+
+    return finish({
       enabled: true,
       selected: comparisonCandidates.map((candidate) => ({
         id: candidate.id,
         title: candidate.title,
         ebayScore: candidate.ebayScore
       })),
+      compared: comparison.compared,
+      opportunities: comparison.opportunities.length,
+      manualReviews: comparison.manualReviews.length,
+      rejected: comparison.rejected.length,
+      keepa: keepaSummary,
+      reason: affordableCompareLimit < candidates.length
+        ? `Compared ${affordableCompareLimit} products now; ${candidates.length - affordableCompareLimit} remain queued until Keepa tokens refill.`
+        : undefined
+    }, 'COMPLETED');
+  } catch (error) {
+    await finishAmazonComparisonRun(run.id, 'FAILED', {
+      enabled: true,
+      selected: [],
       compared: 0,
       opportunities: 0,
       manualReviews: 0,
       rejected: 0,
-      keepa: keepaSummary,
-      reason: 'Keepa rate limit reached during Amazon comparison; selected products remain queued for retry.'
-    };
+      reason: publicErrorMessage(error)
+    }, error);
+    throw error;
   }
-
-  return {
-    enabled: true,
-    selected: comparisonCandidates.map((candidate) => ({
-      id: candidate.id,
-      title: candidate.title,
-      ebayScore: candidate.ebayScore
-    })),
-    compared: comparison.compared,
-    opportunities: comparison.opportunities.length,
-    manualReviews: comparison.manualReviews.length,
-    rejected: comparison.rejected.length,
-    keepa: keepaSummary,
-    reason: affordableCompareLimit < candidates.length
-      ? `Compared ${affordableCompareLimit} products now; ${candidates.length - affordableCompareLimit} remain queued until Keepa tokens refill.`
-      : undefined
-  };
 }
 
 let schedulerRunning = false;
@@ -446,7 +544,7 @@ export function startEbayAmazonComparisonScheduler(app: FastifyInstance): void {
       }
 
       comparisonSchedulerRunning = true;
-      withTimeout(runScheduledEbayAmazonComparison(), 'Scheduled eBay Amazon comparison', scheduledComparisonTimeoutMinutes)
+      withTimeout(runScheduledEbayAmazonComparison({ mode: 'AUTO' }), 'Scheduled eBay Amazon comparison', scheduledComparisonTimeoutMinutes)
         .then((result) => {
           if (result.enabled) app.log.info({ result }, 'Scheduled eBay Amazon comparison completed');
         })

@@ -537,6 +537,10 @@ const dashboardHtml = `<!doctype html>
           <div class="panel-head"><h2>Recent eBay Discovery Runs</h2></div>
           <div class="panel-body"><div class="table-wrap"><div id="ebayDiscoveryRunsTable"></div></div></div>
         </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Recent Amazon Comparison Jobs</h2><span class="hint">Timer and manual eBay-to-Amazon comparison runs.</span></div>
+          <div class="panel-body"><div class="table-wrap"><div id="ebayAmazonComparisonRunsTable"></div></div></div>
+        </div>
       </section>
 
       <!-- API KEYS -->
@@ -615,7 +619,7 @@ var BADGE={
   NEW:'blue',VALIDATING:'amber',READY_FOR_PURCHASE:'blue',MANUAL_REVIEW:'amber',PURCHASED:'green',SHIPPED:'teal',
   VERIFY:'amber',LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
   DRAFT:'blue',ASSISTED:'amber',AUTOPILOT:'red',
-  NEEDS_HUMAN_CONFIRMATION:'amber',FAILED:'red',REVIEW_REQUIRED:'amber',
+  NEEDS_HUMAN_CONFIRMATION:'amber',FAILED:'red',REVIEW_REQUIRED:'amber',SKIPPED:'slate',
   PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
   ,NO_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red'
 };
@@ -1438,8 +1442,8 @@ function clearEbayCompareFilters(){
 
 function render(){
   var d=state.data;if(!d)return;
-  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
-  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Discovery',automationRuns:'Automation Runs',automationNeedsConfirmation:'Needs Confirm',automationFailures:'Automation Issues'};
+  var icons={productCandidates:['🔎','rgba(99,102,241,.18)'],amazonMatches:['📦','rgba(34,211,238,.16)'],ebayListings:['🏷','rgba(52,211,153,.16)'],orders:['🧾','rgba(96,165,250,.16)'],actions:['⚡','rgba(251,191,36,.16)'],purchases:['💳','rgba(45,212,191,.16)'],discoveryScans:['⌕','rgba(45,212,191,.16)'],amazonScouts:['🧭','rgba(34,211,238,.16)'],ebayDiscoveries:['⇄','rgba(52,211,153,.16)'],ebayAmazonComparisons:['A>','rgba(34,211,238,.16)'],automationRuns:['◉','rgba(96,165,250,.16)'],automationNeedsConfirmation:['✓','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
+  var labels={productCandidates:'Candidates',amazonMatches:'Amazon Matches',ebayListings:'Listings',orders:'Orders',actions:'Actions',purchases:'Purchases',discoveryScans:'Scans',amazonScouts:'Amazon Scouts',ebayDiscoveries:'eBay Discovery',ebayAmazonComparisons:'Amazon Compare Jobs',automationRuns:'Automation Runs',automationNeedsConfirmation:'Needs Confirm',automationFailures:'Automation Issues'};
   document.getElementById('stats').innerHTML=Object.keys(d.counts).map(function(k){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
@@ -1526,6 +1530,29 @@ function render(){
     {key:'acceptedCount',label:'Accepted'},
     {key:'comparedCount',label:'Compared'},
     {key:'opportunityCount',label:'Opps'},
+    {key:'error',label:'Error',fmt:function(v){return v?'<span class="truncate" title="'+esc(v)+'">'+esc(v)+'</span>':'—'}},
+    {key:'startedAt',label:'Started',fmt:when}
+  ]);
+  document.getElementById('ebayAmazonComparisonRunsTable').innerHTML=table(d.ebayAmazonComparisonRuns,[
+    {key:'mode',label:'Mode',fmt:badge},
+    {key:'status',label:'Status',fmt:badge},
+    {key:'selectedCount',label:'Selected',fmt:function(v,r){
+      var selected=Array.isArray(r.selectedCandidates)?r.selectedCandidates:[];
+      var first=selected[0]&&selected[0].title?String(selected[0].title):'';
+      return esc(v||0)+(first?' · <span class="truncate" title="'+esc(first)+'">'+esc(first)+'</span>':'');
+    }},
+    {key:'comparedCount',label:'Compared'},
+    {key:'opportunityCount',label:'Opps'},
+    {key:'manualReviewCount',label:'Review'},
+    {key:'rejectedCount',label:'Rejected'},
+    {key:'keepaTokensLeft',label:'Keepa',fmt:function(v,r){
+      var parts=[];
+      if(v!==null&&v!==undefined)parts.push('left '+esc(v));
+      if(r.keepaRequestedTokens!==null&&r.keepaRequestedTokens!==undefined)parts.push('need '+esc(r.keepaRequestedTokens));
+      if(r.keepaRetryAfterSeconds!==null&&r.keepaRetryAfterSeconds!==undefined)parts.push('retry '+esc(r.keepaRetryAfterSeconds)+'s');
+      return parts.length?parts.join(' · '):'—';
+    }},
+    {key:'reason',label:'Reason',fmt:function(v,r){var msg=r.error||v;return msg?'<span class="truncate" title="'+esc(msg)+'">'+esc(msg)+'</span>':'—'}},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
