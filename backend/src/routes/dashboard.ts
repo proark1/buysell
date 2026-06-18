@@ -1514,6 +1514,7 @@ function render(){
     {key:'acceptedCount',label:'Accepted'},
     {key:'comparedCount',label:'Compared'},
     {key:'opportunityCount',label:'Opps'},
+    {key:'error',label:'Error',fmt:function(v){return v?'<span class="truncate" title="'+esc(v)+'">'+esc(v)+'</span>':'—'}},
     {key:'startedAt',label:'Started',fmt:when}
   ]);
   if((d.amazonDiscoveryCandidates||[]).length&&!state.amazonScoutCandidates.length&&!state.amazonScoutRejected.length)renderAmazonScoutReport(d.amazonDiscoveryCandidates,[],false);

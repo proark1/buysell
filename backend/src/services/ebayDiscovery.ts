@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { AmazonMatchInput, EbayCandidateInput, ProductOpportunity } from '../domain/products.js';
 import { findAmazonMatches } from '../clients/keepaClient.js';
-import { searchEbayCandidates } from '../clients/serpApiClient.js';
+import { searchEbayCandidates, SerpApiError } from '../clients/serpApiClient.js';
 import { createActionForDecision } from '../repositories/actionRepository.js';
 import { persistOpportunity } from '../repositories/opportunityRepository.js';
 import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
@@ -1088,26 +1088,34 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
         domain: market.amazonDomainId,
         limit: amazonMatchLimit
       });
-      const activeMarketCandidates = options.serpApiKey
-        ? await searchEbayCandidates({
-          query,
-          apiKey: options.serpApiKey,
-          ebayDomain: market.ebayDomain,
-          soldOnly: false,
-          completedOnly: false,
-          buyingFormat: 'BIN',
-          conditionIds: conditionIdsBySetting.NEW,
-          preferredLocation: 'Domestic',
-          postalCode: market.defaultPostalCode,
-          limit: 25
-        })
-        : undefined;
+      let activeMarketCandidates: EbayCandidateInput[] | undefined;
+      let activeMarketWarning: string | undefined;
+      if (options.serpApiKey) {
+        try {
+          activeMarketCandidates = await searchEbayCandidates({
+            query,
+            apiKey: options.serpApiKey,
+            ebayDomain: market.ebayDomain,
+            soldOnly: false,
+            completedOnly: false,
+            buyingFormat: 'BIN',
+            conditionIds: conditionIdsBySetting.NEW,
+            preferredLocation: 'Domestic',
+            postalCode: market.defaultPostalCode,
+            limit: 25
+          });
+        } catch (error) {
+          if (!(error instanceof SerpApiError)) throw error;
+          activeMarketWarning = 'Live eBay market check was skipped because SerpAPI is currently unavailable or out of quota.';
+        }
+      }
       const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, query, {
         market,
         amazonMatchLimit,
         soldMarketCandidates,
         activeMarketCandidates
       });
+      if (activeMarketWarning) comparison.report.reasons = uniqueReasons([...comparison.report.reasons, activeMarketWarning]);
       reports.push(comparison.report);
       const best = comparison.best;
       if (!best) {
