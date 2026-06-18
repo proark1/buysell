@@ -8,8 +8,8 @@ import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
 import { runScheduledEbayAmazonComparison, runScheduledEbayDiscovery } from '../services/ebayDiscoveryScheduler.js';
 
 const settingsSchema = z.object({
-  minimumProfitUsd: z.number().positive().optional(),
-  minimumRoiPercent: z.number().positive().optional(),
+  minimumProfitUsd: z.number().min(0).optional(),
+  minimumRoiPercent: z.number().min(0).optional(),
   minimumMatchConfidence: z.number().min(0).max(1).optional(),
   estimatedSalesTaxRate: z.number().min(0).max(1).optional(),
   returnRiskBuffer: z.number().min(0).optional(),

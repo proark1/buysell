@@ -797,12 +797,21 @@ const dashboardHtml = `<!doctype html>
                 </div>
               </div>
             </details>
+            <details class="advanced settings-group" open>
+              <summary>Profit and comparison thresholds</summary>
+              <div class="form-grid compact">
+                <div class="field"><label>Minimum Profit</label><input id="settingsMinProfit" type="number" min="0" step="1"></div>
+                <div class="field"><label>Minimum ROI %</label><input id="settingsMinRoi" type="number" min="0" max="500" step="1"></div>
+                <div class="field"><label>Minimum Match %</label><input id="settingsMinMatch" type="number" min="0" max="100" step="1"></div>
+                <div class="field"><label>Minimum Score</label><input id="settingsMinScore" type="number" min="0" max="100"></div>
+                <div class="field"><label>Max Amazon Cost</label><input id="settingsMaxCost" type="number" min="1" step="1"></div>
+              </div>
+              <div class="actions-row"><button class="btn primary" onclick="saveThresholds()">Save Thresholds</button></div>
+            </details>
             <details class="advanced settings-group">
               <summary>Discovery safety defaults</summary>
               <div class="form-grid">
                 <div class="field"><label>Safe Mode</label><label class="check"><input id="settingsSafeMode" type="checkbox"> Keep risky products out</label></div>
-                <div class="field"><label>Minimum Score</label><input id="settingsMinScore" type="number" min="0" max="100"></div>
-                <div class="field"><label>Max Amazon Cost</label><input id="settingsMaxCost" type="number" min="1" step="1"></div>
                 <div class="field"><label>Allowed Categories</label><textarea id="settingsAllowedCategories" placeholder="One per line"></textarea></div>
                 <div class="field"><label>Blocked Categories</label><textarea id="settingsBlockedCategories" placeholder="One per line"></textarea></div>
                 <div class="field"><label>Blocked Keywords</label><textarea id="settingsBlockedKeywords" placeholder="One per line"></textarea></div>
@@ -2385,6 +2394,9 @@ function render(){
   if(rc.ebayAmazonCompareAutoRunIntervalMinutes)document.getElementById('ebayAmazonCompareInterval').value=rc.ebayAmazonCompareAutoRunIntervalMinutes;
   if(rc.ebayAmazonCompareAutoRunLimit)document.getElementById('ebayAmazonCompareLimit').value=rc.ebayAmazonCompareAutoRunLimit;
   document.getElementById('settingsSafeMode').checked=!!rc.safeMode;
+  if(rc.thresholds&&rc.thresholds.minimumProfitUsd!==undefined)document.getElementById('settingsMinProfit').value=rc.thresholds.minimumProfitUsd;
+  if(rc.thresholds&&rc.thresholds.minimumRoiPercent!==undefined)document.getElementById('settingsMinRoi').value=rc.thresholds.minimumRoiPercent;
+  if(rc.thresholds&&rc.thresholds.minimumMatchConfidence!==undefined)document.getElementById('settingsMinMatch').value=Math.round(Number(rc.thresholds.minimumMatchConfidence||0)*100);
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
   document.getElementById('settingsAllowedCategories').value=lineText(rc.allowedCategories);
@@ -2394,15 +2406,25 @@ function render(){
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('scanMaxCost').value=rc.maxAmazonCostUsd;
   document.getElementById('scanSafeMode').checked=!!rc.safeMode;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('amazonScoutMaxCost').value=rc.maxAmazonCostUsd;
+  if(rc.minimumOpportunityScore!==undefined)document.getElementById('amazonScoutMinCompareScore').value=rc.minimumOpportunityScore;
+  if(rc.thresholds&&rc.thresholds.minimumProfitUsd!==undefined)document.getElementById('amazonScoutMinProfit').value=rc.thresholds.minimumProfitUsd;
+  if(rc.thresholds&&rc.thresholds.minimumRoiPercent!==undefined)document.getElementById('amazonScoutMinRoi').value=rc.thresholds.minimumRoiPercent;
+  if(rc.thresholds&&rc.thresholds.minimumMatchConfidence!==undefined)document.getElementById('amazonScoutMinMatch').value=Math.round(Number(rc.thresholds.minimumMatchConfidence||0)*100);
   document.getElementById('amazonScoutSafeMode').checked=!!rc.safeMode;
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('ebayDiscoveryMinCompareScore').value=rc.minimumOpportunityScore;
   if(rc.thresholds&&rc.thresholds.minimumProfitUsd!==undefined)document.getElementById('ebayDiscoveryMinProfit').value=rc.thresholds.minimumProfitUsd;
   if(rc.thresholds&&rc.thresholds.minimumRoiPercent!==undefined)document.getElementById('ebayDiscoveryMinRoi').value=rc.thresholds.minimumRoiPercent;
   if(rc.thresholds&&rc.thresholds.minimumMatchConfidence!==undefined)document.getElementById('ebayDiscoveryMinMatch').value=Math.round(Number(rc.thresholds.minimumMatchConfidence||0)*100);
   document.getElementById('ebayDiscoverySafeMode').checked=!!rc.safeMode;
-  var prettySet={minimumProfitUsd:'Min Profit (USD)',minimumRoiPercent:'Min ROI %',minimumMatchConfidence:'Min Match Confidence',minimumOpportunityScore:'Min Opportunity Score',safeMode:'Safe Mode',maxAmazonCostUsd:'Max Amazon Cost',estimatedSalesTaxRate:'Est. Sales Tax Rate',returnRiskBuffer:'Return Risk Buffer',priceChangeBuffer:'Price Change Buffer',maxDailyListings:'Max Daily Listings',maxDailyPurchaseAmountUsd:'Max Daily Spend (USD)',amazonPriceCheckIntervalMinutes:'Price-Check Interval (min)'};
-  document.getElementById('settingsKv').innerHTML=Object.keys(prettySet).filter(function(k){return rc[k]!==undefined&&rc[k]!==null}).map(function(k){
-    return '<div class="k">'+prettySet[k]+'</div><div class="v">'+esc(rc[k])+'</div>';
+  var prettySet={minimumProfitUsd:'Min Profit',minimumRoiPercent:'Min ROI %',minimumMatchConfidence:'Min Match %',minimumOpportunityScore:'Min Opportunity Score',safeMode:'Safe Mode',maxAmazonCostUsd:'Max Amazon Cost',estimatedSalesTaxRate:'Est. Sales Tax Rate',returnRiskBuffer:'Return Risk Buffer',priceChangeBuffer:'Price Change Buffer',maxDailyListings:'Max Daily Listings',maxDailyPurchaseAmountUsd:'Max Daily Spend',amazonPriceCheckIntervalMinutes:'Price-Check Interval (min)'};
+  var settingValue=function(k){return rc[k]!==undefined&&rc[k]!==null?rc[k]:(rc.thresholds&&rc.thresholds[k]!==undefined&&rc.thresholds[k]!==null?rc.thresholds[k]:undefined)};
+  var settingDisplay=function(k,v){
+    if(k==='minimumMatchConfidence')return Math.round(Number(v||0)*100)+'%';
+    if(['minimumProfitUsd','maxAmazonCostUsd','maxDailyPurchaseAmountUsd'].includes(k))return '$'+Number(v||0).toFixed(2);
+    return v;
+  };
+  document.getElementById('settingsKv').innerHTML=Object.keys(prettySet).filter(function(k){var v=settingValue(k);return v!==undefined&&v!==null}).map(function(k){
+    return '<div class="k">'+prettySet[k]+'</div><div class="v">'+esc(settingDisplay(k,settingValue(k)))+'</div>';
   }).join('')||'<div class="empty" style="grid-column:span 2">No active rule config.</div>';
 
   document.querySelectorAll('[data-select]').forEach(function(tr){tr.onclick=function(){selectAction(tr.getAttribute('data-select'))}});
@@ -2606,11 +2628,32 @@ function startEbayAmazonCompareQueue(){
     load();
   }).catch(function(e){endLocalJob('ebayAmazonCompareStart');toast('Start queue failed',e.message,'err')});
 }
+function saveThresholds(){
+  var minProfit=Number(document.getElementById('settingsMinProfit').value||0);
+  var minRoi=Number(document.getElementById('settingsMinRoi').value||0);
+  var minMatch=Number(document.getElementById('settingsMinMatch').value||0);
+  var minScore=Number(document.getElementById('settingsMinScore').value||65);
+  var maxCost=Number(document.getElementById('settingsMaxCost').value||150);
+  if(!Number.isFinite(minProfit)||minProfit<0)return toast('Invalid minimum profit','Use 0 or higher.','warn');
+  if(!Number.isFinite(minRoi)||minRoi<0||minRoi>500)return toast('Invalid minimum ROI','Use 0 to 500 percent.','warn');
+  if(!Number.isFinite(minMatch)||minMatch<0||minMatch>100)return toast('Invalid minimum match','Use 0 to 100 percent.','warn');
+  if(!Number.isFinite(minScore)||minScore<0||minScore>100)return toast('Invalid minimum score','Use 0 to 100.','warn');
+  if(!Number.isFinite(maxCost)||maxCost<=0)return toast('Invalid max Amazon cost','Use a value above 0.','warn');
+  var body={
+    minimumProfitUsd:minProfit,
+    minimumRoiPercent:minRoi,
+    minimumMatchConfidence:minMatch/100,
+    minimumOpportunityScore:Math.round(minScore),
+    maxAmazonCostUsd:maxCost
+  };
+  apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){
+    toast('Thresholds saved','Manual and scheduled discovery will use the updated values.','ok');
+    load();
+  }).catch(function(e){toast('Save failed',e.message,'err')});
+}
 function saveSafety(){
   var body={
     safeMode:document.getElementById('settingsSafeMode').checked,
-    minimumOpportunityScore:Number(document.getElementById('settingsMinScore').value||65),
-    maxAmazonCostUsd:Number(document.getElementById('settingsMaxCost').value||150),
     allowedCategories:lines(document.getElementById('settingsAllowedCategories').value),
     blockedCategories:lines(document.getElementById('settingsBlockedCategories').value),
     blockedKeywords:lines(document.getElementById('settingsBlockedKeywords').value)
