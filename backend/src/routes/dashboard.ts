@@ -52,6 +52,13 @@ const dashboardHtml = `<!doctype html>
       background:linear-gradient(180deg,rgba(11,17,32,.92),rgba(11,17,32,.72));backdrop-filter:blur(10px)}
     .topbar h1{margin:0;font-size:18px;font-weight:700}
     .topbar .sub{color:var(--muted);font-size:12px}
+    .job-headline{display:none;align-items:center;gap:8px;margin-top:7px;font-size:12px;font-weight:800;max-width:760px;color:var(--muted)}
+    .job-headline.show{display:flex}
+    .job-headline .job-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:0 0 9px}
+    .job-headline.running{color:var(--blue)}
+    .job-headline.running .job-dot{animation:pulseBlue 1.6s infinite}
+    .job-headline.paused{color:var(--amber)}
+    .job-headline.idle{color:var(--slate);font-weight:700}
     .spacer{flex:1}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;
       border:1px solid var(--border-strong);background:rgba(17,26,46,.6);font-size:12px;font-weight:600;color:var(--muted)}
@@ -60,6 +67,7 @@ const dashboardHtml = `<!doctype html>
     .dot.on{background:var(--green);animation:pulse 2s infinite}
     .dot.off{background:var(--red)}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.45)}70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+    @keyframes pulseBlue{0%{box-shadow:0 0 0 0 rgba(96,165,250,.55)}70%{box-shadow:0 0 0 8px rgba(96,165,250,0)}100%{box-shadow:0 0 0 0 rgba(96,165,250,0)}}
     .btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;border-radius:10px;
       border:1px solid var(--border-strong);padding:9px 14px;font-weight:600;font-size:13px;color:var(--text);
       background:rgba(148,163,184,.06);transition:.15s;font-family:inherit}
@@ -194,6 +202,18 @@ const dashboardHtml = `<!doctype html>
     .section-help{color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0}
     .result-section-body{display:grid;gap:12px;padding:12px}
     .mini-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;padding:8px 0}
+    .job-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px}
+    .job-status-card{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);padding:12px;min-width:0}
+    .job-status-card.running{border-color:rgba(96,165,250,.35);background:rgba(37,99,235,.09)}
+    .job-status-card.paused{border-color:rgba(251,191,36,.35);background:rgba(120,53,15,.11)}
+    .job-status-card.stopped{border-color:rgba(148,163,184,.22);background:rgba(15,23,42,.42)}
+    .job-status-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+    .job-status-count{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text);font-size:11px}
+    .job-status-list{display:grid;gap:7px;margin-top:10px}
+    .job-status-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:7px}
+    .job-status-row:first-child{border-top:none;padding-top:0}
+    .job-status-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .job-status-meta{color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .placeholder-check{width:20px;flex:0 0 20px}
     .comparison-box{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.48);padding:10px;display:grid;gap:7px}
     .comparison-box.locked{border-color:rgba(248,113,113,.28);background:rgba(127,29,29,.1)}
@@ -218,7 +238,7 @@ const dashboardHtml = `<!doctype html>
     .pager .btn{min-width:34px;justify-content:center}
     .settings-group{margin-top:0;margin-bottom:12px}
     .settings-group:last-child{margin-bottom:0}
-    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}}
+    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}}
     @media(max-width:760px){.list-controls{grid-template-columns:1fr 1fr}.pager{justify-content:flex-start;flex-wrap:wrap}}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
@@ -275,6 +295,7 @@ const dashboardHtml = `<!doctype html>
       <div>
         <h1 id="viewTitle">Home</h1>
         <div class="sub" id="viewSub">What needs attention and what is safe to do next</div>
+        <div class="job-headline idle" id="jobHeadline"><span class="job-dot"></span><span id="jobHeadlineText">Checking jobs...</span></div>
         <select id="mobileNav" class="mobile-nav" aria-label="View">
           <option value="overview">Home</option>
           <option value="ebayDiscovery">Discover</option>
@@ -651,11 +672,12 @@ const dashboardHtml = `<!doctype html>
           <div class="panel-body">
             <div class="list-controls">
               <div class="field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
-              <div class="field"><label>Status</label><select id="ebayCompareStatus" onchange="updateEbayCompareFilters()"><option value="ALL">All</option><option value="QUEUED">Queued</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
+              <div class="field"><label>Status</label><select id="ebayCompareStatus" onchange="updateEbayCompareFilters()"><option value="ALL">All</option><option value="QUEUED">Queued</option><option value="COMPARING">Comparing</option><option value="OPPORTUNITY">Opportunity</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option><option value="ERROR">Error</option></select></div>
               <div class="field"><label>Min Score</label><input id="ebayCompareMinScore" type="number" min="0" max="100" step="1" placeholder="0" oninput="updateEbayCompareFilters()"></div>
               <div class="field"><label>&nbsp;</label><button class="btn" onclick="clearEbayCompareFilters()">Clear</button></div>
             </div>
             <div id="ebayCompareTimerInfo" class="mini-summary"></div>
+            <div id="ebayCompareJobStatus" class="job-status-grid"></div>
             <div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div>
             <div id="ebayComparePager" class="pager"></div>
           </div>
@@ -746,7 +768,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
 var pageSize=20;
 var tablePageSize=12;
 var cardPageSize=8;
@@ -766,7 +788,7 @@ var BADGE={
   VERIFY:'amber',LIST:'blue',REPRICE:'teal',PAUSE:'amber',BUY:'green',REVIEW:'slate',
   DRAFT:'blue',ASSISTED:'amber',AUTOPILOT:'red',
   NEEDS_HUMAN_CONFIRMATION:'amber',FAILED:'red',REVIEW_REQUIRED:'amber',SKIPPED:'slate',
-  PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
+  PASS:'green',WARN:'amber',REJECT:'red',RUNNING:'blue',PAUSED:'amber',STOPPED:'slate',IDLE:'slate',NOT_COMPARED:'slate',COMPARING:'blue',OPPORTUNITY:'green'
   ,NO_EBAY_RESULTS:'red',NO_FIXED_PRICE_EBAY_RESULTS:'red',NO_PRICED_EBAY_RESULTS:'red',NO_AMAZON_RESULTS:'red',NO_PRICED_AMAZON_RESULTS:'red',SKIPPED_EBAY_SOURCE_FORMAT:'red',SKIPPED_EBAY_SOURCE_DATA:'red'
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
@@ -817,6 +839,165 @@ function latestEventText(run){
 function marketMoney(v,market){if(v===null||v===undefined||v==='')return '—';var n=Number(v);var symbol=(market&&market.currencySymbol)||'$';return isNaN(n)?esc(v):esc(symbol)+n.toFixed(2)}
 function lines(v){return String(v||'').split(/\\n|,/).map(function(s){return s.trim()}).filter(Boolean)}
 function lineText(v){return Array.isArray(v)?v.join('\\n'):''}
+function jobAge(startedAt){
+  if(!startedAt)return '';
+  var d=new Date(startedAt);
+  if(isNaN(d.getTime()))return '';
+  var mins=Math.max(0,Math.round((Date.now()-d.getTime())/60000));
+  if(mins<1)return 'started just now';
+  return 'started '+mins+' min ago';
+}
+function beginLocalJob(key,label,detail,category){
+  state.localJobs[key]={label:label,detail:detail||'',status:'RUNNING',category:category||'general',startedAt:new Date().toISOString()};
+  renderJobActivity();
+  renderComparisonJobStatus();
+}
+function endLocalJob(key){
+  if(state.localJobs&&state.localJobs[key])delete state.localJobs[key];
+  renderJobActivity();
+  renderComparisonJobStatus();
+}
+function localJobRows(category){
+  return Object.keys(state.localJobs||{}).map(function(key){
+    var job=state.localJobs[key];
+    return {
+      key:key,
+      label:job.label,
+      detail:[job.detail,jobAge(job.startedAt)].filter(Boolean).join(' · '),
+      status:job.status||'RUNNING',
+      category:job.category||'general'
+    };
+  }).filter(function(job){return !category||job.category===category});
+}
+function selectedCandidateTitle(run){
+  var selected=Array.isArray(run&&run.selectedCandidates)?run.selectedCandidates:[];
+  return selected[0]&&selected[0].title?String(selected[0].title):'';
+}
+function comparisonRunMeta(run){
+  var parts=[];
+  if(run.mode)parts.push(String(run.mode).toLowerCase());
+  if(run.selectedCount!==undefined&&run.selectedCount!==null)parts.push('selected '+run.selectedCount);
+  if(run.comparedCount!==undefined&&run.comparedCount!==null)parts.push('compared '+run.comparedCount);
+  if(run.opportunityCount)parts.push('opps '+run.opportunityCount);
+  if(run.keepaTokensLeft!==undefined&&run.keepaTokensLeft!==null)parts.push('Keepa '+run.keepaTokensLeft);
+  var title=selectedCandidateTitle(run);
+  if(title)parts.push(title);
+  var reason=run.error||run.reason;
+  if(reason)parts.push(reason);
+  parts.push('started '+when(run.startedAt));
+  return parts.filter(Boolean).join(' · ');
+}
+function isKeepaPause(run){
+  var status=String((run&&run.status)||'');
+  var msg=String((run&&run.reason)||(run&&run.error)||'').toLowerCase();
+  return status==='SKIPPED'&&(msg.indexOf('keepa')>=0||msg.indexOf('rate limit')>=0||msg.indexOf('token')>=0||msg.indexOf('retry')>=0);
+}
+function comparisonJobBuckets(){
+  var d=state.data||{};
+  var rc=d.ruleConfig||{};
+  var p=d.pipeline||{};
+  var f=p.funnel||{};
+  var runs=d.ebayAmazonComparisonRuns||[];
+  var running=localJobRows('comparison');
+  runs.filter(function(run){return run.status==='RUNNING'}).forEach(function(run){
+    running.push({label:'Amazon comparison job',detail:comparisonRunMeta(run),status:'RUNNING'});
+  });
+  if((f.ebayComparing||0)>0&&!running.length){
+    running.push({label:f.ebayComparing+' product'+(f.ebayComparing===1?'':'s')+' comparing',detail:'Candidate rows are marked COMPARING',status:'RUNNING'});
+  }
+  var paused=[];
+  if(d.ruleConfig&&!rc.ebayAmazonCompareAutoRunEnabled){
+    paused.push({label:'Amazon comparison timer',detail:'Paused in Settings; manual compare can still be run from this page.',status:'PAUSED'});
+  }
+  runs.filter(isKeepaPause).slice(0,4).forEach(function(run){
+    paused.push({label:'Waiting for Keepa tokens',detail:comparisonRunMeta(run),status:'PAUSED'});
+  });
+  var stopped=runs.filter(function(run){
+    return run.status&&run.status!=='RUNNING'&&!isKeepaPause(run);
+  }).slice(0,6).map(function(run){
+    return {label:'Amazon comparison job',detail:comparisonRunMeta(run),status:run.status||'STOPPED'};
+  });
+  return {running:running,paused:paused,stopped:stopped};
+}
+function jobStatusRow(row){
+  var detail=row.detail||'—';
+  return '<div class="job-status-row"><div><div class="job-status-title" title="'+esc(row.label)+'">'+esc(row.label)+'</div><div class="job-status-meta" title="'+esc(detail)+'">'+esc(detail)+'</div></div>'+badge(row.status||'IDLE')+'</div>';
+}
+function jobStatusCard(kind,label,rows,emptyText){
+  return '<div class="job-status-card '+kind+'"><div class="job-status-head"><span>'+esc(label)+'</span><span class="job-status-count">'+esc(rows.length)+'</span></div><div class="job-status-list">'+(rows.length?rows.map(jobStatusRow).join(''):'<div class="job-status-meta">'+esc(emptyText)+'</div>')+'</div></div>';
+}
+function renderComparisonJobStatus(buckets){
+  var el=document.getElementById('ebayCompareJobStatus');
+  if(!el)return;
+  buckets=buckets||comparisonJobBuckets();
+  el.innerHTML=[
+    jobStatusCard('running','Running',buckets.running,'No comparison jobs are running.'),
+    jobStatusCard('paused','Paused',buckets.paused,'No paused comparison timers or token waits.'),
+    jobStatusCard('stopped','Stopped',buckets.stopped,'No stopped comparison jobs in recent history.')
+  ].join('');
+}
+function liveSchedulerLocks(){
+  var locks=((state.data&&state.data.pipeline&&state.data.pipeline.schedulerLocks)||[]);
+  return locks.filter(function(lock){return new Date(lock.leasedUntil).getTime()>Date.now()});
+}
+function pushActiveRuns(target,rows,label,detailFn,statuses){
+  var active={};
+  statuses.forEach(function(status){active[status]=true});
+  (rows||[]).filter(function(row){return active[row.status]}).forEach(function(row){
+    target.push({label:label,detail:detailFn(row),status:row.status});
+  });
+}
+function buildTopJobActivity(){
+  var d=state.data||{};
+  var p=d.pipeline||{};
+  var f=p.funnel||{};
+  var rc=d.ruleConfig||{};
+  var running=localJobRows();
+  pushActiveRuns(running,d.ebayAmazonComparisonRuns,'Amazon comparison job',comparisonRunMeta,['RUNNING']);
+  pushActiveRuns(running,d.ebayDiscoveryRuns,'eBay discovery scan',function(run){return [run.mode||'manual',run.query||run.categoryKey||run.profileKey,'accepted '+(run.acceptedCount||0),'started '+when(run.startedAt)].filter(Boolean).join(' · ')},['RUNNING']);
+  pushActiveRuns(running,d.amazonDiscoveryRuns,'Amazon scout job',function(run){return [run.mode||'manual',run.query||run.categoryKey||run.profileKey,'accepted '+(run.acceptedCount||0),'started '+when(run.startedAt)].filter(Boolean).join(' · ')},['RUNNING']);
+  pushActiveRuns(running,d.discoveryScanRuns,'Guided scan',function(run){return [run.profileKey,run.query,'accepted '+(run.acceptedCount||0),'started '+when(run.startedAt)].filter(Boolean).join(' · ')},['RUNNING']);
+  pushActiveRuns(running,d.automationRuns,'Automation run',function(run){return [run.phase,'risk '+(run.riskScore||0),latestEventText(run),'started '+when(run.startedAt)].filter(Boolean).join(' · ')},['RUNNING','NEEDS_HUMAN_CONFIRMATION']);
+  if((f.ebayComparing||0)>0&&!running.some(function(job){return job.label.indexOf('comparison')>=0||job.label.indexOf('comparing')>=0})){
+    running.push({label:f.ebayComparing+' Amazon comparison row'+(f.ebayComparing===1?'':'s'),detail:'Products are marked COMPARING',status:'RUNNING'});
+  }
+  liveSchedulerLocks().forEach(function(lock){
+    running.push({label:'Scheduler lock: '+lock.name,detail:'Owner '+(lock.owner||'—')+' · lease '+when(lock.leasedUntil),status:'RUNNING'});
+  });
+  var paused=[];
+  if(d.ruleConfig&&!rc.ebayAmazonCompareAutoRunEnabled)paused.push({label:'Amazon comparison timer paused',detail:'Enable it in Settings to run automatically.',status:'PAUSED'});
+  if(d.ruleConfig&&!rc.ebayDiscoveryAutoRunEnabled)paused.push({label:'eBay discovery timer paused',detail:'Enable it in Settings to run automatically.',status:'PAUSED'});
+  (d.ebayAmazonComparisonRuns||[]).filter(isKeepaPause).slice(0,2).forEach(function(run){
+    paused.push({label:'Amazon comparison waiting for Keepa',detail:comparisonRunMeta(run),status:'PAUSED'});
+  });
+  return {running:running,paused:paused};
+}
+function headlineText(items,maxItems){
+  var shown=items.slice(0,maxItems).map(function(item){return item.label});
+  if(items.length>shown.length)shown.push('+'+(items.length-shown.length)+' more');
+  return shown.join(' · ');
+}
+function renderJobActivity(){
+  var el=document.getElementById('jobHeadline');
+  var txtEl=document.getElementById('jobHeadlineText');
+  if(!el||!txtEl)return;
+  var activity=buildTopJobActivity();
+  el.className='job-headline';
+  if(activity.running.length){
+    el.className='job-headline show running';
+    txtEl.textContent='Jobs running: '+headlineText(activity.running,3);
+    return;
+  }
+  if(activity.paused.length){
+    el.className='job-headline show paused';
+    txtEl.textContent='No jobs running · '+headlineText(activity.paused,2);
+    return;
+  }
+  if(state.data){
+    el.className='job-headline show idle';
+    txtEl.textContent='No jobs running';
+  }
+}
 
 function table(rows,cols,opts){
   opts=opts||{};
@@ -1616,7 +1797,8 @@ function renderEbayAmazonComparisonRows(candidates){
   var allRows=(candidates||[]).slice().sort(function(a,b){
     return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
   });
-  showPanel('ebayComparePanel',allRows.length>0);
+  var jobBuckets=comparisonJobBuckets();
+  showPanel('ebayComparePanel',allRows.length>0||jobBuckets.running.length>0||jobBuckets.paused.length>0||jobBuckets.stopped.length>0);
   var rows=filterEbayRows(allRows,{
     text:inputValue('ebayCompareSearch'),
     status:selectValue('ebayCompareStatus','ALL'),
@@ -1628,6 +1810,7 @@ function renderEbayAmazonComparisonRows(candidates){
   var pending=rows.filter(function(c){var s=ebayCandidateStatus(c);return s==='NOT_COMPARED'||s==='ERROR'}).length;
   var rc=(state.data&&state.data.ruleConfig)||{};
   renderEbayCompareTimerInfo(rc);
+  renderComparisonJobStatus(jobBuckets);
   var timer=rc.ebayAmazonCompareAutoRunEnabled?'timer on · '+(rc.ebayAmazonCompareAutoRunIntervalMinutes||1)+' min · '+(rc.ebayAmazonCompareAutoRunLimit||1)+'/run':'timer off';
   if(summary)summary.textContent=pending+' queued · '+rows.length+' of '+allRows.length+' rows · '+timer+' · highest score first';
   if(!rows.length){
@@ -1777,6 +1960,7 @@ function render(){
     var ic=icons[k]||['•','rgba(99,102,241,.18)'];
     return '<div class="stat" style="--gl:'+ic[1]+'"><div class="ic">'+ic[0]+'</div><div class="label">'+(labels[k]||k)+'</div><div class="count">'+d.counts[k]+'</div></div>';
   }).join('');
+  renderJobActivity();
   renderPipeline();
 
   var actCols=[
@@ -2011,6 +2195,7 @@ function checkDb(){
       state.setup.dashboard=false;
       state.setup.backendSecret=e.status===503?'missing':(e.status===401?'ok':state.setup.backendSecret);
       updateSetupChecklist();
+      renderJobActivity();
       var authHint=e.status===401?' Save the shared secret in Settings.':(e.status===503?' Configure LOCAL_AGENT_SHARED_SECRET on the backend first.':' Check the database connection.');
       document.getElementById('offlineMsg').textContent='Setup needed: '+e.message+'.'+authHint;
       document.getElementById('offline').classList.add('show');
@@ -2080,19 +2265,23 @@ function deleteEbayAmazonCompareAutoRun(){
   }).catch(function(e){toast('Delete failed',e.message,'err')});
 }
 function runEbayAutoNow(){
+  beginLocalJob('ebayAutoNow','eBay discovery scan running','Using auto-run settings','discovery');
   toast('Running scheduled eBay discovery','Using auto-run settings');
   jpost('/api/ebay-discovery/auto-run/run',{}).then(function(res){
     toast('Scheduled eBay discovery complete',res,'ok');
+    endLocalJob('ebayAutoNow');
     load();
-  }).catch(function(e){toast('Scheduled run failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('ebayAutoNow');toast('Scheduled run failed',e.message,'err')});
 }
 function runEbayAmazonCompareNow(){
+  beginLocalJob('ebayAmazonCompareNow','Amazon comparison running','Using the highest-score queued eBay products','comparison');
   toast('Running Amazon comparison','Using the highest-score queued eBay products');
   jpost('/api/ebay-discovery/amazon-compare-auto-run/run',{}).then(function(res){
     toast('Amazon comparison run complete',res,'ok');
     loadKeepaTokenStatus();
+    endLocalJob('ebayAmazonCompareNow');
     load();
-  }).catch(function(e){toast('Comparison run failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('ebayAmazonCompareNow');toast('Comparison run failed',e.message,'err')});
 }
 function saveSafety(){
   var body={
@@ -2105,8 +2294,8 @@ function saveSafety(){
   };
     apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(){toast('Safety rules saved',null,'ok');load()}).catch(function(e){toast('Save failed',e.message,'err')});
   }
-  function runMonitor(){if(!confirmAction('Run Amazon price check now?','This can pause internal listings and create PAUSE actions when source prices rise.'))return;toast('Running price check','Scanning active listings…');
-    jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');load()}).catch(function(e){toast('Price check failed',e.message,'err')})}
+  function runMonitor(){if(!confirmAction('Run Amazon price check now?','This can pause internal listings and create PAUSE actions when source prices rise.'))return;beginLocalJob('priceMonitor','Amazon price check running','Scanning active listings','automation');toast('Running price check','Scanning active listings…');
+    jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');endLocalJob('priceMonitor');load()}).catch(function(e){endLocalJob('priceMonitor');toast('Price check failed',e.message,'err')})}
   function actId(){var id=document.getElementById('actionId').value.trim();if(!id)toast('No action selected','Click a row or paste an Action ID.','warn');return id}
   function updateAction(status){var id=actId();if(!id)return;if(!confirmAction(status.charAt(0)+status.slice(1).toLowerCase()+' this action?',id))return;apiFetch('/actions/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:status,reviewedBy:'dashboard'})}).then(responseJson).then(function(){toast('Action '+status.toLowerCase(),id,'ok');load()}).catch(function(e){toast('Update failed',e.message,'err')})}
   function approveAction(){updateAction('APPROVED')}
@@ -2156,6 +2345,7 @@ function runAmazonScout(){
     maxAmazonCostUsd:Number(document.getElementById('amazonScoutMaxCost').value||150),
     minPriceDropPercent:Number(document.getElementById('amazonScoutMinDrop').value||0)
   };
+  beginLocalJob('amazonScout','Amazon scout running',profile+(q?' · '+q:'')+' · '+category,'discovery');
   toast('Running Amazon Scout',profile+' · '+category);
   jpost('/amazon-discovery/run',body).then(function(res){
     state.amazonScoutRunId=res.run&&res.run.id;
@@ -2164,12 +2354,14 @@ function runAmazonScout(){
     document.getElementById('amazonScoutSummary').textContent='Scanned '+(res.summary.scanned||0)+' · accepted '+(res.summary.accepted||0)+' · review '+(res.summary.manualReviews||0)+' · source rejected '+(res.summary.sourceRejected||0)+' · rejected '+(res.summary.rejected||0)+' · compared '+(res.summary.compared||0)+' · opportunities '+(res.summary.opportunities||0);
     toast('Amazon Scout complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();
+    endLocalJob('amazonScout');
     load();
-  }).catch(function(e){renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('Amazon Scout failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('amazonScout');renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('Amazon Scout failed',e.message,'err')});
 }
 function compareSelectedAmazon(){
   var ids=selectedAmazonIds();
   if(!ids.length)return toast('No accepted candidates selected','Only accepted Amazon candidates can be compared with eBay.','warn');
+  beginLocalJob('amazonEbayCompare','eBay comparison running',ids.length+' selected Amazon products','comparison');
   toast('Comparing with eBay',ids.length+' selected products');
   jpost('/amazon-discovery/compare',{candidateIds:ids,limit:ids.length,marketKey:document.getElementById('amazonScoutMarket').value||'de',ebayComparison:amazonComparisonPayload()}).then(function(res){
     toast('eBay comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
@@ -2177,16 +2369,19 @@ function compareSelectedAmazon(){
     state.amazonScoutReview=[];
     state.amazonScoutRejected=[];
     state.selectedAmazon={};
+    endLocalJob('amazonEbayCompare');
     load();
-  }).catch(function(e){toast('Comparison failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('amazonEbayCompare');toast('Comparison failed',e.message,'err')});
 }
 function recompareAmazonCandidate(id){
+  beginLocalJob('amazonRecompare','eBay recompare running','One Amazon candidate','comparison');
   toast('Recomparing with eBay','Using the current comparison filters');
   jpost('/amazon-discovery/compare',{candidateIds:[id],limit:1,force:true,marketKey:document.getElementById('amazonScoutMarket').value||'de',ebayComparison:amazonComparisonPayload()}).then(function(res){
     toast('Recompare complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
     state.amazonScoutCandidates=[];state.amazonScoutReview=[];state.amazonScoutRejected=[];state.selectedAmazon={};
+    endLocalJob('amazonRecompare');
     load();
-  }).catch(function(e){toast('Recompare failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('amazonRecompare');toast('Recompare failed',e.message,'err')});
 }
 function considerAmazonCandidate(id){
   toast('Adding to review','Creating a manual review action');
@@ -2240,6 +2435,7 @@ function runEbayDiscovery(){
     postalCode:document.getElementById('ebayDiscoveryPostalCode').value.trim()||undefined,
     skipExistingProducts:document.getElementById('ebayDiscoverySkipExisting').checked
   };
+  beginLocalJob('ebayDiscovery','eBay discovery scan running',profile+(q?' · '+q:'')+' · '+category,'discovery');
   toast('Searching eBay sold products',profile+' · '+category);
   jpost('/ebay-discovery/run',body).then(function(res){
     state.ebayDiscoveryRunId=res.run&&res.run.id;
@@ -2249,12 +2445,14 @@ function runEbayDiscovery(){
     renderEbayCompactProducts((res.run&&res.run.candidates)||[]);
     toast('eBay search complete',{summary:res.summary,rejectionBreakdown:res.rejectionBreakdown||[]},'ok');
     loadKeepaTokenStatus();
+    endLocalJob('ebayDiscovery');
     load();
-  }).catch(function(e){renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('eBay Discovery failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('ebayDiscovery');renderKeepaTokenFromPayload(e.payload);loadKeepaTokenStatus();toast('eBay Discovery failed',e.message,'err')});
 }
 function compareSelectedEbay(){
   var ids=selectedEbayIds();
   if(!ids.length)return toast('No accepted candidates selected','Only accepted eBay candidates can be compared with Amazon.','warn');
+  beginLocalJob('ebayAmazonCompare','Amazon comparison running',ids.length+' selected eBay products','comparison');
   toast('Comparing with Amazon',ids.length+' selected products');
   jpost('/ebay-discovery/compare',{candidateIds:ids,limit:ids.length,marketKey:document.getElementById('ebayDiscoveryMarket').value||'de',amazonMatchLimit:Number(document.getElementById('ebayDiscoveryAmazonMatches').value||3),comparison:ebayDiscoveryComparisonPayload()}).then(function(res){
     toast('Amazon comparison complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
@@ -2262,16 +2460,19 @@ function compareSelectedEbay(){
     state.ebayDiscoveryReview=[];
     state.ebayDiscoveryRejected=[];
     state.selectedEbay={};
+    endLocalJob('ebayAmazonCompare');
     load();
-  }).catch(function(e){toast('Comparison failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('ebayAmazonCompare');toast('Comparison failed',e.message,'err')});
 }
 function recompareEbayCandidate(id){
+  beginLocalJob('ebayAmazonRecompare','Amazon recompare running','One eBay candidate','comparison');
   toast('Recomparing with Amazon','Using the current comparison gates');
   jpost('/ebay-discovery/compare',{candidateIds:[id],limit:1,force:true,marketKey:document.getElementById('ebayDiscoveryMarket').value||'de',amazonMatchLimit:Number(document.getElementById('ebayDiscoveryAmazonMatches').value||3),comparison:ebayDiscoveryComparisonPayload()}).then(function(res){
     toast('Recompare complete',{compared:res.compared,opportunities:(res.opportunities||[]).length,manualReviews:(res.manualReviews||[]).length,rejected:(res.rejected||[]).length},'ok');
     state.ebayDiscoveryCandidates=[];state.ebayDiscoveryReview=[];state.ebayDiscoveryRejected=[];state.selectedEbay={};
+    endLocalJob('ebayAmazonRecompare');
     load();
-  }).catch(function(e){toast('Recompare failed',e.message,'err')});
+  }).catch(function(e){endLocalJob('ebayAmazonRecompare');toast('Recompare failed',e.message,'err')});
 }
 function considerEbayCandidate(id){
   toast('Adding to review','Creating a manual review action');
@@ -2294,8 +2495,9 @@ function searchOpportunities(){
     minScore:Number(document.getElementById('scanMinScore').value||65),
     maxAmazonCostUsd:Number(document.getElementById('scanMaxCost').value||150)
   };
+  beginLocalJob('guidedScan','Guided scan running',profile+(q?' · '+q:''),'discovery');
   toast('Scanning',profile+(q?' · '+q:''));
-  jpost('/opportunities/scan',body).then(function(res){renderScanResults(res);toast('Scan complete',res.summary,'ok');load()}).catch(function(e){toast('Scan failed',e.message,'err')})
+  jpost('/opportunities/scan',body).then(function(res){renderScanResults(res);toast('Scan complete',res.summary,'ok');endLocalJob('guidedScan');load()}).catch(function(e){endLocalJob('guidedScan');toast('Scan failed',e.message,'err')})
 }
   function createOrder(){var orderId=document.getElementById('orderEbayOrderId').value;if(!confirmAction('Create BUY action from this eBay order?',orderId||'New manual order'))return;jpost('/orders/ebay/manual',{ebayOrderId:orderId,ebayItemId:document.getElementById('orderEbayItemId').value,buyerName:document.getElementById('orderBuyerName').value,buyerShippingAddress:{enteredInDashboard:true},salePrice:Number(document.getElementById('orderSalePrice').value)}).then(function(res){toast('Order created',res,'ok');load()}).catch(function(e){toast('Create failed',e.message,'err')})}
   function recordPurchase(){var orderId=document.getElementById('purchaseOrderId').value;if(!confirmAction('Record this Amazon purchase?',orderId||'Selected internal order'))return;apiFetch('/orders/'+encodeURIComponent(orderId)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(responseJson).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
@@ -2334,6 +2536,7 @@ updateAmazonScoutActions();
 updateEbayDiscoveryActions();
 load();
 setInterval(checkDb,30000);
+setInterval(load,30000);
 setInterval(loadKeepaTokenStatus,60000);
 </script>
 </body>
