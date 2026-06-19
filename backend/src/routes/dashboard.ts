@@ -64,7 +64,7 @@ const dashboardHtml = `<!doctype html>
     :root{
       --bg:#08111f;--bg-2:#0d1828;--panel:#111b2b;--panel-2:#172438;
       --border:rgba(148,163,184,.14);--border-strong:rgba(148,163,184,.28);
-      --text:#e8eefc;--muted:#94a3b8;--faint:#64748b;
+      --text:#e8eefc;--muted:#94a3b8;--faint:#7e8da2;
       --brand:#0ea5e9;--brand-2:#14b8a6;--accent:#2dd4bf;
       --green:#34d399;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--slate:#94a3b8;--teal:#2dd4bf;
       --shadow:0 18px 40px -20px rgba(0,0,0,.65);
@@ -369,6 +369,25 @@ const dashboardHtml = `<!doctype html>
     .cred-label{font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .cred-actions{display:flex;gap:8px}
     @media(max-width:760px){.cred-row{grid-template-columns:1fr;gap:10px}}
+    /* Analytics + a11y (Slice 1) */
+    .analytics-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:14px}
+    .analytics-card{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.24);padding:13px 14px;min-width:0}
+    .analytics-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+    .bs-funnel{display:grid;gap:9px}
+    .bs-frow{display:grid;grid-template-columns:84px 1fr 44px;align-items:center;gap:9px}
+    .bs-flabel{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .bs-ftrack{height:14px;border-radius:5px;background:rgba(148,163,184,.12);overflow:hidden}
+    .bs-fbar{height:100%;border-radius:5px}
+    .bs-fval{font-size:12px;font-weight:700;text-align:right}
+    .bs-fnote{margin-top:11px;font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+    .bs-gauge{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:128px}
+    .bs-gauge-sub{font-size:11px;color:var(--muted);text-align:center}
+    .bs-donut-legend{display:grid;gap:6px;margin-top:10px;font-size:11px;color:var(--muted)}
+    .bs-donut-legend span{display:inline-flex;align-items:center;gap:6px}
+    .bs-dot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}
+    @media(max-width:960px){.analytics-grid{grid-template-columns:1fr}}
+    .nav-item{border:0;background:transparent;width:100%;text-align:left;font:inherit;cursor:pointer}
+    .nav-item:focus-visible,.btn:focus-visible,.tab-btn:focus-visible,.discover-tab:focus-visible,.mobile-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </style>
 </head>
 <body>
@@ -379,12 +398,12 @@ const dashboardHtml = `<!doctype html>
       <div><b>Buysell</b><span>Control Center</span></div>
     </div>
     <nav id="nav">
-      <div class="nav-item active" data-view="overview"><span class="ic">H</span> Home</div>
-      <div class="nav-item" data-view="ebayDiscovery"><span class="ic">D</span> Discover</div>
-      <div class="nav-item" data-view="actions"><span class="ic">R</span> Review</div>
-      <div class="nav-item" data-view="catalog"><span class="ic">L</span> Listings &amp; Orders</div>
-      <div class="nav-item" data-view="automation"><span class="ic">A</span> Automation</div>
-      <div class="nav-item" data-view="settings"><span class="ic">S</span> Settings</div>
+      <button type="button" class="nav-item active" data-view="overview" aria-current="page"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 12 5l7 7"/><path d="M6 10.5V19a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-8.5"/></svg></span> Home</button>
+      <button type="button" class="nav-item" data-view="ebayDiscovery"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.2-3.2"/></svg></span> Discover</button>
+      <button type="button" class="nav-item" data-view="actions"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h9"/><path d="M10 12h9"/><path d="M10 18h9"/><path d="m4 6 1.2 1.2L7.5 5"/><path d="m4 12 1.2 1.2L7.5 11"/><path d="m4 18 1.2 1.2L7.5 17"/></svg></span> Review</button>
+      <button type="button" class="nav-item" data-view="catalog"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 5 7.5v9L12 20l7-3.5v-9z"/><path d="M5 7.5 12 11l7-3.5"/><path d="M12 11v9"/></svg></span> Listings &amp; Orders</button>
+      <button type="button" class="nav-item" data-view="automation"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><path d="M12 9V5"/><circle cx="12" cy="4" r="1"/><path d="M9.5 13.5h.01"/><path d="M14.5 13.5h.01"/><path d="M9.5 16.5h5"/></svg></span> Automation</button>
+      <button type="button" class="nav-item" data-view="settings"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg></span> Settings</button>
     </nav>
     <div class="side-foot">
       API: <a href="/health">/health</a> · <a href="/api/dashboard">/api/dashboard</a><br>
@@ -447,6 +466,16 @@ const dashboardHtml = `<!doctype html>
           </div>
         </div>
         <div class="stats" id="stats"></div>
+        <div class="panel" id="analyticsPanel">
+          <div class="panel-head"><h2>Performance</h2><span class="hint">Discovery funnel, outcome split, and metered-API budget</span></div>
+          <div class="panel-body">
+            <div class="analytics-grid">
+              <div class="analytics-card"><div class="analytics-title">Discovery funnel</div><div id="funnelChart"></div></div>
+              <div class="analytics-card"><div class="analytics-title">Outcome split</div><div id="outcomeChart"></div></div>
+              <div class="analytics-card"><div class="analytics-title">Keepa budget</div><div id="keepaGauge"></div></div>
+            </div>
+          </div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Opportunity Pipeline</h2><span class="hint">eBay demand to Amazon source comparison</span><span class="spacer"></span><button class="btn sm" onclick="navigate('ebayDiscovery')">Open Discovery</button></div>
           <div class="panel-body">
@@ -1511,6 +1540,7 @@ function renderKeepaTokenStatus(status){
     return;
   }
   state.keepaToken=status;
+  renderKeepaGauge();
   var refill=status.retryAfterSeconds||((status.refillInMs||status.refillIn)?Math.ceil((status.refillInMs||status.refillIn)/1000):0);
   var parts=['Keepa tokens '+status.tokensLeft];
   if(status.refillRate!==undefined&&status.refillRate!==null)parts.push('+'+status.refillRate+'/min');
@@ -2515,6 +2545,42 @@ function renderPipeline(){
   }).join(''):'<div class="empty">No scored opportunities yet. Open Discover to build the queue.</div>';
 }
 
+function bsBar(label,value,max,color){
+  var pct=max>0?Math.max(2,Math.round((value/max)*100)):0;
+  return '<div class="bs-frow"><span class="bs-flabel">'+esc(label)+'</span><span class="bs-ftrack"><span class="bs-fbar" style="width:'+pct+'%;background:'+color+'"></span></span><span class="bs-fval">'+esc(value==null?0:value)+'</span></div>';
+}
+function renderFunnelChart(){
+  var el=document.getElementById('funnelChart');if(!el)return;
+  var f=(state.data&&state.data.pipeline&&state.data.pipeline.funnel)||{};
+  var rows=[['Queued',f.ebayQueued||0,COLORS.slate],['Comparing',f.ebayComparing||0,COLORS.blue],['Opportunities',f.ebayOpportunities||0,COLORS.green],['Active listings',f.activeListings||0,COLORS.teal]];
+  var max=rows.reduce(function(m,r){return Math.max(m,r[1])},0);
+  el.innerHTML='<div class="bs-funnel">'+rows.map(function(r){return bsBar(r[0],r[1],max,r[2])}).join('')+'</div><div class="bs-fnote"><span>Rejected '+esc(f.ebayRejected||0)+'</span><span>Manual review '+esc(f.ebayManualReview||0)+'</span><span>Errors '+esc(f.ebayErrors||0)+'</span></div>';
+}
+function bsDonut(segments,centerLabel){
+  var total=segments.reduce(function(s,x){return s+(x.value||0)},0);
+  var r=42,c=2*Math.PI*r,off=0,arcs='';
+  if(total>0){segments.forEach(function(s){var len=((s.value||0)/total)*c;arcs+='<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="13" stroke-dasharray="'+len.toFixed(1)+' '+(c-len).toFixed(1)+'" stroke-dashoffset="'+(-off).toFixed(1)+'" transform="rotate(-90 60 60)"/>';off+=len;});}
+  else{arcs='<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="13"/>';}
+  return '<svg viewBox="0 0 120 120" width="116" height="116" role="img" aria-label="Outcome split, '+total+' total"><g>'+arcs+'</g><text x="60" y="57" text-anchor="middle" style="fill:var(--text)" font-size="20" font-weight="700">'+total+'</text><text x="60" y="74" text-anchor="middle" style="fill:var(--muted)" font-size="10">'+esc(centerLabel||'')+'</text></svg>';
+}
+function renderOutcomeChart(){
+  var el=document.getElementById('outcomeChart');if(!el)return;
+  var f=(state.data&&state.data.pipeline&&state.data.pipeline.funnel)||{};
+  var segs=[{label:'Opportunities',value:f.ebayOpportunities||0,color:COLORS.green},{label:'Manual review',value:f.ebayManualReview||0,color:COLORS.amber},{label:'Rejected',value:f.ebayRejected||0,color:COLORS.red},{label:'Errors',value:f.ebayErrors||0,color:COLORS.slate}];
+  el.innerHTML='<div style="display:flex;justify-content:center">'+bsDonut(segs,'outcomes')+'</div><div class="bs-donut-legend">'+segs.map(function(s){return '<span><span class="bs-dot" style="background:'+s.color+'"></span>'+esc(s.label)+' &middot; '+esc(s.value)+'</span>'}).join('')+'</div>';
+}
+function renderKeepaGauge(){
+  var el=document.getElementById('keepaGauge');if(!el)return;
+  var k=state.keepaToken;
+  if(!k||k.tokensLeft===undefined||k.tokensLeft===null){el.innerHTML='<div class="bs-gauge"><div class="bs-gauge-sub">Keepa tokens unavailable</div></div>';return;}
+  var left=Number(k.tokensLeft)||0;
+  state.keepaTokenMax=Math.max(state.keepaTokenMax||0,left,1);
+  var max=state.keepaTokenMax,pct=Math.max(0,Math.min(1,left/max));
+  var color=left<60?COLORS.red:(left<200?COLORS.amber:COLORS.green);
+  var r=42,c=2*Math.PI*r,len=pct*c;
+  var sub=(k.refillRate!==undefined&&k.refillRate!==null)?('+'+k.refillRate+'/min &middot; peak ~'+max):('peak ~'+max);
+  el.innerHTML='<div class="bs-gauge"><svg viewBox="0 0 120 120" width="116" height="116" role="img" aria-label="Keepa tokens '+left+' remaining of about '+max+'"><circle cx="60" cy="60" r="'+r+'" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="13"/><circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="13" stroke-linecap="round" stroke-dasharray="'+len.toFixed(1)+' '+(c-len).toFixed(1)+'" transform="rotate(-90 60 60)"/><text x="60" y="57" text-anchor="middle" style="fill:var(--text)" font-size="22" font-weight="700">'+left+'</text><text x="60" y="74" text-anchor="middle" style="fill:var(--muted)" font-size="10">tokens left</text></svg><div class="bs-gauge-sub">'+esc(sub)+'</div></div>';
+}
 function render(){
   var d=state.data;if(!d)return;
   var icons={productCandidates:['PC','rgba(14,165,233,.16)'],amazonMatches:['AM','rgba(20,184,166,.16)'],ebayListings:['EL','rgba(52,211,153,.16)'],orders:['OR','rgba(96,165,250,.16)'],actions:['RV','rgba(251,191,36,.16)'],purchases:['PU','rgba(45,212,191,.16)'],discoveryScans:['SC','rgba(45,212,191,.16)'],amazonScouts:['AS','rgba(20,184,166,.16)'],ebayDiscoveries:['ES','rgba(52,211,153,.16)'],ebayAmazonComparisons:['AC','rgba(14,165,233,.16)'],automationRuns:['AU','rgba(96,165,250,.16)'],automationNeedsConfirmation:['HC','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
@@ -2525,6 +2591,7 @@ function render(){
   }).join('');
   renderJobActivity();
   renderPipeline();
+  renderFunnelChart();renderOutcomeChart();renderKeepaGauge();
 
   var actCols=[
     {key:'id',label:'ID',fmt:function(v){return shortId(v)}},
@@ -2684,7 +2751,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
     var navView=activeNavView(view);
     var previousActive=document.querySelector('.view.active');
     var targetView='view-'+navView;
-    document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===navView)});
+    document.querySelectorAll('.nav-item').forEach(function(n){var on=n.getAttribute('data-view')===navView;n.classList.toggle('active',on);if(on){n.setAttribute('aria-current','page')}else{n.removeAttribute('aria-current')}});
     document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id===targetView)});
     if(!previousActive||previousActive.id!==targetView){
       window.scrollTo({top:0,left:0,behavior:'auto'});
