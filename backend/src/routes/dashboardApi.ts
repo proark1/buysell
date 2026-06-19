@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
-import { getDashboardData, getPipelineSummary } from '../repositories/dashboardRepository.js';
+import { getDashboardData, getDashboardDiscoveryCandidates, getPipelineSummary } from '../repositories/dashboardRepository.js';
 import { defaultRuleConfig, getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
-import { runAmazonPriceMonitor } from '../services/amazonPriceMonitor.js';
+import { runLockedAmazonPriceMonitor } from '../services/amazonPriceMonitorScheduler.js';
 import { runScheduledEbayAmazonComparison, runScheduledEbayDiscovery } from '../services/ebayDiscoveryScheduler.js';
 
 const settingsSchema = z.object({
@@ -39,6 +39,10 @@ const settingsSchema = z.object({
   ebayAmazonCompareAutoRunEnabled: z.boolean().optional(),
   ebayAmazonCompareAutoRunIntervalMinutes: z.number().int().positive().max(1440).optional(),
   ebayAmazonCompareAutoRunLimit: z.number().int().positive().max(25).optional()
+});
+
+const discoveryCandidatesQuerySchema = z.object({
+  take: z.coerce.number().int().positive().max(2000).default(500)
 });
 
 type RuleConfigPatchValue = string | number | boolean | string[] | undefined;
@@ -108,6 +112,13 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     return getPipelineSummary(prisma);
   });
 
+  app.get('/api/dashboard/discovery-candidates', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const parsed = discoveryCandidatesQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid discovery candidates query', details: parsed.error.flatten() });
+    return getDashboardDiscoveryCandidates(prisma, parsed.data.take);
+  });
+
   app.get('/api/settings', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return getActiveRuleConfig(prisma);
@@ -144,7 +155,7 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
 
   app.post('/api/monitor/amazon-prices/run', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
-    return runAmazonPriceMonitor(prisma);
+    return runLockedAmazonPriceMonitor();
   });
 
   app.post('/api/ebay-discovery/auto-run/run', async (request, reply) => {

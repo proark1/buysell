@@ -97,6 +97,13 @@ const verificationEvidence = (input: PriceVerificationResultInput): Record<strin
 
 const activeAutomationStatuses = ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION'];
 
+async function withTransaction<T>(db: PrismaClient, work: (tx: PrismaClient) => Promise<T>): Promise<T> {
+  const transactionalDb = db as unknown as {
+    $transaction?: <Result>(fn: (tx: PrismaClient) => Promise<Result>) => Promise<Result>;
+  };
+  return transactionalDb.$transaction ? transactionalDb.$transaction(work) : work(db);
+}
+
 async function closeActiveVerificationAutomationRuns(
   db: PrismaClient,
   actionId: string,
@@ -199,11 +206,7 @@ export async function submitPriceVerificationResult(
       return result;
     }
 
-    const transactionalDb = db as unknown as {
-      $transaction<T>(fn: (tx: PrismaClient) => Promise<T>): Promise<T>;
-    };
-
-    return transactionalDb.$transaction(async (tx) => {
+    return withTransaction(db, async (tx) => {
       const listAction = await tx.actionItem.create({
         data: {
           productCandidateId: action.productCandidateId,
@@ -281,29 +284,63 @@ export async function submitPriceVerificationResult(
   }
 
   if (terminalStatus === 'MANUAL_REVIEW') {
-    const reviewAction = await db.actionItem.create({
-      data: {
-        productCandidateId: action.productCandidateId,
-        amazonMatchId: action.amazonMatchId,
-        type: 'REVIEW',
-        status: 'PENDING',
-        priority: 25,
-        reason: `Live browser verification needs manual review: ${failureReasons.join(' ')}`,
-        payloadJson: {
-          ...existingPayload,
-          liveVerificationId: verification.id,
-          sourceVerifyActionId: action.id,
-          failureReasons,
-          observedAmazonPrice,
-          observedEbayPrice
+    return withTransaction(db, async (tx) => {
+      const reviewAction = await tx.actionItem.create({
+        data: {
+          productCandidateId: action.productCandidateId,
+          amazonMatchId: action.amazonMatchId,
+          type: 'REVIEW',
+          status: 'PENDING',
+          priority: 25,
+          reason: `Live browser verification needs manual review: ${failureReasons.join(' ')}`,
+          payloadJson: {
+            ...existingPayload,
+            liveVerificationId: verification.id,
+            sourceVerifyActionId: action.id,
+            failureReasons,
+            observedAmazonPrice,
+            observedEbayPrice
+          }
         }
-      }
-    });
+      });
 
-    await db.priceVerification.update({
+      await tx.priceVerification.update({
+        where: { id: verification.id },
+        data: {
+          status: 'MANUAL_REVIEW',
+          observedAmazonPrice: money(observedAmazonPrice),
+          observedEbayPrice: money(observedEbayPrice),
+          observedAmazonBrand: input.amazon?.brand,
+          observedEbayBrand: input.ebay?.brand,
+          observedAmazonCondition: input.amazon?.condition,
+          observedEbayCondition: input.ebay?.condition,
+          observedBuyingFormat: input.ebay?.buyingFormat,
+          evidenceJson,
+          failureReasons,
+          checkedAt: new Date()
+        }
+      });
+      await tx.actionItem.update({ where: { id: action.id }, data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date() } });
+      const result = { status: 'MANUAL_REVIEW', reviewActionItemId: reviewAction.id, failureReasons };
+      await closeActiveVerificationAutomationRuns(tx, action.id, 'REVIEW_REQUIRED', result);
+      await tx.auditLog.create({
+        data: {
+          entityType: 'PriceVerification',
+          entityId: verification.id,
+          action: 'LIVE_VERIFICATION_MANUAL_REVIEW',
+          actor,
+          afterJson: { reviewActionItemId: reviewAction.id, failureReasons }
+        }
+      });
+      return result;
+    });
+  }
+
+  return withTransaction(db, async (tx) => {
+    await tx.priceVerification.update({
       where: { id: verification.id },
       data: {
-        status: 'MANUAL_REVIEW',
+        status: 'FAILED',
         observedAmazonPrice: money(observedAmazonPrice),
         observedEbayPrice: money(observedEbayPrice),
         observedAmazonBrand: input.amazon?.brand,
@@ -316,49 +353,19 @@ export async function submitPriceVerificationResult(
         checkedAt: new Date()
       }
     });
-    await db.actionItem.update({ where: { id: action.id }, data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date() } });
-    const result = { status: 'MANUAL_REVIEW', reviewActionItemId: reviewAction.id, failureReasons };
-    await closeActiveVerificationAutomationRuns(db, action.id, 'REVIEW_REQUIRED', result);
-    await db.auditLog.create({
+    await tx.actionItem.update({ where: { id: action.id }, data: { status: 'REJECTED', reviewedBy: actor, reviewedAt: new Date() } });
+    const result = { status: 'FAILED', failureReasons, observedProfit };
+    await closeActiveVerificationAutomationRuns(tx, action.id, 'FAILED', result);
+    await tx.auditLog.create({
       data: {
         entityType: 'PriceVerification',
         entityId: verification.id,
-        action: 'LIVE_VERIFICATION_MANUAL_REVIEW',
+        action: 'LIVE_VERIFICATION_FAILED',
         actor,
-        afterJson: { reviewActionItemId: reviewAction.id, failureReasons }
+        afterJson: { failureReasons, observedAmazonPrice, observedEbayPrice, observedProfit }
       }
     });
+
     return result;
-  }
-
-  await db.priceVerification.update({
-    where: { id: verification.id },
-    data: {
-      status: 'FAILED',
-      observedAmazonPrice: money(observedAmazonPrice),
-      observedEbayPrice: money(observedEbayPrice),
-      observedAmazonBrand: input.amazon?.brand,
-      observedEbayBrand: input.ebay?.brand,
-      observedAmazonCondition: input.amazon?.condition,
-      observedEbayCondition: input.ebay?.condition,
-      observedBuyingFormat: input.ebay?.buyingFormat,
-      evidenceJson,
-      failureReasons,
-      checkedAt: new Date()
-    }
   });
-  await db.actionItem.update({ where: { id: action.id }, data: { status: 'REJECTED', reviewedBy: actor, reviewedAt: new Date() } });
-  const result = { status: 'FAILED', failureReasons, observedProfit };
-  await closeActiveVerificationAutomationRuns(db, action.id, 'FAILED', result);
-  await db.auditLog.create({
-    data: {
-      entityType: 'PriceVerification',
-      entityId: verification.id,
-      action: 'LIVE_VERIFICATION_FAILED',
-      actor,
-      afterJson: { failureReasons, observedAmazonPrice, observedEbayPrice, observedProfit }
-    }
-  });
-
-  return result;
 }

@@ -22,7 +22,8 @@
     "railway:build": "npm run build",
     "railway:check": "node scripts/check-railway-deployment.mjs",
     "railway:start": "npm run start:railway -w backend",
-    "test": "npm run test -w backend && npm run test -w local-agent"
+    "test": "npm run test -w backend && npm run test -w local-agent",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "devDependencies": {
     "globals": "^17.6.0",

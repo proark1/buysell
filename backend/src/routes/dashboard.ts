@@ -831,7 +831,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,discoverMode:'ebay',discoverSelection:null,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,discoverMode:'ebay',discoverSelection:null,discoveryRowsLoaded:false,discoveryRowsLoading:false,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
 var pageSize=20;
 var tablePageSize=12;
 var cardPageSize=8;
@@ -1121,7 +1121,7 @@ function comparisonStartSummary(res){
 
 function table(rows,cols,opts){
   opts=opts||{};
-  if(!rows||!rows.length)return '<div class="empty">No records yet.</div>';
+  if(!rows||!rows.length)return '<div class="empty">No '+esc(opts.noun||'records')+' yet.</div>';
   var head='<thead><tr>'+cols.map(function(c){return '<th>'+esc(c.label)+'</th>'}).join('')+'</tr></thead>';
   var body='<tbody>'+rows.map(function(r){
     var cls=opts.selectKey?' class="clickable" data-select="'+esc(r[opts.selectKey])+'"':'';
@@ -1174,7 +1174,7 @@ function pagerButtonsHtml(key,page,totalRows,size,setterName,noun){
 function pagedTable(key,rows,cols,opts){
   opts=opts||{};
   rows=rows||[];
-  if(!rows.length)return '<div class="empty">No records yet.</div>';
+  if(!rows.length)return '<div class="empty">No '+esc(opts.noun||'records')+' yet.</div>';
   var size=opts.pageSize||tablePageSize;
   var page=clampPage(state.tablePages[key]||1,rows.length,size);
   state.tablePages[key]=page;
@@ -1865,6 +1865,29 @@ function currentAllEbayRows(){
   var d=state.data||{};
   return (d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]);
 }
+function refreshDiscoveryRows(){
+  var rows=currentAllEbayRows();
+  renderEbayCompactProducts(rows);
+  renderEbayAmazonComparisonRows(rows);
+  renderDiscoverSummary();
+  if(state.discoverMode==='queue')renderDiscoverInspector();
+}
+function loadDashboardDiscoveryRows(force){
+  if(!state.data||state.discoveryRowsLoading)return Promise.resolve();
+  if(state.discoveryRowsLoaded&&!force)return Promise.resolve();
+  state.discoveryRowsLoading=true;
+  return apiJson('/api/dashboard/discovery-candidates?take=500').then(function(res){
+    state.data.allEbayDiscoveryCandidates=res.allEbayDiscoveryCandidates||[];
+    state.data.allEbayDiscoveryCandidatesTotal=res.total||state.data.allEbayDiscoveryCandidates.length;
+    state.data.allEbayDiscoveryCandidatesLoaded=true;
+    state.discoveryRowsLoaded=true;
+    refreshDiscoveryRows();
+  }).catch(function(e){
+    toast('Could not load discovery rows',e.message,'warn');
+  }).finally(function(){
+    state.discoveryRowsLoading=false;
+  });
+}
 function showPanel(id,visible){
   var el=document.getElementById(id);
   if(el)el.classList.toggle('hidden',!visible);
@@ -2394,8 +2417,7 @@ function render(){
   document.getElementById('ebayAmazonComparisonRunsTable').innerHTML=amazonComparisonRunsTable('ebayAmazonComparisonRuns',d.ebayAmazonComparisonRuns||[]);
   showPanel('ebayCompareRunsPanel',!!(d.ebayAmazonComparisonRuns&&d.ebayAmazonComparisonRuns.length));
   if((d.ebayDiscoveryCandidates||[]).length&&!state.ebayDiscoveryCandidates.length&&!state.ebayDiscoveryRejected.length)renderEbayDiscoveryReport(d.ebayDiscoveryCandidates,[],false);
-  renderEbayCompactProducts((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
-  renderEbayAmazonComparisonRows((d.allEbayDiscoveryCandidates&&d.allEbayDiscoveryCandidates.length)?d.allEbayDiscoveryCandidates:(d.ebayDiscoveryCandidates||[]));
+  refreshDiscoveryRows();
   renderDiscoverMode();
 
   var rc=d.ruleConfig||{};
@@ -2474,7 +2496,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
     var meta=META[view]||META[navView];
     document.getElementById('viewTitle').textContent=meta[0];
     document.getElementById('viewSub').textContent=meta[1];
-    if(navView==='ebayDiscovery')renderDiscoverMode();
+    if(navView==='ebayDiscovery'){renderDiscoverMode();loadDashboardDiscoveryRows();}
     if(navView==='settings')loadCredentials();
 }
 
@@ -2537,7 +2559,8 @@ function checkDb(){
     updateSetupChecklist();
     checkDb();
     apiJson('/api/dashboard').then(function(data){
-      state.data=data;state.setup.dashboard=true;state.setup.backendSecret='ok';document.getElementById('offline').classList.remove('show');updateSetupChecklist();render();
+      state.data=data;state.discoveryRowsLoaded=!!data.allEbayDiscoveryCandidatesLoaded;state.discoveryRowsLoading=false;state.setup.dashboard=true;state.setup.backendSecret='ok';document.getElementById('offline').classList.remove('show');updateSetupChecklist();render();
+      if(document.getElementById('view-ebayDiscovery')&&document.getElementById('view-ebayDiscovery').classList.contains('active'))loadDashboardDiscoveryRows();
     }).catch(function(e){
       state.setup.dashboard=false;
       state.setup.backendSecret=e.status===503?'missing':(e.status===401?'ok':state.setup.backendSecret);

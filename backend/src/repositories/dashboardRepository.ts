@@ -11,6 +11,8 @@ type DashboardPrismaClient = PrismaClient & {
   ebayAmazonComparisonRun: EbayAmazonComparisonRunDashboardDelegate;
 };
 
+const dashboardDiscoveryCandidateDefaultTake = 500;
+
 const amazonDiscoveryCandidateSelect = {
   id: true,
   runId: true,
@@ -200,7 +202,6 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     amazonDiscoveryRuns,
     ebayDiscoveryRuns,
     ebayAmazonComparisonRuns,
-    allEbayDiscoveryCandidates,
     automationRuns,
     ruleConfig,
     pipeline
@@ -237,11 +238,6 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     dashboardDb.ebayAmazonComparisonRun.findMany({
       orderBy: { startedAt: 'desc' },
       take: 20
-    }),
-    db.ebayDiscoveryCandidate.findMany({
-      select: ebayDiscoveryCandidateSelect,
-      orderBy: [{ createdAt: 'desc' }, { ebayScore: 'desc' }],
-      take: 2000
     }),
     db.automationRun.findMany({
       orderBy: { startedAt: 'desc' },
@@ -300,9 +296,28 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
     ebayDiscoveryRuns,
     ebayAmazonComparisonRuns,
     ebayDiscoveryCandidates,
-    allEbayDiscoveryCandidates,
+    allEbayDiscoveryCandidates: [],
+    allEbayDiscoveryCandidatesLoaded: false,
     automationRuns,
     ruleConfig,
     pipeline
+  };
+}
+
+export async function getDashboardDiscoveryCandidates(db: PrismaClient, take = dashboardDiscoveryCandidateDefaultTake): Promise<unknown> {
+  const limit = Math.min(Math.max(take, 1), 2000);
+  const [allEbayDiscoveryCandidates, total] = await Promise.all([
+    db.ebayDiscoveryCandidate.findMany({
+      select: ebayDiscoveryCandidateSelect,
+      orderBy: [{ createdAt: 'desc' }, { ebayScore: 'desc' }],
+      take: limit
+    }),
+    db.ebayDiscoveryCandidate.count()
+  ]);
+
+  return {
+    allEbayDiscoveryCandidates,
+    total,
+    take: limit
   };
 }
