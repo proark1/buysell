@@ -394,6 +394,12 @@ const dashboardHtml = `<!doctype html>
     .bs-prof{text-align:right;white-space:nowrap}
     .bs-prof-main{font-size:20px;font-weight:800;line-height:1}
     .bs-prof-sub{font-size:11px;color:var(--muted);margin-top:3px}
+    .notif{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;border:1px solid var(--border);border-left:3px solid var(--slate);border-radius:10px;background:rgba(2,6,23,.24);padding:10px 12px;margin-bottom:8px}
+    .notif:last-child{margin-bottom:0}
+    .notif-ic{display:flex;align-items:center;justify-content:center;padding-top:1px}
+    .notif-main{min-width:0}
+    .notif-title{font-weight:700;font-size:13px}
+    .notif-msg{color:var(--muted);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
     @media(max-width:960px){.analytics-grid{grid-template-columns:1fr}}
     .nav-item{border:0;background:transparent;width:100%;text-align:left;font:inherit;cursor:pointer}
     .nav-item:focus-visible,.btn:focus-visible,.tab-btn:focus-visible,.discover-tab:focus-visible,.mobile-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -485,6 +491,10 @@ const dashboardHtml = `<!doctype html>
               <div class="analytics-card"><div class="analytics-title">Keepa budget</div><div id="keepaGauge"></div></div>
             </div>
           </div>
+        </div>
+        <div class="panel" id="notificationsPanel">
+          <div class="panel-head"><h2>Notifications</h2><span class="hint">Operational alerts &mdash; profitable opportunities, price-spike pauses, failed runs, low API budget</span><span class="spacer"></span><button class="btn sm" onclick="loadAlerts()">Refresh</button></div>
+          <div class="panel-body"><div id="notificationsBox"><div class="empty">Loading notifications…</div></div></div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Opportunity Pipeline</h2><span class="hint">eBay demand to Amazon source comparison</span><span class="spacer"></span><button class="btn sm" onclick="navigate('ebayDiscovery')">Open Discovery</button></div>
@@ -887,6 +897,20 @@ const dashboardHtml = `<!doctype html>
                 <div class="setup-title">Operational alerts</div>
                 <div id="alertsBox" style="margin-top:10px"><div class="empty">Alerts load when Settings opens.</div></div>
                 <div class="actions-row"><button class="btn" onclick="loadAlerts()">Refresh Alerts</button></div>
+              </div>
+              <div class="subtle-box" style="margin-top:12px">
+                <div class="setup-title">Notification delivery</div>
+                <div class="result-meta" style="margin-bottom:10px">Choose what to be notified about. Dispatch to webhook/email is wired in a backend follow-up; preferences save locally on this browser for now.</div>
+                <div class="field" style="margin-bottom:10px"><label for="notifWebhook">Webhook URL</label><input id="notifWebhook" placeholder="https://hooks.slack.com/services/…"></div>
+                <label class="check" style="margin-bottom:8px"><input type="checkbox" id="notifEmail"> Email alerts</label>
+                <div class="subsection-title">Notify me about</div>
+                <label class="check"><input type="checkbox" id="notifOpp" checked> Profitable opportunity</label>
+                <label class="check"><input type="checkbox" id="notifPause" checked> Price-spike PAUSE</label>
+                <label class="check"><input type="checkbox" id="notifFail" checked> Automation run FAILED</label>
+                <label class="check"><input type="checkbox" id="notifKeepa" checked> Keepa tokens low</label>
+                <label class="check"><input type="checkbox" id="notifBuy"> Pending BUY</label>
+                <div class="field" style="margin-top:10px;max-width:220px"><label for="notifMinProfit">Min. profit to alert (USD)</label><input id="notifMinProfit" type="number" step="0.01" placeholder="15.00"></div>
+                <div class="actions-row"><button class="btn primary" onclick="saveNotifPrefs()">Save Preferences</button></div>
               </div>
               <div class="subtle-box" style="margin-top:12px">
                 <div class="setup-title">Data exports</div>
@@ -2853,12 +2877,42 @@ function renderCredentials(list){
 function saveCred(key){var el=document.getElementById('cred_'+key);putCred(key,el?el.value:'','Credential saved')}
 function clearCred(key){putCred(key,'','Credential cleared')}
 function testCred(key){apiFetch('/api/credentials/'+encodeURIComponent(key)+'/test',{method:'POST'}).then(responseJson).then(function(res){toast('Credential check',res.check||res,'ok')}).catch(function(e){toast('Credential check failed',e.message,'err')})}
-function renderAlerts(alerts){
-  var el=document.getElementById('alertsBox');if(!el)return;
-  if(!alerts||!alerts.length){el.innerHTML='<div class="empty">No operational alerts right now.</div>';return}
-  el.innerHTML=alerts.map(function(a){return '<div class="activity-row"><div><b>'+esc(a.code||'ALERT')+'</b><div class="muted">'+esc(a.message||'')+'</div></div><span class="badge '+esc(a.severity||'low')+'">'+esc(a.severity||'low')+'</span></div>'}).join('');
+function notifIcon(kind){
+  if(kind==='high')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  if(kind==='medium')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>';
+  if(kind==='info')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>';
+  return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
 }
-function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var el=document.getElementById('alertsBox');if(el)el.innerHTML='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>'})}
+function severityKind(sev){sev=String(sev||'low').toLowerCase();if(sev==='high'||sev==='critical')return 'high';if(sev==='medium'||sev==='warn'||sev==='warning')return 'medium';if(sev==='info')return 'info';return 'low';}
+function severityColor(kind){return kind==='high'?COLORS.red:(kind==='medium'?COLORS.amber:(kind==='info'?COLORS.blue:COLORS.slate));}
+function renderAlerts(alerts){
+  var html;
+  if(!alerts||!alerts.length){html='<div class="empty">No operational alerts right now.</div>';}
+  else{html=alerts.map(function(a){
+    var kind=severityKind(a.severity);var col=severityColor(kind);
+    return '<div class="notif" style="border-left-color:'+col+'"><span class="notif-ic" style="color:'+col+'">'+notifIcon(kind)+'</span><div class="notif-main"><div class="notif-title">'+esc(a.code||'ALERT')+'</div><div class="notif-msg">'+esc(a.message||'')+'</div></div><span class="badge" style="color:'+col+';background:'+col+'1f;border-color:'+col+'40">'+esc(String(a.severity||'low').toLowerCase())+'</span></div>';
+  }).join('');}
+  ['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=html;});
+}
+function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var h='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>';['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=h;});})}
+function saveNotifPrefs(){
+  try{
+    var chk=function(id){var el=document.getElementById(id);return !!(el&&el.checked);};
+    var p={webhook:inputValue('notifWebhook'),email:chk('notifEmail'),opp:chk('notifOpp'),pause:chk('notifPause'),fail:chk('notifFail'),keepa:chk('notifKeepa'),buy:chk('notifBuy'),minProfit:inputValue('notifMinProfit')};
+    localStorage.setItem('buysell.notifPrefs',JSON.stringify(p));
+    toast('Notification preferences saved','Stored locally on this browser. Webhook/email dispatch is a backend follow-up.','ok');
+  }catch(e){toast('Could not save preferences',String((e&&e.message)||e),'err');}
+}
+function loadNotifPrefs(){
+  try{
+    var raw=localStorage.getItem('buysell.notifPrefs');if(!raw)return;
+    var p=JSON.parse(raw)||{};
+    var setVal=function(id,v){var el=document.getElementById(id);if(el&&v!==undefined&&v!==null)el.value=v;};
+    var setChk=function(id,v){var el=document.getElementById(id);if(el)el.checked=!!v;};
+    setVal('notifWebhook',p.webhook);setVal('notifMinProfit',p.minProfit);
+    setChk('notifEmail',p.email);setChk('notifOpp',p.opp);setChk('notifPause',p.pause);setChk('notifFail',p.fail);setChk('notifKeepa',p.keepa);setChk('notifBuy',p.buy);
+  }catch(e){}
+}
 function downloadExport(entity){window.location.href='/api/export/'+encodeURIComponent(entity)+'?format=csv&take=5000'}
 
 function setDb(connected,msg){
@@ -2877,6 +2931,7 @@ function checkDb(){
   function load(){
     updateSetupChecklist();
     checkDb();
+    loadAlerts();
     apiJson('/api/dashboard').then(function(data){
       state.data=data;state.discoveryRowsLoaded=!!data.allEbayDiscoveryCandidatesLoaded;state.discoveryRowsLoading=false;state.setup.dashboard=true;state.setup.backendSecret='ok';document.getElementById('offline').classList.remove('show');updateSetupChecklist();render();
       if(document.getElementById('view-ebayDiscovery')&&document.getElementById('view-ebayDiscovery').classList.contains('active'))loadDashboardDiscoveryRows();
@@ -3258,6 +3313,7 @@ loadEbayDiscoveryProfiles();
 loadKeepaTokenStatus();
 updateAmazonScoutActions();
 updateEbayDiscoveryActions();
+loadNotifPrefs();
 load();
 setInterval(checkDb,30000);
 setInterval(load,30000);
