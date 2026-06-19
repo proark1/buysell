@@ -386,6 +386,14 @@ const dashboardHtml = `<!doctype html>
     .bs-donut-legend{display:grid;gap:6px;margin-top:10px;font-size:11px;color:var(--muted)}
     .bs-donut-legend span{display:inline-flex;align-items:center;gap:6px}
     .bs-dot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}
+    .bs-highlight{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+    .bs-conf{min-width:0}
+    .bs-conf-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+    .bs-conf-track{height:8px;border-radius:5px;background:rgba(148,163,184,.14);overflow:hidden}
+    .bs-conf-bar{display:block;height:100%;border-radius:5px}
+    .bs-prof{text-align:right;white-space:nowrap}
+    .bs-prof-main{font-size:20px;font-weight:800;line-height:1}
+    .bs-prof-sub{font-size:11px;color:var(--muted);margin-top:3px}
     @media(max-width:960px){.analytics-grid{grid-template-columns:1fr}}
     .nav-item{border:0;background:transparent;width:100%;text-align:left;font:inherit;cursor:pointer}
     .nav-item:focus-visible,.btn:focus-visible,.tab-btn:focus-visible,.discover-tab:focus-visible,.mobile-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -2200,6 +2208,22 @@ function inspectorActionsForAmazon(c){
   if(ebayMatch&&ebayMatch.url)html+='<a class="btn sm" href="'+esc(ebayMatch.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   return html+'</div>';
 }
+function renderInspectorHighlight(c){
+  var comparison=ebayComparison(c);
+  if(!comparison)return '';
+  var best=comparisonFallbackMatch(comparison)||{};
+  var market=comparison.market||ebayCandidateMarket(c);
+  var conf=(best.matchConfidence!==undefined&&best.matchConfidence!==null)?Math.max(0,Math.min(100,Number(best.matchConfidence)*100)):null;
+  var hasProfit=best.expectedProfit!==undefined&&best.expectedProfit!==null;
+  var profitNum=Number(best.expectedProfit||0);
+  var pcol=hasProfit?(profitNum>0?COLORS.green:(profitNum<0?COLORS.red:COLORS.amber)):COLORS.slate;
+  var ccol=conf===null?COLORS.slate:(conf>=80?COLORS.green:(conf>=55?COLORS.amber:COLORS.red));
+  if(conf===null&&!hasProfit)return '';
+  var bar=conf===null?'<div class="bs-conf"><div class="bs-conf-head"><span>Match confidence</span><span>—</span></div></div>':
+    '<div class="bs-conf"><div class="bs-conf-head"><span>Match confidence</span><span style="color:'+ccol+'">'+conf.toFixed(0)+'%</span></div><div class="bs-conf-track"><span class="bs-conf-bar" style="width:'+conf.toFixed(0)+'%;background:'+ccol+'"></span></div></div>';
+  var prof='<div class="bs-prof"><div class="bs-prof-main" style="color:'+pcol+'">'+(hasProfit?marketMoney(best.expectedProfit,market):'—')+'</div><div class="bs-prof-sub">net · ROI '+(best.roiPercent===undefined||best.roiPercent===null?'—':Number(best.roiPercent).toFixed(1)+'%')+'</div></div>';
+  return '<div class="inspector-section bs-highlight">'+bar+prof+'</div>';
+}
 function renderDiscoverInspector(){
   var el=document.getElementById('discoverInspector');
   if(!el)return;
@@ -2232,6 +2256,7 @@ function renderDiscoverInspector(){
     var eReview=isManualReviewEbayCandidate(item);
     el.innerHTML='<div class="inspector-title">'+esc(ebayCandidateTitle(item))+'</div>'+
       '<div class="inspector-meta">Item <span class="mono">'+esc(ebayCandidateItemId(item)||'unknown')+'</span> · '+badge(ebayCandidateStatus(item))+'</div>'+
+      renderInspectorHighlight(item)+
       '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForEbay(item)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Source</div>'+ebayInspectorSourceGrid(item,eMarket)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Demand</div><div class="comparison-grid">'+
