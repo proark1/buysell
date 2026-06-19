@@ -203,6 +203,8 @@ const dashboardHtml = `<!doctype html>
     .inspector-section-title{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
     .queue-row{width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);padding:11px;display:grid;grid-template-columns:42px minmax(0,1fr) minmax(126px,auto);gap:10px;align-items:start;color:var(--text);font:inherit;text-align:left;cursor:pointer}
     .queue-row:hover,.queue-row.active{border-color:var(--border-strong);background:rgba(15,23,42,.62)}
+    .queue-row.active{border-color:rgba(45,212,191,.58);box-shadow:inset 3px 0 0 var(--accent),0 12px 28px -24px rgba(45,212,191,.8)}
+    .queue-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .queue-copy{min-width:0;display:grid;gap:4px}
     .queue-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .queue-meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
@@ -1631,11 +1633,11 @@ function metric(label,value){return '<div class="metric"><div class="mk">'+esc(l
 function renderEbayComparison(c,rejected,review){
   var comparison=amazonComparison(c);
   if(!comparison)return '';
-  var best=comparison.best||{};
+  var best=comparisonFallbackMatch(comparison)||{};
   var market=comparison.market||amazonCandidateMarket(c);
   var settings=comparison.settings||{};
   var reasons=unique(comparison.reasons||[]).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-  var title=best.title?'<div class="result-meta">Best eBay: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
+  var title=best.title?'<div class="result-meta">eBay match: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
   var metrics=[
     metric('eBay results',String(comparison.ebayResultCount||0)),
     metric('Priced',String(comparison.pricedResultCount||0)),
@@ -1684,7 +1686,7 @@ function renderAmazonCandidateCard(c){
   if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   actions+='</div>';
-  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="amazon" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'amazon\\','+jsString(discoverId)+',event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="amazon" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItemFromRow(this,event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
     '<div class="result-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(c))+'</span> · Amazon '+marketMoney(amazonCandidatePrice(c),market)+' · Avg90 '+marketMoney(amazonCandidateAvg90(c),market)+' · Rank '+txt(amazonCandidateRank(c))+dropText+'</div>'+
     '</div>'+badge(amazonCandidateStatus(c))+'</div>'+
@@ -1807,10 +1809,10 @@ function renderEbayRejectionBreakdown(rejected){
 function renderAmazonComparisonForEbay(c,rejected,review){
   var comparison=ebayComparison(c);
   if(!comparison)return '';
-  var best=comparison.best||{};
+  var best=comparisonFallbackMatch(comparison)||{};
   var market=comparison.market||ebayCandidateMarket(c);
   var reasons=unique(comparison.reasons||[]).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-  var title=best.title?'<div class="result-meta">Best Amazon: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
+  var title=best.title?'<div class="result-meta">Amazon match: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
   var sourcePrice=best.buyBoxPrice!==undefined?best.buyBoxPrice:best.currentPrice;
   var metrics=[
     metric('Amazon matches',String(comparison.amazonResultCount||0)),
@@ -1859,7 +1861,7 @@ function renderEbayCandidateCard(c){
   if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   actions+='</div>';
-  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
+  return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItemFromRow(this,event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
     '<div class="result-meta">eBay sold '+marketMoney(ebayCandidatePrice(c),market)+shipping+' · '+txt(ebayCandidateCondition(c))+category+item+'</div>'+
     '</div>'+badge(ebayCandidateStatus(c))+'</div>'+
@@ -2003,8 +2005,22 @@ function renderDiscoverSelectionStyles(){
   var selected=selectedDiscoverKey();
   document.querySelectorAll('[data-discover-key]').forEach(function(el){
     var key=el.getAttribute('data-discover-type')+'|'+el.getAttribute('data-discover-key');
-    el.classList.toggle('active',!!selected&&key===selected);
+    var active=!!selected&&key===selected;
+    el.classList.toggle('active',active);
+    if(el.classList&&el.classList.contains('queue-row'))el.setAttribute('aria-pressed',active?'true':'false');
   });
+}
+function revealDiscoverInspector(){
+  var content=document.getElementById('discoverInspector');
+  if(content)content.scrollTop=0;
+  var panel=document.querySelector('.discover-inspector');
+  if(panel&&window.matchMedia&&window.matchMedia('(max-width:1100px)').matches&&panel.scrollIntoView){
+    panel.scrollIntoView({block:'start',behavior:'smooth'});
+  }
+}
+function selectDiscoverItemFromRow(row,event){
+  if(!row)return;
+  selectDiscoverItem(row.getAttribute('data-discover-type'),row.getAttribute('data-discover-key'),event);
 }
 function selectDiscoverItem(type,key,event){
   if(event&&event.target&&event.target.closest){
@@ -2014,6 +2030,7 @@ function selectDiscoverItem(type,key,event){
   }
   state.discoverSelection={type:type,key:key};
   renderDiscoverInspector();
+  revealDiscoverInspector();
   renderDiscoverSelectionStyles();
 }
 function discoverRowsForMode(mode){
@@ -2101,26 +2118,55 @@ function reasonsHtml(reasons,fallback){
   if(!list.length&&fallback)list=[fallback];
   return list.length?'<div class="chips">'+list.map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>':'';
 }
+function comparisonFallbackMatch(comparison){
+  if(!comparison)return null;
+  if(comparison.best)return comparison.best;
+  var matches=Array.isArray(comparison.topMatches)?comparison.topMatches:[];
+  return matches.find(function(match){return match&&match.url})||matches[0]||null;
+}
+function ebayInspectorSourceGrid(c,market){
+  var family=ebayCandidateFamily(c);
+  return '<div class="comparison-grid">'+
+    metric('Market',(market&&market.label)||'—')+
+    metric('Category',ebayCandidateCategory(c)||'—')+
+    metric('Family',family.key||'—')+
+    metric('Source query',family.sourceQuery||'—')+
+    metric('Item ID',ebayCandidateItemId(c)||'—')+
+    metric('Updated',when(c.updatedAt))+
+    '</div>';
+}
+function amazonInspectorSourceGrid(c,market){
+  return '<div class="comparison-grid">'+
+    metric('Market',(market&&market.label)||'—')+
+    metric('Brand',c.brand||'—')+
+    metric('Category',c.rootCategory||'—')+
+    metric('ASIN',amazonCandidateAsin(c)||'—')+
+    metric('Updated',when(c.updatedAt))+
+    metric('Reviews',c.reviewCount===undefined||c.reviewCount===null?'—':String(c.reviewCount))+
+    '</div>';
+}
 function inspectorActionsForEbay(c){
   var id=c&&c.id;
   var url=ebayCandidateUrl(c);
   var comparison=ebayComparison(c);
+  var amazonMatch=comparisonFallbackMatch(comparison);
   var html='<div class="card-actions">';
   if(id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
   if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(id)+'\\')">Recompare</button>';
   if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
-  if(comparison&&comparison.best&&comparison.best.url)html+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(amazonMatch&&amazonMatch.url)html+='<a class="btn sm" href="'+esc(amazonMatch.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   return html+'</div>';
 }
 function inspectorActionsForAmazon(c){
   var id=c&&c.id;
   var url=amazonCandidateUrl(c);
   var comparison=amazonComparison(c);
+  var ebayMatch=comparisonFallbackMatch(comparison);
   var html='<div class="card-actions">';
   if(id&&(isRejectedAmazonCandidate(c)||isManualReviewAmazonCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerAmazonCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
   if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareAmazonCandidate(\\''+esc(id)+'\\')">Recompare</button>';
   if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
-  if(comparison&&comparison.best&&comparison.best.url)html+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(ebayMatch&&ebayMatch.url)html+='<a class="btn sm" href="'+esc(ebayMatch.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   return html+'</div>';
 }
 function renderDiscoverInspector(){
@@ -2140,28 +2186,30 @@ function renderDiscoverInspector(){
     var aReview=isManualReviewAmazonCandidate(item);
     el.innerHTML='<div class="inspector-title">'+esc(amazonCandidateTitle(item))+'</div>'+
       '<div class="inspector-meta">ASIN <span class="mono">'+esc(amazonCandidateAsin(item)||'unknown')+'</span> · '+badge(amazonCandidateStatus(item))+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForAmazon(item)+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Source</div>'+amazonInspectorSourceGrid(item,aMarket)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Economics</div><div class="comparison-grid">'+
       metric('Amazon cost',marketMoney(amazonCandidatePrice(item),aMarket))+
       metric('Avg90',marketMoney(amazonCandidateAvg90(item),aMarket))+
       metric('Drop',amazonCandidateDrop(item)?Number(amazonCandidateDrop(item)).toFixed(1)+'%':'—')+
       metric('Rank',txt(amazonCandidateRank(item)))+'</div></div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Decision Reasons</div>'+reasonsHtml(aRejected||aReview?amazonCandidateReasons(item):amazonPositiveReasons(item),'No reasons captured yet')+'</div>'+
-      renderEbayComparison(item,aRejected,aReview)+
-      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForAmazon(item)+'</div>';
+      renderEbayComparison(item,aRejected,aReview);
   }else{
     var eMarket=ebayCandidateMarket(item);
     var eRejected=isRejectedEbayCandidate(item);
     var eReview=isManualReviewEbayCandidate(item);
     el.innerHTML='<div class="inspector-title">'+esc(ebayCandidateTitle(item))+'</div>'+
       '<div class="inspector-meta">Item <span class="mono">'+esc(ebayCandidateItemId(item)||'unknown')+'</span> · '+badge(ebayCandidateStatus(item))+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForEbay(item)+'</div>'+
+      '<div class="inspector-section"><div class="inspector-section-title">Source</div>'+ebayInspectorSourceGrid(item,eMarket)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Demand</div><div class="comparison-grid">'+
       metric('Sold price',marketMoney(ebayCandidatePrice(item),eMarket))+
       metric('Shipping',marketMoney(ebayCandidateShipping(item),eMarket))+
       metric('Condition',txt(ebayCandidateCondition(item)))+
       metric('Score',String(ebayCandidateScore(item)))+'</div></div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Decision Reasons</div>'+reasonsHtml(eRejected||eReview?ebayCandidateReasons(item):ebayPositiveReasons(item),'No reasons captured yet')+'</div>'+
-      renderAmazonComparisonForEbay(item,eRejected,eReview)+
-      '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForEbay(item)+'</div>';
+      renderAmazonComparisonForEbay(item,eRejected,eReview);
   }
   renderDiscoverSelectionStyles();
 }
@@ -2353,7 +2401,7 @@ function renderEbayAmazonComparisonRows(candidates){
     var market=ebayCandidateMarket(c);
     var status=ebayCandidateStatus(c);
     var comparison=ebayComparison(c);
-    var best=(comparison&&comparison.best)||{};
+    var best=comparisonFallbackMatch(comparison)||{};
     var sourcePrice=best.buyBoxPrice!==undefined?best.buyBoxPrice:best.currentPrice;
     var profit=best.expectedProfit!==undefined?marketMoney(best.expectedProfit,market):'Queued';
     var roi=best.roiPercent!==undefined?Number(best.roiPercent).toFixed(1)+'%':'—';
@@ -2361,7 +2409,7 @@ function renderEbayAmazonComparisonRows(candidates){
     var match=best.matchConfidence!==undefined?pct(Number(best.matchConfidence)*100):'—';
     var discoverId=discoverKey('ebay',c);
     var completedAt=ebayComparisonResultRank(c)===0&&ebayComparisonTimeValue(c)?'Updated '+when(ebayComparisonTimeValue(c)):'';
-    return '<button type="button" class="queue-row" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)">'+
+    return '<button type="button" class="queue-row" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItemFromRow(this,event)">'+
       '<span class="'+scoreClass(score)+'">'+score+'</span>'+
       '<span class="queue-copy"><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span><span class="queue-reason"><span>'+esc(queueDecisionLabel(c))+'</span>'+esc(queueDecisionReason(c))+'</span></span>'+
       '<span class="queue-stats">'+badge(status)+(completedAt?'<span class="queue-time">'+esc(completedAt)+'</span>':'')+'</span>'+
