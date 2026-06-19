@@ -1,5 +1,6 @@
 import {
   analyzeEbayAmazonComparison,
+  amazonSearchQueriesForEbayProduct,
   buildEbayDiscoveryCandidates,
   productFamilyKeyForEbayCandidate,
   selectEbayDiscoveryQueries
@@ -61,6 +62,13 @@ const profitableResult = analyzeEbayAmazonComparison(ebay, [profitableAmazon], d
 assertEqual(profitableResult.report.status, 'OPPORTUNITY', 'eBay discovery profitable Amazon status');
 assertEqual(profitableResult.report.best?.asin, 'B000SCAN', 'eBay discovery best Amazon ASIN');
 
+const identifierQueries = amazonSearchQueriesForEbayProduct({
+  ...ebay,
+  title: 'Wera Drehmomentschlüssel Click-Torque A 6 Set 1/4 Zoll',
+  raw: { item_specifics: { Brand: 'Wera', MPN: '05075691001' } }
+});
+assertEqual(identifierQueries[0], 'wera 05075691001', 'eBay comparison searches Amazon by brand and identifier first');
+
 const sampledMarketResult = analyzeEbayAmazonComparison(ebay, [profitableAmazon], defaultRuleConfig, ebay.title, {
   soldMarketCandidates: [
     ebay,
@@ -91,6 +99,48 @@ const uncertainAmazon: AmazonMatchInput = {
 
 const manualResult = analyzeEbayAmazonComparison(uncertainEbay, [uncertainAmazon], defaultRuleConfig, uncertainEbay.title);
 assertEqual(manualResult.report.status, 'MANUAL_REVIEW', 'eBay discovery uncertain profitable match status');
+
+const highMarginWeakResult = analyzeEbayAmazonComparison(
+  {
+    title: 'Bremsenentlüfter und Kupplungsentlüftungsgerät 3 in1 mit Akku und Adapter Set',
+    soldPrice: 189,
+    condition: 'New'
+  },
+  [{
+    asin: 'B000BRAKE',
+    title: 'YaoFaFa Bremsenentlüftungsgerät 3L Bremsflüssigkeitswechselgerät Auto Bremsenentlüfter Set mit E20 Adapter',
+    brand: 'YaoFaFa',
+    buyBoxPrice: 28.89,
+    currentPrice: 28.89,
+    availabilityStatus: 'UNKNOWN',
+    categoryTree: ['Automotive'],
+    matchConfidence: 0
+  }],
+  defaultRuleConfig,
+  'Bremsenentlüfter'
+);
+assertEqual(highMarginWeakResult.report.status, 'MANUAL_REVIEW', 'high-margin weak identity match routes to manual review');
+
+const hardVariantResult = analyzeEbayAmazonComparison(
+  {
+    title: 'Endoskop Kamera 4Weg 360 5 zoll HD Gelenkendoskop 6.25mm Lens',
+    soldPrice: 194.99,
+    condition: 'New'
+  },
+  [{
+    asin: 'B000SCOPE',
+    title: 'Endoskopkamera mit Licht Ennovor 1920P HD Dual Lens 8mm',
+    brand: 'Ennovor',
+    buyBoxPrice: 50.99,
+    currentPrice: 50.99,
+    availabilityStatus: 'UNKNOWN',
+    categoryTree: ['Tools'],
+    matchConfidence: 0
+  }],
+  defaultRuleConfig,
+  'Endoskop Kamera'
+);
+assertEqual(hardVariantResult.report.status, 'REJECTED', 'hard variant mismatch remains rejected');
 
 const profile = getEbayDiscoveryProfile('starter-safe');
 const category = getEbayDiscoveryCategory(profile, 'office-electronics');

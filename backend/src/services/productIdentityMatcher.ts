@@ -237,6 +237,16 @@ function unique(items: Array<string | undefined>): string[] {
   return [...new Set(items.filter((item): item is string => Boolean(item)))];
 }
 
+const compactQueryPart = (value: string | undefined): string | undefined => {
+  const normalizedValue = normalize(value);
+  if (!normalizedValue) return undefined;
+  return normalizedValue
+    .split(' ')
+    .filter((word) => word.length > 1 && !['new', 'neu', 'used', 'gebraucht', 'original', 'genuine'].includes(word))
+    .join(' ')
+    .trim() || undefined;
+};
+
 function inferKnownBrand(text: string): string | undefined {
   const normalizedText = normalize(text) ?? '';
   const sortedBrands = [...knownBrands].sort((a, b) => b.length - a.length);
@@ -335,6 +345,45 @@ function variantTokens(value: string | undefined): string[] {
   const storage = words.filter((word) => /^\d+(?:gb|tb|mb)$/.test(word));
   const size = words.filter((word) => /^\d+(?:mm|cm|inch|in|oz|ml|l)$/.test(word));
   return unique([...words.filter((word) => variantWords.has(word)), ...storage, ...size]);
+}
+
+export interface EbayIdentityFingerprint {
+  brand?: string;
+  modelTokens: string[];
+  identifiers: string[];
+  variantTokens: string[];
+  packCount?: number;
+  searchQueries: string[];
+}
+
+export function extractEbayIdentityFingerprint(ebay: EbayCandidateInput): EbayIdentityFingerprint {
+  const brand = inferEbayBrand(ebay);
+  const modelTokens = unique([
+    ...modelTokensFromText(ebay.title),
+    ...modelTokensFromRaw(ebay.raw)
+  ]);
+  const identifiers = identifierValues(ebay.raw);
+  const variants = variantTokens(ebay.title);
+  const pack = packCount(ebay.title) ?? packCountFromRaw(ebay.raw);
+  const titleFallback = compactQueryPart(ebay.title);
+  const searchQueries = unique([
+    ...identifiers.slice(0, 2).flatMap((identifier) => [
+      compactQueryPart([brand, identifier].filter(Boolean).join(' ')),
+      compactQueryPart(identifier)
+    ]),
+    brand && modelTokens.length ? compactQueryPart([brand, ...modelTokens.slice(0, 2)].join(' ')) : undefined,
+    brand && variants.length ? compactQueryPart([brand, ...variants.slice(0, 2), ...modelTokens.slice(0, 1)].join(' ')) : undefined,
+    titleFallback
+  ]).slice(0, 3);
+
+  return {
+    brand,
+    modelTokens,
+    identifiers,
+    variantTokens: variants,
+    packCount: pack,
+    searchQueries
+  };
 }
 
 function intersection(left: string[], right: string[]): string[] {

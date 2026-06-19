@@ -1,4 +1,4 @@
-import { evaluateProductIdentity, applyIdentityDecision } from './productIdentityMatcher.js';
+import { evaluateProductIdentity, applyIdentityDecision, extractEbayIdentityFingerprint } from './productIdentityMatcher.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 import type { AmazonMatchInput, EbayCandidateInput, OpportunityDecision } from '../domain/products.js';
 
@@ -29,6 +29,15 @@ const ebayUpc: EbayCandidateInput = {
 };
 const exact = evaluateProductIdentity(ebayUpc, amazonExact);
 assertEqual(exact.status, 'EXACT', 'shared UPC identity status');
+
+const fingerprint = extractEbayIdentityFingerprint({
+  title: 'Wera Drehmomentschlüssel Click-Torque A 6 Set 1/4 Zoll',
+  soldPrice: 189.9,
+  raw: { item_specifics: { Brand: 'Wera', MPN: '05075691001' } }
+});
+assertEqual(fingerprint.brand, 'wera', 'fingerprint brand');
+assertIncludes(fingerprint.identifiers, '05075691001', 'fingerprint MPN');
+assertEqual(fingerprint.searchQueries[0], 'wera 05075691001', 'fingerprint identifier-first search query');
 
 const rawIdentifierExact = evaluateProductIdentity(
   {

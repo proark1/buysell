@@ -35,6 +35,15 @@ if (packMismatchScore >= score) {
   throw new Error(`expected pack uncertainty score below exact product score, got ${packMismatchScore} >= ${score}`);
 }
 
+const variantMismatchScore = scoreAmazonMatch(
+  { title: 'Endoskop Kamera 4Weg 360 5 zoll HD Gelenkendoskop 6.25mm Lens' },
+  { asin: 'B000TEST6', title: 'Endoskopkamera mit Licht 8mm Dual Lens', brand: 'Ennovor', matchConfidence: 0 }
+);
+
+if (variantMismatchScore >= 0.35) {
+  throw new Error(`expected dimension mismatch to stay low confidence, got ${variantMismatchScore}`);
+}
+
 const specNoiseScore = scoreAmazonMatch(
   { title: 'Zoom Recorder Battery 7600mAh 32-bit Accessory' },
   { asin: 'B000TEST5', title: 'Zoom Recorder Battery Accessory', brand: 'Zoom', matchConfidence: 0 }

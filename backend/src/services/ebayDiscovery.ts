@@ -20,7 +20,7 @@ import {
 import { scoreAmazonMatch } from './matchScorer.js';
 import { getEbayDiscoveryMarket, type DiscoveryMarket } from './marketplaces.js';
 import { scoreOpportunity } from './opportunityScorer.js';
-import { applyIdentityDecision, evaluateProductIdentity } from './productIdentityMatcher.js';
+import { applyIdentityDecision, evaluateProductIdentity, extractEbayIdentityFingerprint } from './productIdentityMatcher.js';
 import { notFound } from '../security/httpErrors.js';
 import { profitInputsFromRuleConfig } from './profitInputs.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
@@ -754,8 +754,55 @@ export async function persistEbayDiscoveryRun(
   });
 }
 
-function searchQueryForEbayProduct(ebay: EbayCandidateInput): string {
+function cleanTitleSearchQuery(ebay: EbayCandidateInput): string {
   return ebay.title.replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+export function amazonSearchQueriesForEbayProduct(ebay: EbayCandidateInput): string[] {
+  const fingerprint = extractEbayIdentityFingerprint(ebay);
+  return fingerprint.searchQueries.length ? fingerprint.searchQueries : [cleanTitleSearchQuery(ebay)];
+}
+
+function searchQueryForEbayProduct(ebay: EbayCandidateInput): string {
+  return amazonSearchQueriesForEbayProduct(ebay)[0] ?? cleanTitleSearchQuery(ebay);
+}
+
+async function findAmazonMatchesForEbayProduct(options: {
+  ebay: EbayCandidateInput;
+  apiKey: string;
+  domain: number;
+  limit: number;
+}): Promise<{
+  matches: AmazonMatchInput[];
+  queries: string[];
+  usedQueries: string[];
+}> {
+  const queries = amazonSearchQueriesForEbayProduct(options.ebay);
+  const matchesByAsin = new Map<string, AmazonMatchInput>();
+  const usedQueries: string[] = [];
+
+  for (const query of queries) {
+    usedQueries.push(query);
+    const matches = await findAmazonMatches({
+      query,
+      apiKey: options.apiKey,
+      domain: options.domain,
+      limit: options.limit
+    });
+    for (const match of matches) {
+      if (!matchesByAsin.has(match.asin)) matchesByAsin.set(match.asin, match);
+    }
+
+    // If an identifier/brand-model query produced matches, avoid broad title fallback
+    // that tends to introduce cheap but unrelated products.
+    if (matches.length > 0 && query !== queries[queries.length - 1]) break;
+  }
+
+  return {
+    matches: [...matchesByAsin.values()].slice(0, options.limit),
+    queries,
+    usedQueries
+  };
 }
 
 function uniqueReasons(reasons: string[]): string[] {
@@ -875,7 +922,8 @@ function comparisonRejectionReasons(opportunity: ProductOpportunity, ruleConfig:
 
 function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): boolean {
   const flags = opportunity.decision.riskFlags;
-  if (flags.some((flag) => ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'AMAZON_OUT_OF_STOCK', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'].includes(flag))) {
+  const hardRejectFlags = ['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_COST_TOO_HIGH', 'AMAZON_OUT_OF_STOCK', 'MISSING_AMAZON_PRICE', 'MISSING_EBAY_PRICE', 'PRODUCT_IDENTITY_CONFLICT', 'BRAND_MISMATCH', 'MODEL_MISMATCH', 'BUNDLE_OR_QUANTITY_MISMATCH', 'VARIANT_MISMATCH'];
+  if (flags.some((flag) => hardRejectFlags.includes(flag))) {
     return false;
   }
 
@@ -883,9 +931,15 @@ function manualReviewCandidate(opportunity: ProductOpportunity, ruleConfig: Acti
   const minimumMatchFloor = Math.max(0.35, ruleConfig.thresholds.minimumMatchConfidence - 0.2);
   const minimumProfitFloor = Math.max(1, ruleConfig.thresholds.minimumProfitUsd * 0.8);
   const minimumRoiFloor = Math.max(5, ruleConfig.thresholds.minimumRoiPercent * 0.6);
-  return matchConfidence >= minimumMatchFloor
+  const nearMiss = matchConfidence >= minimumMatchFloor
     && opportunity.profit.expectedProfit >= minimumProfitFloor
     && opportunity.profit.roiPercent >= minimumRoiFloor;
+  const identityUnproven = flags.some((flag) => ['LOW_MATCH_CONFIDENCE', 'BRAND_NOT_VERIFIED', 'MODEL_NOT_VERIFIED', 'PRODUCT_IDENTITY_UNVERIFIED', 'AMAZON_STOCK_UNKNOWN'].includes(flag));
+  const highMarginNeedsReview = identityUnproven
+    && matchConfidence >= 0.05
+    && opportunity.profit.expectedProfit >= Math.max(50, ruleConfig.thresholds.minimumProfitUsd * 3)
+    && opportunity.profit.roiPercent >= Math.max(60, ruleConfig.thresholds.minimumRoiPercent * 2);
+  return nearMiss || highMarginNeedsReview;
 }
 
 function manualReviewReasons(opportunity: ProductOpportunity, ruleConfig: ActiveRuleConfig): string[] {
@@ -1175,12 +1229,14 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
 
     await options.db.ebayDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
     try {
-      const amazonMatches = await findAmazonMatches({
-        query,
+      const amazonSearch = await findAmazonMatchesForEbayProduct({
+        ebay,
         apiKey: options.keepaApiKey,
         domain: market.amazonDomainId,
         limit: amazonMatchLimit
       });
+      const amazonMatches = amazonSearch.matches;
+      const reportQuery = amazonSearch.usedQueries.join(' | ');
       compared += 1;
       let activeMarketCandidates: EbayCandidateInput[] | undefined;
       let activeMarketWarning: string | undefined;
@@ -1204,7 +1260,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
           activeMarketWarning = 'Live eBay market check was skipped because SerpAPI is currently unavailable or out of quota.';
         }
       }
-      const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, query, {
+      const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, reportQuery, {
         market,
         amazonMatchLimit,
         soldMarketCandidates,
