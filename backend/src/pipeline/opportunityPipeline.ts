@@ -37,7 +37,6 @@ export interface BuildOpportunitiesOptions {
   blockedBrands?: string[];
   blockedCategories?: string[];
   blockedKeywords?: string[];
-  allowedCategories?: string[];
 }
 
 export async function buildOpportunities(options: BuildOpportunitiesOptions): Promise<ProductOpportunity[]> {
@@ -67,7 +66,6 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
     blockedBrands: options.blockedBrands ?? [],
     blockedCategories: options.blockedCategories ?? [],
     blockedKeywords: options.blockedKeywords ?? [],
-    allowedCategories: options.allowedCategories ?? [],
     maxAmazonCostUsd: options.maxAmazonCostUsd ?? 150
   };
   const marketMetrics = calculateEbayMarketMetrics({

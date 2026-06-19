@@ -56,7 +56,6 @@ export interface SafetyPolicy {
   blockedBrands: string[];
   blockedCategories: string[];
   blockedKeywords: string[];
-  allowedCategories: string[];
   maxAmazonCostUsd: number;
 }
 
@@ -112,26 +111,10 @@ export const defaultBlockedKeywords = [
   'lingerie'
 ];
 
-export const defaultAllowedCategories = [
-  'Electronics',
-  'Consumer Electronics',
-  'Computers/Tablets & Networking',
-  'Office Products',
-  'Tools',
-  'Home Improvement',
-  'Business & Industrial',
-  'Home & Kitchen',
-  'Automotive',
-  'eBay Motors',
-  'Cameras & Photo',
-  'Musical Instruments & Gear',
-  'Pet Supplies'
-];
-
 export function rejectionStageForFlag(flag: string): RejectionStage {
-  if (['MISSING_EBAY_PRICE', 'MISSING_AMAZON_PRICE', 'CATEGORY_UNKNOWN'].includes(flag)) return 'SOURCE_DATA';
+  if (['MISSING_EBAY_PRICE', 'MISSING_AMAZON_PRICE'].includes(flag)) return 'SOURCE_DATA';
   if (['EBAY_AUCTION_FORMAT', 'EBAY_NOT_NEW', 'DAMAGED_OR_PARTS'].includes(flag)) return 'SOURCE_FORMAT';
-  if (['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'OUTSIDE_ALLOWED_CATEGORY', 'AMAZON_OUT_OF_STOCK'].includes(flag)) return 'SAFETY';
+  if (['BLOCKED_BRAND', 'BLOCKED_CATEGORY', 'BLOCKED_KEYWORD', 'AMAZON_OUT_OF_STOCK'].includes(flag)) return 'SAFETY';
   if (['AMAZON_COST_TOO_HIGH', 'AMAZON_COST_ABOVE_PROFILE'].includes(flag)) return 'SOURCE_COST';
   if ([
     'PRODUCT_IDENTITY_CONFLICT',

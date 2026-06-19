@@ -373,7 +373,6 @@ model RuleConfig {
   blockedBrands                   Json?
   blockedCategories               Json?
   blockedKeywords                 Json?
-  allowedCategories               Json?
   amazonPriceCheckIntervalMinutes Int      @default(30)
   ebayDiscoveryAutoRunEnabled     Boolean  @default(false)
   ebayDiscoveryAutoRunIntervalMinutes Int  @default(1)

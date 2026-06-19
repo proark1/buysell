@@ -8,7 +8,6 @@ const policy = {
   blockedBrands: [],
   blockedCategories: ['Food', 'Clothing'],
   blockedKeywords: ['supplement', 'shirt'],
-  allowedCategories: ['Electronics', 'Office Products'],
   maxAmazonCostUsd: 150
 };
 

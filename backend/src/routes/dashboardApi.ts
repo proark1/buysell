@@ -30,7 +30,6 @@ const settingsSchema = z.object({
   minimumOpportunityScore: z.number().int().min(0).max(100).optional(),
   blockedCategories: z.array(z.string()).optional(),
   blockedKeywords: z.array(z.string()).optional(),
-  allowedCategories: z.array(z.string()).optional(),
   amazonPriceCheckIntervalMinutes: z.number().int().positive().optional(),
   ebayDiscoveryAutoRunEnabled: z.boolean().optional(),
   ebayDiscoveryAutoRunIntervalMinutes: z.number().int().positive().max(1440).optional(),

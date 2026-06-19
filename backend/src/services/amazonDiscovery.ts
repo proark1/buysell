@@ -190,7 +190,6 @@ function safetyPolicy(ruleConfig: ActiveRuleConfig, safeMode: boolean, maxAmazon
     blockedBrands: ruleConfig.blockedBrands,
     blockedCategories: ruleConfig.blockedCategories,
     blockedKeywords: ruleConfig.blockedKeywords,
-    allowedCategories: ruleConfig.allowedCategories,
     maxAmazonCostUsd
   };
 }
@@ -517,9 +516,6 @@ function comparisonRejectionReasons(
   }
   if (opportunity.decision.riskFlags.includes('AMAZON_STOCK_UNKNOWN')) {
     reasons.push('Amazon stock status is unknown; verify live availability before listing.');
-  }
-  if (opportunity.decision.riskFlags.includes('CATEGORY_UNKNOWN')) {
-    reasons.push('Marketplace category is missing, so safe-mode category fit needs review.');
   }
   if (opportunity.decision.riskFlags.includes('LOW_OPPORTUNITY_SCORE') && opportunity.score) {
     reasons.push(`Overall comparison score ${opportunity.score.total} is below the ${ruleConfig.minimumOpportunityScore} minimum after profit, ROI, demand, match, and risk scoring.`);

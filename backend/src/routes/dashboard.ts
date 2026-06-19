@@ -906,7 +906,6 @@ const dashboardHtml = `<!doctype html>
               <summary>Discovery safety defaults</summary>
               <div class="form-grid">
                 <div class="field"><label>Safe Mode</label><label class="check"><input id="settingsSafeMode" type="checkbox"> Keep risky products out</label></div>
-                <div class="field"><label>Allowed Categories</label><textarea id="settingsAllowedCategories" placeholder="One per line"></textarea></div>
                 <div class="field"><label>Blocked Categories</label><textarea id="settingsBlockedCategories" placeholder="One per line"></textarea></div>
                 <div class="field"><label>Blocked Keywords</label><textarea id="settingsBlockedKeywords" placeholder="One per line"></textarea></div>
               </div>
@@ -2634,7 +2633,6 @@ function render(){
   if(rc.thresholds&&rc.thresholds.minimumMatchConfidence!==undefined)document.getElementById('settingsMinMatch').value=Math.round(Number(rc.thresholds.minimumMatchConfidence||0)*100);
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('settingsMinScore').value=rc.minimumOpportunityScore;
   if(rc.maxAmazonCostUsd!==undefined)document.getElementById('settingsMaxCost').value=rc.maxAmazonCostUsd;
-  document.getElementById('settingsAllowedCategories').value=lineText(rc.allowedCategories);
   document.getElementById('settingsBlockedCategories').value=lineText(rc.blockedCategories);
   document.getElementById('settingsBlockedKeywords').value=lineText(rc.blockedKeywords);
   if(rc.minimumOpportunityScore!==undefined)document.getElementById('scanMinScore').value=rc.minimumOpportunityScore;
@@ -2899,7 +2897,6 @@ function saveThresholds(){
 function saveSafety(){
   var body={
     safeMode:document.getElementById('settingsSafeMode').checked,
-    allowedCategories:lines(document.getElementById('settingsAllowedCategories').value),
     blockedCategories:lines(document.getElementById('settingsBlockedCategories').value),
     blockedKeywords:lines(document.getElementById('settingsBlockedKeywords').value)
   };

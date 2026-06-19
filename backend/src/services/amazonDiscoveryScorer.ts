@@ -42,7 +42,6 @@ function riskPenalty(riskFlags: string[]): number {
     if (flag === 'MISSING_AMAZON_PRICE') return total + 35;
     if (flag === 'AMAZON_COST_ABOVE_PROFILE') return total + 14;
     if (flag === 'AMAZON_STOCK_UNKNOWN') return total + 10;
-    if (flag === 'OUTSIDE_ALLOWED_CATEGORY' || flag === 'CATEGORY_UNKNOWN') return total;
     return total + 4;
   }, 0);
 }
