@@ -39,6 +39,31 @@ assertEqual(fingerprint.brand, 'wera', 'fingerprint brand');
 assertIncludes(fingerprint.identifiers, '05075691001', 'fingerprint MPN');
 assertEqual(fingerprint.searchQueries[0], 'wera 05075691001', 'fingerprint identifier-first search query');
 
+const listingIdFingerprint = extractEbayIdentityFingerprint({
+  itemId: '397179669989',
+  title: 'Dell Thunderbolt Dock WD19TB 180W, DELL-WD19TB (180W)',
+  soldPrice: 120,
+  raw: {
+    product_id: '397179669989',
+    epid: '23067342330',
+    link: 'https://www.ebay.de/itm/397179669989'
+  }
+});
+assertEqual(listingIdFingerprint.brand, 'dell', 'fingerprint infers observed eBay brand');
+assertEqual(listingIdFingerprint.identifiers.includes('397179669989'), false, 'fingerprint ignores eBay listing product_id');
+assertEqual(listingIdFingerprint.identifiers.includes('23067342330'), false, 'fingerprint ignores eBay catalog epid');
+assertEqual(listingIdFingerprint.searchQueries[0], 'dell wd19tb', 'fingerprint falls back to brand-model query after marketplace IDs are ignored');
+
+const mixedIdentifierFingerprint = extractEbayIdentityFingerprint({
+  title: 'Wera Drehmomentschlüssel Click-Torque A 6 Set 1/4 Zoll',
+  soldPrice: 189.9,
+  raw: {
+    product_id: '397179669989',
+    item_specifics: { Brand: 'Wera', MPN: '05075691001' }
+  }
+});
+assertEqual(mixedIdentifierFingerprint.searchQueries[0], 'wera 05075691001', 'trusted MPN remains first even when product_id is present');
+
 const rawIdentifierExact = evaluateProductIdentity(
   {
     title: 'Tera X100 Wireless Barcode Scanner Black',

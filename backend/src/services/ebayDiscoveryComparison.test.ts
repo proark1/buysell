@@ -69,6 +69,19 @@ const identifierQueries = amazonSearchQueriesForEbayProduct({
 });
 assertEqual(identifierQueries[0], 'wera 05075691001', 'eBay comparison searches Amazon by brand and identifier first');
 
+const ebayMarketplaceIdQueries = amazonSearchQueriesForEbayProduct({
+  ...ebay,
+  itemId: '397179669989',
+  title: 'Dell Thunderbolt Dock WD19TB 180W, DELL-WD19TB (180W)',
+  raw: {
+    product_id: '397179669989',
+    epid: '23067342330',
+    link: 'https://www.ebay.de/itm/397179669989'
+  }
+});
+assertEqual(ebayMarketplaceIdQueries.some((query) => query.includes('397179669989') || query.includes('23067342330')), false, 'eBay comparison excludes marketplace IDs from Amazon queries');
+assertEqual(ebayMarketplaceIdQueries[0], 'dell wd19tb', 'eBay comparison falls back to brand-model query after marketplace IDs are ignored');
+
 const sampledMarketResult = analyzeEbayAmazonComparison(ebay, [profitableAmazon], defaultRuleConfig, ebay.title, {
   soldMarketCandidates: [
     ebay,

@@ -12,15 +12,23 @@ const knownBrands = new Set([
   'bosch',
   'brother',
   'canon',
+  'dell',
   'dewalt',
+  'dji',
   'dremel',
   'dymo',
   'epson',
   'eyoyo',
+  'fifine',
+  'feintech',
+  'fosi audio',
+  'fritz',
   'gulikit',
   'gulitech',
   'fujitsu',
   'garmin',
+  'gamestar',
+  'homematic',
   'hp',
   'honeywell',
   'jabra',
@@ -28,22 +36,33 @@ const knownBrands = new Set([
   'kasa',
   'kingston',
   'lenovo',
+  'lewitt',
+  'ledvance',
   'logitech',
   'makita',
   'metabo',
+  'microsoft',
   'milwaukee',
+  'mucar',
   'netgear',
   'nelko',
+  'nintendo',
+  'nobsound',
+  'nokia',
+  'osram',
   'panasonic',
   'phomemo',
   'philips',
   'poly',
+  'presonus',
   'rode',
   'ryobi',
   'samsung',
   'seagate',
   'shure',
+  'sonoff',
   'sony',
+  'starkey',
   'symbol',
   'tera',
   'teslong',
@@ -55,6 +74,7 @@ const knownBrands = new Set([
   'wera',
   'wd',
   'western digital',
+  'wolfbox',
   'xtool',
   'xerox',
   'yihua',
@@ -227,6 +247,33 @@ function collectRawFieldValues(value: unknown, targetKeys: Set<string>, out: str
   return out;
 }
 
+function collectRawFieldEntries(value: unknown, targetKeys: Set<string>, out: Array<{ key: string; value: string }> = [], depth = 0): Array<{ key: string; value: string }> {
+  if (depth > 4 || value === null || value === undefined) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectRawFieldEntries(item, targetKeys, out, depth + 1);
+    return out;
+  }
+  const record = rawRecord(value);
+  if (!record) return out;
+
+  for (const [key, item] of Object.entries(record)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (targetKeys.has(normalizedKey)) {
+      if (Array.isArray(item)) {
+        for (const nested of item) {
+          const parsed = textFromUnknown(nested);
+          if (parsed) out.push({ key: normalizedKey, value: parsed });
+        }
+      } else {
+        const parsed = textFromUnknown(item);
+        if (parsed) out.push({ key: normalizedKey, value: parsed });
+      }
+    }
+    collectRawFieldEntries(item, targetKeys, out, depth + 1);
+  }
+  return out;
+}
+
 function normalizedIdentifier(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalizedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -289,35 +336,82 @@ function modelTokensFromRaw(raw: unknown): string[] {
     .flatMap(modelTokensFromText);
 }
 
-function identifierValues(raw: unknown, direct: Array<string | undefined> = []): string[] {
-  const values = [
-    ...direct,
-    ...collectRawFieldValues(raw, new Set([
-      'upc',
-      'upcs',
-      'upclist',
-      'ean',
-      'eans',
-      'eanlist',
-      'gtin',
-      'gtins',
-      'isbn',
-      'mpn',
-      'mpns',
-      'manufacturerpartnumber',
-      'partnumber',
-      'partnumbers',
-      'itempartnumber',
-      'model',
-      'modelnumber',
-      'itemmodelnumber',
-      'epid',
-      'productid'
-    ]))
+const barcodeIdentifierKeys = new Set([
+  'upc',
+  'upcs',
+  'upclist',
+  'ean',
+  'eans',
+  'eanlist',
+  'gtin',
+  'gtins',
+  'isbn'
+]);
+
+const partIdentifierKeys = new Set([
+  'mpn',
+  'mpns',
+  'manufacturerpartnumber',
+  'partnumber',
+  'partnumbers',
+  'itempartnumber',
+  'model',
+  'modelnumber',
+  'itemmodelnumber'
+]);
+
+const ignoredMarketplaceIdentifierKeys = new Set([
+  'epid',
+  'itemid',
+  'itemnumber',
+  'legacyitemid',
+  'listingid',
+  'productid'
+]);
+
+const identityIdentifierKeys = new Set([
+  ...barcodeIdentifierKeys,
+  ...partIdentifierKeys,
+  ...ignoredMarketplaceIdentifierKeys
+]);
+
+function isPlausibleBarcodeIdentifier(value: string): boolean {
+  if (!/^[0-9X]+$/.test(value)) return false;
+  if (value.endsWith('X')) return value.length === 10;
+  return [8, 10, 12, 13, 14].includes(value.length);
+}
+
+function isPlausiblePartIdentifier(value: string): boolean {
+  if (value.length < 4 || value.length > 32) return false;
+  if (/^(?:DOESNOTAPPLY|NOTAPPLICABLE|UNKNOWN|NONE|NA|N\/A)$/i.test(value)) return false;
+  return /[A-Z0-9]/.test(value);
+}
+
+function normalizedIdentifierForKey(key: string, value: string | undefined): string | undefined {
+  const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (ignoredMarketplaceIdentifierKeys.has(normalizedKey)) return undefined;
+  const identifier = normalizedIdentifier(value);
+  if (!identifier) return undefined;
+  if (barcodeIdentifierKeys.has(normalizedKey)) return isPlausibleBarcodeIdentifier(identifier) ? identifier : undefined;
+  if (partIdentifierKeys.has(normalizedKey)) return isPlausiblePartIdentifier(identifier) ? identifier : undefined;
+  return undefined;
+}
+
+function splitIdentifierValue(value: string): string[] {
+  return value
+    .split(/[,;|]+/)
+    .flatMap((part) => part.trim().split(/\s+(?=[A-Z0-9]{4,}\b)/i))
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function identifierValues(raw: unknown, direct: Array<{ key: string; value: string | undefined }> = []): string[] {
+  const entries = [
+    ...direct.flatMap((entry) => entry.value ? splitIdentifierValue(entry.value).map((value) => ({ key: entry.key, value })) : []),
+    ...collectRawFieldEntries(raw, identityIdentifierKeys)
+      .flatMap((entry) => splitIdentifierValue(entry.value).map((value) => ({ key: entry.key, value })))
   ];
-  return unique(values
-    .flatMap((value) => value?.split(/[,;|\s]+/) ?? [])
-    .map(normalizedIdentifier));
+  return unique(entries.map((entry) => normalizedIdentifierForKey(entry.key, entry.value)));
 }
 
 function packCount(value: string | undefined): number | undefined {
@@ -418,7 +512,10 @@ export function evaluateProductIdentity(ebay: EbayCandidateInput, amazon: Amazon
     ...modelTokensFromText(amazon.title)
   ]);
   const ebayIdentifiers = identifierValues(ebay.raw);
-  const amazonIdentifiers = identifierValues(amazon.raw, [amazon.upc, amazon.model]);
+  const amazonIdentifiers = identifierValues(amazon.raw, [
+    { key: 'upc', value: amazon.upc },
+    { key: 'model', value: amazon.model }
+  ]);
   const sharedIdentifiers = intersection(ebayIdentifiers, amazonIdentifiers);
   const sharedModels = intersection(ebayModelTokens, amazonModelTokens);
 
