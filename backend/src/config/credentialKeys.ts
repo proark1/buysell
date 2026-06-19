@@ -25,7 +25,8 @@ export const CREDENTIAL_KEYS: CredentialKeyDef[] = [
   { key: 'EBAY_REFRESH_TOKEN', label: 'eBay Refresh Token', group: 'eBay', type: 'secret' },
   { key: 'EBAY_MARKETPLACE_ID', label: 'eBay Marketplace ID', group: 'eBay', type: 'text', help: 'e.g. EBAY_US' },
   { key: 'EBAY_SANDBOX', label: 'eBay Sandbox', group: 'eBay', type: 'toggle', help: 'Use eBay sandbox endpoints.' },
-  { key: 'LOCAL_AGENT_SHARED_SECRET', label: 'Local Agent Shared Secret', group: 'Security', type: 'secret', help: 'Shared secret for the local agent and protected routes.' }
+  { key: 'LOCAL_AGENT_SHARED_SECRET', label: 'Local Agent Shared Secret', group: 'Security', type: 'secret', help: 'Shared secret for the local agent and protected routes.' },
+  { key: 'NOTIFICATION_WEBHOOK_URL', label: 'Notification Webhook URL', group: 'Notifications', type: 'text', help: 'Optional https:// endpoint that receives JSON alerts (failed runs, ready purchases).' }
 ];
 
 const byKey = new Map(CREDENTIAL_KEYS.map((definition) => [definition.key, definition]));

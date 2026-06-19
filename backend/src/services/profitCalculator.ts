@@ -122,7 +122,7 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
     totalLandedCost: roundMoney(totalLandedCost),
     totalRiskReserve: roundMoney(bufferAmount),
     expectedProfit: roundMoney(expectedProfit),
-    roiPercent: totalSourceCost > 0 ? roundPercent((expectedProfit / totalSourceCost) * 100) : 0,
-    marginPercent: input.ebaySalePrice > 0 ? roundPercent((expectedProfit / input.ebaySalePrice) * 100) : 0
+    roiPercent: cashInvested > 0 ? roundPercent((expectedProfit / cashInvested) * 100) : 0,
+    marginPercent: grossRevenue > 0 ? roundPercent((expectedProfit / grossRevenue) * 100) : 0
   };
 }

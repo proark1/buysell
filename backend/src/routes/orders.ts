@@ -4,9 +4,7 @@ import { prisma } from '../db/prisma.js';
 import { createOrderAndBuyAction, recordAmazonPurchaseRows } from '../repositories/orderRepository.js';
 import { enforceDailyPurchaseLimit, lockDailyPurchaseBudget } from '../services/spendLimits.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
-import { getSecret } from '../services/secrets.js';
-import { getEbayAccessToken } from '../clients/ebaySellClient.js';
-import { fetchRecentEbayOrders } from '../clients/ebayFulfillmentClient.js';
+import { runEbayOrderSync } from '../services/ebayOrderSync.js';
 
 const ebayOrderSchema = z.object({
   ebayOrderId: z.string().min(1),
@@ -54,57 +52,11 @@ export async function registerOrderRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'Invalid eBay order sync payload', details: parsed.error.flatten() });
     }
 
-    const clientId = await getSecret(prisma, 'EBAY_CLIENT_ID');
-    const clientSecret = await getSecret(prisma, 'EBAY_CLIENT_SECRET');
-    const refreshToken = await getSecret(prisma, 'EBAY_REFRESH_TOKEN');
-    const sandbox = (await getSecret(prisma, 'EBAY_SANDBOX')) === 'true';
-    if (!clientId || !clientSecret || !refreshToken) {
+    const result = await runEbayOrderSync(prisma, { lookbackHours: parsed.data.lookbackHours, limit: parsed.data.limit });
+    if (result.status === 'MISSING_CREDENTIALS') {
       return reply.status(503).send({ error: 'EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_REFRESH_TOKEN are required for eBay order sync' });
     }
-
-    const accessToken = await getEbayAccessToken({ clientId, clientSecret, refreshToken, sandbox });
-    const createdAfter = new Date(Date.now() - parsed.data.lookbackHours * 60 * 60 * 1000);
-    const orders = await fetchRecentEbayOrders({
-      accessToken,
-      sandbox,
-      createdAfter,
-      limit: parsed.data.limit
-    });
-
-    const synced = [];
-    const skipped = [];
-    for (const order of orders) {
-      const lineItem = order.lineItems.find((item) => item.ebayItemId);
-      if (!lineItem?.ebayItemId) {
-        skipped.push({ orderId: order.orderId, reason: 'No legacy eBay item ID on order line items.' });
-        continue;
-      }
-      if (order.total === undefined || order.total <= 0) {
-        skipped.push({ orderId: order.orderId, ebayItemId: lineItem.ebayItemId, reason: 'Order total is missing or not positive.' });
-        continue;
-      }
-      try {
-        synced.push(await createOrderAndBuyAction(prisma, {
-          ebayOrderId: order.orderId,
-          ebayItemId: lineItem.ebayItemId,
-          buyerName: order.buyerName,
-          buyerShippingAddress: order.buyerShippingAddress ?? { source: 'ebay-order-sync', orderId: order.orderId },
-          salePrice: order.total
-        }));
-      } catch (error) {
-        skipped.push({
-          orderId: order.orderId,
-          ebayItemId: lineItem.ebayItemId,
-          reason: error instanceof Error ? error.message : 'Order could not be synced.'
-        });
-      }
-    }
-
-    return {
-      scanned: orders.length,
-      synced: synced.length,
-      skipped
-    };
+    return { scanned: result.scanned, synced: result.synced, skipped: result.skipped };
   });
 
   app.post('/orders/:id/amazon-purchase', async (request, reply) => {

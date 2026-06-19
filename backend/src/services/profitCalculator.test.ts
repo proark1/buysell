@@ -73,6 +73,22 @@ assertApprox(fullRisk.totalRiskReserve ?? 0, 12.7, 'full risk reserve');
 assertApprox(fullRisk.totalLandedCost ?? 0, 90.5, 'full risk landed cost');
 assertApprox(fullRisk.expectedProfit, 5.75, 'full risk expected profit');
 
+// eBay buyer-paid shipping is fee-bearing revenue, and ROI is measured against the cash
+// actually invested (item + source shipping + tax + outbound label + packaging).
+const withShipping = calculateProfit({
+  ebaySalePrice: 50,
+  ebayShippingPrice: 10,
+  amazonItemCost: 30,
+  ebayFinalValueFeeRate: 0.13,
+  ebayPaymentFeeRate: 0,
+  estimatedSalesTaxRate: 0,
+  shippingLabelCost: 6
+});
+assertApprox(withShipping.estimatedFees, 7.8, 'fees charged on buyer-paid shipping too');
+assertApprox(withShipping.expectedProfit, 16.2, 'profit includes shipping revenue and label cost');
+assertApprox(withShipping.roiPercent, 45, 'ROI denominator is cash invested incl. label cost');
+assertApprox(withShipping.marginPercent, 27, 'margin uses gross revenue incl. shipping');
+
 const germanInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'de');
 const usInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'us');
 assertApprox(germanInputs.estimatedSalesTaxRate, 0.19, 'Germany default source tax');

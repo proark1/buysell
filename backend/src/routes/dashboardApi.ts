@@ -16,6 +16,7 @@ const settingsSchema = z.object({
   priceChangeBuffer: z.number().min(0).optional(),
   sourceShippingCost: z.number().min(0).optional(),
   packagingCost: z.number().min(0).optional(),
+  shippingLabelCost: z.number().min(0).optional(),
   paymentFixedFee: z.number().min(0).optional(),
   defaultPromotedListingFeeRate: z.number().min(0).max(1).optional(),
   returnReserveRate: z.number().min(0).max(1).optional(),
@@ -37,7 +38,12 @@ const settingsSchema = z.object({
   ebayDiscoveryAutoCompareEnabled: z.boolean().optional(),
   ebayAmazonCompareAutoRunEnabled: z.boolean().optional(),
   ebayAmazonCompareAutoRunIntervalMinutes: z.number().int().positive().max(1440).optional(),
-  ebayAmazonCompareAutoRunLimit: z.number().int().positive().max(25).optional()
+  ebayAmazonCompareAutoRunLimit: z.number().int().positive().max(25).optional(),
+  ebayOrderSyncEnabled: z.boolean().optional(),
+  ebayOrderSyncIntervalMinutes: z.number().int().positive().max(1440).optional(),
+  ebayOrderSyncLookbackHours: z.number().int().positive().max(720).optional(),
+  maxAutomationAttempts: z.number().int().min(1).max(20).optional(),
+  verificationTtlMinutes: z.number().int().min(0).max(10080).optional()
 });
 
 const discoveryCandidatesQuerySchema = z.object({
@@ -45,7 +51,7 @@ const discoveryCandidatesQuerySchema = z.object({
 });
 
 const exportParamsSchema = z.object({
-  entity: z.enum(['actions', 'candidates', 'listings', 'orders', 'profit-ledger'])
+  entity: z.enum(['actions', 'candidates', 'listings', 'orders', 'profit-ledger', 'audit'])
 });
 
 const exportQuerySchema = z.object({
@@ -53,9 +59,18 @@ const exportQuerySchema = z.object({
   take: z.coerce.number().int().positive().max(5000).default(1000)
 });
 
+const auditQuerySchema = z.object({
+  entityType: z.string().min(1).max(80).optional(),
+  entityId: z.string().min(1).max(120).optional(),
+  actor: z.string().min(1).max(80).optional(),
+  action: z.string().min(1).max(80).optional(),
+  take: z.coerce.number().int().positive().max(200).default(50),
+  cursor: z.string().min(1).optional()
+});
+
 type RuleConfigPatchValue = string | number | boolean | string[] | undefined;
 type RuleConfigPatch = Record<string, RuleConfigPatchValue>;
-type ExportEntity = 'actions' | 'candidates' | 'listings' | 'orders' | 'profit-ledger';
+type ExportEntity = 'actions' | 'candidates' | 'listings' | 'orders' | 'profit-ledger' | 'audit';
 type HeaderReply = {
   type(value: string): HeaderReply;
   header(name: string, value: string): HeaderReply;
@@ -78,9 +93,14 @@ const routeDb = prisma as typeof prisma & { ebayAmazonComparisonRun: EbayAmazonC
 
 async function patchRuleConfig(data: RuleConfigPatch): Promise<unknown> {
   const existing = await prisma.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-  return existing
-    ? prisma.ruleConfig.update({ where: { id: existing.id }, data })
-    : prisma.ruleConfig.create({ data: { id: 'default-rule-config', name: 'default', active: true, ...data } });
+  if (existing) return prisma.ruleConfig.update({ where: { id: existing.id }, data });
+  // No active config yet: upsert by the unique name so two concurrent first-time saves
+  // can't both create and collide on the primary key (P2002).
+  return prisma.ruleConfig.upsert({
+    where: { name: 'default' },
+    update: { active: true, ...data },
+    create: { id: 'default-rule-config', name: 'default', active: true, ...data }
+  });
 }
 
 async function cancelRunningEbayDiscoveryAutoRuns(reason: string): Promise<number> {
@@ -109,7 +129,10 @@ async function releaseComparingEbayCandidates(): Promise<number> {
 
 const csvValue = (value: unknown): string => {
   if (value === undefined || value === null) return '';
-  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  let text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR makes
+  // Excel/Sheets evaluate the cell as a formula. Prefix with a single quote.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
@@ -149,6 +172,13 @@ async function exportRows(entity: ExportEntity, take: number): Promise<Array<Rec
       orderBy: { createdAt: 'desc' },
       take,
       select: { id: true, ebayOrderId: true, ebayListingId: true, buyerName: true, salePrice: true, orderStatus: true, fulfillmentStatus: true, amazonOrderStatus: true, createdAt: true, updatedAt: true }
+    }) as Promise<Array<Record<string, unknown>>>;
+  }
+  if (entity === 'audit') {
+    return prisma.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: { id: true, entityType: true, entityId: true, action: true, actor: true, createdAt: true }
     }) as Promise<Array<Record<string, unknown>>>;
   }
   return prisma.profitLedgerEntry.findMany({
@@ -247,6 +277,30 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     return { entity: params.data.entity, rows };
   });
 
+  app.get('/api/audit', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const parsed = auditQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid audit query', details: parsed.error.flatten() });
+    }
+    const { entityType, entityId, actor, action, take, cursor } = parsed.data;
+    const where = {
+      ...(entityType ? { entityType } : {}),
+      ...(entityId ? { entityId } : {}),
+      ...(actor ? { actor } : {}),
+      ...(action ? { action } : {})
+    };
+    const rows = await prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+    });
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    return { entries: page, nextCursor: hasMore ? page[page.length - 1]?.id : null };
+  });
+
   app.get('/api/settings', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return getActiveRuleConfig(prisma);
@@ -266,6 +320,7 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
       'priceChangeBuffer',
       'sourceShippingCost',
       'packagingCost',
+      'shippingLabelCost',
       'paymentFixedFee',
       'defaultPromotedListingFeeRate',
       'returnReserveRate',

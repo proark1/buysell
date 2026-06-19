@@ -1045,6 +1045,7 @@ function toast(title,msg,kind){
   box.appendChild(el);setTimeout(function(){el.style.transition='.3s';el.style.opacity='0';el.style.transform='translateY(6px)';setTimeout(function(){el.remove()},300)},kind==='err'?7000:4200);
 }
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function safeUrl(s){var u=String(s==null?'':s).trim();var lu=u.toLowerCase();return (lu.indexOf('http://')===0||lu.indexOf('https://')===0)?esc(u):'#'}
 function jsString(s){return JSON.stringify(String(s||''))}
 function shortId(v){if(!v)return '—';v=String(v);return v.length>12?'<span class="mono">'+esc(v.slice(0,8))+'…</span>':'<span class="mono">'+esc(v)+'</span>'}
 function money(v){if(v===null||v===undefined||v==='')return '—';var n=Number(v);return isNaN(n)?esc(v):'$'+n.toFixed(2)}
@@ -1700,7 +1701,7 @@ function renderEbayComparison(c,rejected,review){
   var market=comparison.market||amazonCandidateMarket(c);
   var settings=comparison.settings||{};
   var reasons=unique(comparison.reasons||[]).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-  var title=best.title?'<div class="result-meta">eBay match: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
+  var title=best.title?'<div class="result-meta">eBay match: '+(best.url?'<a href="'+safeUrl(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
   var metrics=[
     metric('eBay results',String(comparison.ebayResultCount||0)),
     metric('Priced',String(comparison.pricedResultCount||0)),
@@ -1737,7 +1738,7 @@ function renderAmazonCandidateCard(c){
   var drop=amazonCandidateDrop(c);
   var dropText=drop?(' · Down '+Number(drop).toFixed(1)+'%'):'';
   var url=amazonCandidateUrl(c);
-  var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(amazonCandidateTitle(c))+'</a>':esc(amazonCandidateTitle(c));
+  var title=url?'<a href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">'+esc(amazonCandidateTitle(c))+'</a>':esc(amazonCandidateTitle(c));
   var check=selectable?'<label class="check"><input type="checkbox" data-amazon-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleAmazonCandidate(this)"></label>':'<span class="placeholder-check"></span>';
   var comparison=amazonComparison(c);
   var rejectedLabel=review?'Needs manual review':comparison?'Rejected by eBay comparison':'Rejected because';
@@ -1746,8 +1747,8 @@ function renderAmazonCandidateCard(c){
   if(c.id&&(rejected||review)&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
   else if(c.id&&(rejected||review||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerAmazonCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
   if(c.id&&(rejected||review||c.comparisonStatus==='ERROR')&&c.comparisonStatus!=='OPPORTUNITY')actions+='<button class="btn sm" onclick="recompareAmazonCandidate(\\''+esc(c.id)+'\\')">Recompare</button>';
-  if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
-  if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(url)actions+='<a class="btn sm" href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+safeUrl(comparison.best.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   actions+='</div>';
   return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="amazon" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItemFromRow(this,event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
@@ -1875,7 +1876,7 @@ function renderAmazonComparisonForEbay(c,rejected,review){
   var best=comparisonFallbackMatch(comparison)||{};
   var market=comparison.market||ebayCandidateMarket(c);
   var reasons=unique(comparison.reasons||[]).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
-  var title=best.title?'<div class="result-meta">Amazon match: '+(best.url?'<a href="'+esc(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
+  var title=best.title?'<div class="result-meta">Amazon match: '+(best.url?'<a href="'+safeUrl(best.url)+'" target="_blank" rel="noreferrer">'+esc(best.title)+'</a>':esc(best.title))+'</div>':'';
   var sourcePrice=best.buyBoxPrice!==undefined?best.buyBoxPrice:best.currentPrice;
   var metrics=[
     metric('Amazon matches',String(comparison.amazonResultCount||0)),
@@ -1909,7 +1910,7 @@ function renderEbayCandidateCard(c){
   var rejection=ebayCandidateReasons(c).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
   var risks=ebayRiskFlags(c).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
   var url=ebayCandidateUrl(c);
-  var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
+  var title=url?'<a href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
   var check=selectable?'<label class="check"><input type="checkbox" data-ebay-id="'+esc(c.id)+'" '+(selected?'checked':'')+' onchange="toggleEbayCandidate(this)"></label>':'<span class="placeholder-check"></span>';
   var comparison=ebayComparison(c);
   var rejectedLabel=review?'Needs manual review':comparison?'Rejected by Amazon comparison':'Rejected because';
@@ -1921,8 +1922,8 @@ function renderEbayCandidateCard(c){
   if(c.id&&(rejected||review)&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
   else if(c.id&&(rejected||review||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
   if(c.id&&(rejected||review||c.comparisonStatus==='ERROR')&&c.comparisonStatus!=='OPPORTUNITY')actions+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(c.id)+'\\')">Recompare</button>';
-  if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
-  if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+esc(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(url)actions+='<a class="btn sm" href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(comparison&&comparison.best&&comparison.best.url)actions+='<a class="btn sm" href="'+safeUrl(comparison.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   actions+='</div>';
   return '<div class="result-card workbench-card '+(review?'review':(rejected?'rejected':''))+'" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItemFromRow(this,event)"><div class="result-head">'+check+'<div class="'+scoreClass(score)+'">'+score+'</div><div class="result-main">'+
     '<div class="result-title">'+title+'</div>'+
@@ -2216,8 +2217,8 @@ function inspectorActionsForEbay(c){
   var html='<div class="card-actions">';
   if(id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
   if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(id)+'\\')">Recompare</button>';
-  if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
-  if(amazonMatch&&amazonMatch.url)html+='<a class="btn sm" href="'+esc(amazonMatch.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(url)html+='<a class="btn sm" href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(amazonMatch&&amazonMatch.url)html+='<a class="btn sm" href="'+safeUrl(amazonMatch.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
   return html+'</div>';
 }
 function inspectorActionsForAmazon(c){
@@ -2228,8 +2229,8 @@ function inspectorActionsForAmazon(c){
   var html='<div class="card-actions">';
   if(id&&(isRejectedAmazonCandidate(c)||isManualReviewAmazonCandidate(c)||c.comparisonStatus==='ERROR'))html+='<button class="btn primary sm" onclick="considerAmazonCandidate(\\''+esc(id)+'\\')">Review Anyway</button>';
   if(id&&c.comparisonStatus!=='OPPORTUNITY')html+='<button class="btn sm" onclick="recompareAmazonCandidate(\\''+esc(id)+'\\')">Recompare</button>';
-  if(url)html+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
-  if(ebayMatch&&ebayMatch.url)html+='<a class="btn sm" href="'+esc(ebayMatch.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+  if(url)html+='<a class="btn sm" href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+  if(ebayMatch&&ebayMatch.url)html+='<a class="btn sm" href="'+safeUrl(ebayMatch.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   return html+'</div>';
 }
 function renderInspectorHighlight(c){
@@ -2397,7 +2398,7 @@ function renderEbayCompactProducts(candidates){
     var family=ebayCandidateFamily(c);
     var market=ebayCandidateMarket(c);
     var url=ebayCandidateUrl(c);
-    var title=url?'<a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
+    var title=url?'<a href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">'+esc(ebayCandidateTitle(c))+'</a>':esc(ebayCandidateTitle(c));
     var source=family.sourceQuery?'<span class="chip">'+esc(family.sourceQuery)+'</span>':'';
     var reasons=ebayCandidateReasons(c).slice(0,5).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
     var positive=ebayPositiveReasons(c).slice(0,4).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('');
@@ -2409,9 +2410,9 @@ function renderEbayCompactProducts(candidates){
     if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c))&&c.productCandidateId)actions+='<button class="btn sm" onclick="navigate(\\'actions\\')">Open Review Queue</button>';
     else if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR'))actions+='<button class="btn primary sm" onclick="considerEbayCandidate(\\''+esc(c.id)+'\\')">Review Anyway</button>';
     if(c.id&&(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||c.comparisonStatus==='ERROR')&&c.comparisonStatus!=='OPPORTUNITY')actions+='<button class="btn sm" onclick="recompareEbayCandidate(\\''+esc(c.id)+'\\')">Recompare</button>';
-    if(url)actions+='<a class="btn sm" href="'+esc(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+    if(url)actions+='<a class="btn sm" href="'+safeUrl(url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
     var comp=ebayComparison(c);
-    if(comp&&comp.best&&comp.best.url)actions+='<a class="btn sm" href="'+esc(comp.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+    if(comp&&comp.best&&comp.best.url)actions+='<a class="btn sm" href="'+safeUrl(comp.best.url)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
     actions+='</div>';
     return '<details class="compact-product"><summary>'+
       '<span class="'+scoreClass(score)+'">'+score+'</span>'+

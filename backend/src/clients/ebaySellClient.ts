@@ -151,7 +151,18 @@ export function prepareEbayListingDraft(input: EbayListingDraftInput): EbayListi
   };
 }
 
-export async function getEbayAccessToken(options: EbayOAuthOptions): Promise<string> {
+interface CachedAccessToken {
+  token: string;
+  expiresAt: number;
+}
+
+// Cache access tokens per (env, clientId, scopes) and coalesce concurrent refreshes so
+// every marketplace action doesn't burn an OAuth refresh call (and refresh quota).
+const accessTokenCache = new Map<string, CachedAccessToken>();
+const accessTokenInFlight = new Map<string, Promise<string>>();
+const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
+
+async function requestEbayAccessToken(options: EbayOAuthOptions, scopes: string[]): Promise<{ token: string; ttlMs: number }> {
   const credentials = Buffer.from(`${options.clientId}:${options.clientSecret}`).toString('base64');
   const host = options.sandbox ? 'api.sandbox.ebay.com' : 'api.ebay.com';
   const response = await fetch(`https://${host}/identity/v1/oauth2/token`, {
@@ -163,14 +174,43 @@ export async function getEbayAccessToken(options: EbayOAuthOptions): Promise<str
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: options.refreshToken,
-      scope: (options.scopes ?? ['https://api.ebay.com/oauth/api_scope/sell.inventory']).join(' ')
+      scope: scopes.join(' ')
     })
   });
 
-  if (!response.ok) throw new Error(`eBay OAuth refresh failed with status ${response.status}`);
-  const payload = await response.json() as { access_token?: string };
+  if (!response.ok) {
+    // Surface the OAuth error body (e.g. invalid_grant) so re-auth issues are diagnosable.
+    const body = await response.text().catch(() => '');
+    throw new Error(`eBay OAuth refresh failed with status ${response.status}${body ? `: ${body.slice(0, 300)}` : ''}`);
+  }
+  const payload = await response.json() as { access_token?: string; expires_in?: number };
   if (!payload.access_token) throw new Error('eBay OAuth response did not include access_token');
-  return payload.access_token;
+  const ttlMs = (typeof payload.expires_in === 'number' && payload.expires_in > 0 ? payload.expires_in : 7200) * 1000;
+  return { token: payload.access_token, ttlMs };
+}
+
+export async function getEbayAccessToken(options: EbayOAuthOptions): Promise<string> {
+  const scopes = options.scopes ?? ['https://api.ebay.com/oauth/api_scope/sell.inventory'];
+  const key = `${options.sandbox ? 'sandbox' : 'prod'}:${options.clientId}:${scopes.join(' ')}`;
+  const now = Date.now();
+
+  const cached = accessTokenCache.get(key);
+  if (cached && cached.expiresAt > now + ACCESS_TOKEN_REFRESH_SKEW_MS) return cached.token;
+
+  const inFlight = accessTokenInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    try {
+      const { token, ttlMs } = await requestEbayAccessToken(options, scopes);
+      accessTokenCache.set(key, { token, expiresAt: Date.now() + ttlMs });
+      return token;
+    } finally {
+      accessTokenInFlight.delete(key);
+    }
+  })();
+  accessTokenInFlight.set(key, promise);
+  return promise;
 }
 
 const ebayApiHost = (sandbox?: boolean): string => sandbox ? 'api.sandbox.ebay.com' : 'api.ebay.com';

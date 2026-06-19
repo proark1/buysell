@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { AmazonMatchInput, EbayCandidateInput, ProductOpportunity } from '../domain/products.js';
-import { findAmazonMatches } from '../clients/keepaClient.js';
+import { findAmazonMatches, KeepaApiError } from '../clients/keepaClient.js';
 import { searchEbayCandidates, SerpApiError } from '../clients/serpApiClient.js';
 import { createActionForDecision } from '../repositories/actionRepository.js';
 import { recordDiscoveryCandidateLearning } from '../repositories/learningRepository.js';
@@ -960,6 +960,7 @@ function scoreAmazonCandidateForEbay(
   const profit = ebay.soldPrice && amazonCost
     ? calculateProfit({
       ebaySalePrice: ebay.soldPrice,
+      ebayShippingPrice: ebay.shippingPrice,
       amazonItemCost: amazonCost,
       ...profitInputsFromRuleConfig(ruleConfig, market)
     })
@@ -1167,6 +1168,14 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
 }> {
   const market = getEbayDiscoveryMarket(options.marketKey);
   const amazonMatchLimit = Math.min(Math.max(options.amazonMatchLimit ?? 3, 1), 10);
+
+  // Reclaim candidates left in COMPARING by a crashed/timed-out prior run so they aren't
+  // stuck forever. 15 min is well beyond a normal per-candidate compare.
+  await options.db.ebayDiscoveryCandidate.updateMany({
+    where: { comparisonStatus: 'COMPARING', updatedAt: { lt: new Date(Date.now() - 15 * 60 * 1000) } },
+    data: { comparisonStatus: 'NOT_COMPARED' }
+  });
+
   const allowedStatuses = options.force
     ? ['NOT_COMPARED', 'ERROR', 'REJECTED', 'MANUAL_REVIEW']
     : ['NOT_COMPARED', 'ERROR'];
@@ -1349,7 +1358,12 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
           scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
         }
       });
-      throw error;
+      reports.push(report);
+      // A Keepa quota/rate-limit error means further calls will also fail: stop here but
+      // keep every already-paid-for result. Any other per-candidate error is isolated so
+      // one bad candidate doesn't discard the rest of the (already purchased) batch.
+      if (error instanceof KeepaApiError) break;
+      continue;
     }
   }
 
@@ -1357,7 +1371,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
     await options.db.ebayDiscoveryRun.update({
       where: { id: options.runId },
       data: {
-        comparedCount: { increment: candidates.length },
+        comparedCount: { increment: compared },
         opportunityCount: { increment: opportunities.length }
       }
     });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AmazonMatchInput } from '../domain/products.js';
 import { postgresInt } from '../utils/postgres.js';
+import { fetchWithRetry } from './httpClient.js';
 
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
@@ -181,7 +182,7 @@ export function keepaDomainIdFromAmazonUrl(url: string | undefined): number | un
 
 export async function getKeepaTokenStatus(apiKey: string): Promise<KeepaTokenStatus> {
   const params = new URLSearchParams({ key: apiKey });
-  const response = await fetch(`https://api.keepa.com/token?${params.toString()}`);
+  const response = await fetchWithRetry(`https://api.keepa.com/token?${params.toString()}`);
   if (!response.ok) {
     throw new KeepaApiError(response.status, await response.text());
   }
@@ -215,7 +216,7 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
       'asins-only': '0'
     });
 
-    const response = await fetch(`https://api.keepa.com/search?${params.toString()}`);
+    const response = await fetchWithRetry(`https://api.keepa.com/search?${params.toString()}`);
     if (!response.ok) {
       throw new KeepaApiError(response.status, await response.text());
     }
@@ -240,7 +241,7 @@ export async function getAmazonProductByAsin(options: KeepaProductOptions): Prom
     update: '24'
   });
 
-  const response = await fetch(`https://api.keepa.com/product?${params.toString()}`);
+  const response = await fetchWithRetry(`https://api.keepa.com/product?${params.toString()}`);
   if (!response.ok) {
     throw new KeepaApiError(response.status, await response.text());
   }

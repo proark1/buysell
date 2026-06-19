@@ -139,7 +139,13 @@ export async function listActionItems(db: PrismaClient, status = 'PENDING'): Pro
         ? {
             automationRuns: {
               none: { status: { in: ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION'] } }
-            }
+            },
+            // Skip actions in a post-failure backoff window so a reliably-failing action
+            // isn't retried every poll cycle (it dead-letters to ERROR after N attempts).
+            OR: [
+              { nextAttemptAt: null },
+              { nextAttemptAt: { lte: new Date() } }
+            ]
           }
         : {})
     },

@@ -1,6 +1,20 @@
 import type { PrismaClient } from '@prisma/client';
 import { encryptJson } from '../security/encryption.js';
 import { notFound } from '../security/httpErrors.js';
+import { getActiveRuleConfig } from './ruleConfigRepository.js';
+import { profitInputsFromRuleConfig } from '../services/profitInputs.js';
+import { notify } from '../services/notificationService.js';
+
+const toNum = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (value && typeof value === 'object' && 'toNumber' in value && typeof (value as { toNumber: unknown }).toNumber === 'function') {
+    const n = (value as { toNumber(): number }).toNumber();
+    return Number.isFinite(n) ? n : 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 const prismaErrorCode = (error: unknown): string | undefined => (
   error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
@@ -40,7 +54,7 @@ export async function createOrderAndBuyAction(db: PrismaClient, input: CreateEba
   if (existing) return existing;
 
   try {
-    return await db.$transaction(async (tx) => {
+    const created = await db.$transaction(async (tx) => {
     const order = await tx.order.create({
       data: {
         ebayOrderId: input.ebayOrderId,
@@ -85,6 +99,14 @@ export async function createOrderAndBuyAction(db: PrismaClient, input: CreateEba
 
     return { order, action, alreadyRecorded: false };
     });
+    notify(db, {
+      code: 'BUY_ACTION_CREATED',
+      severity: 'high',
+      title: 'eBay order ready for Amazon purchase',
+      message: `eBay order ${input.ebayOrderId} created a BUY action awaiting review.`,
+      data: { ebayOrderId: input.ebayOrderId, ebayItemId: input.ebayItemId }
+    });
+    return created;
   } catch (error) {
     // Concurrent sync/webhook deliveries for the same eBay order race on the unique
     // ebayOrderId; fall back to the already-created order so this stays idempotent.
@@ -145,13 +167,64 @@ export interface RecordAmazonPurchaseInput {
   status?: string;
 }
 
+/**
+ * Record realized profit/loss for an order once an Amazon purchase is logged. Idempotent
+ * per order (one ledger entry), so re-recording tracking/status never double-counts.
+ * Marketplace fees are estimated from the active rule config; a later payout reconciliation
+ * can refine them. Also rolls the net into the product family's realizedProfit.
+ */
+async function recordRealizedProfit(
+  db: PrismaClient,
+  order: { id: string; salePrice: unknown; ebayListingId: string; ebayListing?: { productCandidate?: { id: string; productFamilyId: string | null } | null } | null },
+  sourceCost: number
+): Promise<void> {
+  const revenue = toNum(order.salePrice);
+  if (revenue <= 0 || sourceCost <= 0) return;
+
+  const existing = await db.profitLedgerEntry.findFirst({ where: { orderId: order.id }, select: { id: true } });
+  if (existing) return;
+
+  const ruleConfig = await getActiveRuleConfig(db);
+  const inputs = profitInputsFromRuleConfig(ruleConfig);
+  const feeRate = inputs.ebayFinalValueFeeRate + inputs.ebayPaymentFeeRate + inputs.promotedListingFeeRate;
+  const marketplaceFees = round2(revenue * feeRate + inputs.paymentFixedFee);
+  const shippingCost = round2(inputs.shippingLabelCost + inputs.packagingCost);
+  const netProfit = round2(revenue - sourceCost - marketplaceFees - shippingCost);
+  const candidate = order.ebayListing?.productCandidate ?? undefined;
+
+  await db.profitLedgerEntry.create({
+    data: {
+      productCandidateId: candidate?.id,
+      ebayListingId: order.ebayListingId,
+      orderId: order.id,
+      revenue: money(revenue),
+      sourceCost: money(round2(sourceCost)),
+      marketplaceFees: money(marketplaceFees),
+      shippingCost: money(shippingCost),
+      refunds: '0.00',
+      netProfit: money(netProfit),
+      notes: 'Auto-recorded on Amazon purchase (fees estimated from rule config).'
+    }
+  });
+
+  if (candidate?.productFamilyId) {
+    await db.productFamily.update({
+      where: { id: candidate.productFamilyId },
+      data: { realizedProfit: { increment: netProfit } }
+    });
+  }
+}
+
 export async function recordAmazonPurchaseRows(
   db: PrismaClient,
   orderId: string,
   input: RecordAmazonPurchaseInput,
   actor = 'local-agent'
 ): Promise<unknown> {
-  const existingOrder = await db.order.findUnique({ where: { id: orderId } });
+  const existingOrder = await db.order.findUnique({
+    where: { id: orderId },
+    include: { ebayListing: { include: { productCandidate: true } } }
+  });
   if (!existingOrder) throw notFound('Order not found', 'ORDER_NOT_FOUND');
 
   const purchase = await upsertAmazonPurchase(db, orderId, input);
@@ -163,6 +236,13 @@ export async function recordAmazonPurchaseRows(
       fulfillmentStatus: input.trackingNumber ? 'TRACKING_RECEIVED' : 'AWAITING_TRACKING'
     }
   });
+
+  // Record realized P/L for budget-counting purchases (skip cancellations/errors).
+  const purchaseStatus = input.status ?? 'PURCHASED';
+  if (purchaseStatus !== 'CANCELLED' && purchaseStatus !== 'ERROR') {
+    const sourceCost = input.purchasePrice ?? toNum((purchase as { purchasePrice?: unknown }).purchasePrice);
+    await recordRealizedProfit(db, existingOrder, sourceCost);
+  }
 
   await db.auditLog.create({
     data: {

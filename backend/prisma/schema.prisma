@@ -272,6 +272,8 @@ model ActionItem {
   createdBy          String             @default("system")
   reviewedBy         String?
   reviewedAt         DateTime?
+  automationAttempts Int                @default(0)
+  nextAttemptAt      DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   productCandidate   ProductCandidate?  @relation(fields: [productCandidateId], references: [id], onDelete: SetNull)
@@ -393,6 +395,11 @@ model RuleConfig {
   ebayAmazonCompareAutoRunEnabled Boolean  @default(false)
   ebayAmazonCompareAutoRunIntervalMinutes Int @default(1)
   ebayAmazonCompareAutoRunLimit   Int      @default(1)
+  ebayOrderSyncEnabled            Boolean  @default(false)
+  ebayOrderSyncIntervalMinutes    Int      @default(15)
+  ebayOrderSyncLookbackHours      Int      @default(48)
+  maxAutomationAttempts           Int      @default(3)
+  verificationTtlMinutes          Int      @default(0)
   createdAt                       DateTime @default(now())
   updatedAt                       DateTime @updatedAt
 }

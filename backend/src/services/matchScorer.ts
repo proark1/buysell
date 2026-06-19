@@ -55,9 +55,20 @@ const modelTokens = (value: string | undefined): string[] => {
 
 const packCount = (value: string | undefined): number | undefined => {
   if (!value) return undefined;
-  const match = value.toLowerCase().match(/\b(\d+)\s*(?:pcs?|pieces?|pack|packs|count|ct|x)\b|\bpack\s*of\s*(\d+)\b|\b(\d+)\s*x\s/i);
-  const count = Number(match?.[1] ?? match?.[2] ?? match?.[3]);
+  // Require an explicit pack noun. The bare "N x" form is intentionally excluded because it
+  // matches dimensions/resolutions ("1920 x 1080", "10 x 20 cm") as fake pack counts.
+  const match = value.toLowerCase().match(/\b(\d+)\s*(?:pcs?|pieces?|packs?|count|ct)\b|\bpack\s*of\s*(\d+)\b/i);
+  const count = Number(match?.[1] ?? match?.[2]);
   return Number.isFinite(count) && count > 1 ? count : undefined;
+};
+
+// Word-boundary token containment (non-alphanumeric edges) so a brand like "Sony" doesn't
+// match inside "Unisony" the way String.includes() would.
+const textContainsToken = (haystack: string, token: string): boolean => {
+  const trimmed = token.trim();
+  if (!trimmed) return false;
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, 'i').test(haystack);
 };
 
 const variantTokens = (value: string | undefined): string[] => {
@@ -81,7 +92,7 @@ export function scoreAmazonMatch(ebay: EbayCandidateInput, amazon: AmazonMatchIn
   const titleScore = unionSize > 0 ? intersectionSize / unionSize : 0;
   const ebayTitle = normalizeText(ebay.title);
   const amazonBrand = amazon.brand ? normalizeText(amazon.brand).trim() : undefined;
-  const brandScore = amazonBrand && ebayTitle.includes(amazonBrand) ? 0.18 : amazon.brand ? -0.08 : 0;
+  const brandScore = amazonBrand && textContainsToken(ebayTitle, amazonBrand) ? 0.18 : amazon.brand ? -0.08 : 0;
   const ebayModels = modelTokens(ebay.title);
   const amazonModels = [...new Set([...modelTokens(amazon.model), ...modelTokens(amazon.title)])];
   const modelOverlap = overlap(ebayModels, amazonModels);

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { EbayCandidateInput } from '../domain/products.js';
+import { fetchWithRetry } from './httpClient.js';
 
 const serpApiEbayResultSchema = z.object({
   id: z.unknown().optional(),
@@ -241,7 +242,7 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   if (options.postalCode?.trim()) params.set('_stpos', options.postalCode.trim());
   if (options.exactQueryOnly) params.set('_blrs', 'spell_auto_correct');
 
-  const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
+  const response = await fetchWithRetry(`https://serpapi.com/search.json?${params.toString()}`);
   if (!response.ok) {
     throw new SerpApiError(response.status, await response.text());
   }

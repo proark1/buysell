@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { AmazonMatchInput, EbayCandidateInput, ProductOpportunity } from '../domain/products.js';
-import { findAmazonMatches } from '../clients/keepaClient.js';
-import { searchEbayCandidates } from '../clients/serpApiClient.js';
+import { findAmazonMatches, KeepaApiError } from '../clients/keepaClient.js';
+import { searchEbayCandidates, SerpApiError } from '../clients/serpApiClient.js';
 import { calculateProfit } from './profitCalculator.js';
 import { decideOpportunity } from './opportunityDecider.js';
 import {
@@ -540,6 +540,7 @@ function scoreEbayCandidateAgainstAmazon(
 
   const profit = calculateProfit({
     ebaySalePrice: ebay.soldPrice,
+    ebayShippingPrice: ebay.shippingPrice,
     amazonItemCost: amazonCost,
     ...profitInputsFromRuleConfig(ruleConfig, market)
   });
@@ -799,6 +800,7 @@ export async function considerAmazonDiscoveryCandidate(options: ConsiderAmazonCa
     };
     const profit = calculateProfit({
       ebaySalePrice: best.soldPrice,
+      ebayShippingPrice: best.shippingPrice,
       amazonItemCost: matchedAmazon.buyBoxPrice ?? matchedAmazon.currentPrice ?? 0,
       ...profitInputsFromRuleConfig(options.ruleConfig, report?.market?.key)
     });
@@ -938,6 +940,13 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
 }> {
   const market = getAmazonDiscoveryMarket(options.marketKey);
   const comparisonSettings = resolveEbayComparisonSettings(options.comparisonSettings);
+
+  // Reclaim candidates stuck COMPARING from a crashed/timed-out prior run.
+  await options.db.amazonDiscoveryCandidate.updateMany({
+    where: { comparisonStatus: 'COMPARING', updatedAt: { lt: new Date(Date.now() - 15 * 60 * 1000) } },
+    data: { comparisonStatus: 'NOT_COMPARED' }
+  });
+
   const allowedStatuses = options.force
     ? ['NOT_COMPARED', 'ERROR', 'REJECTED', 'MANUAL_REVIEW']
     : ['NOT_COMPARED', 'ERROR'];
@@ -961,6 +970,7 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
   const manualReviews: ProductOpportunity[] = [];
   const rejected: ProductOpportunity[] = [];
   const reports: EbayComparisonReport[] = [];
+  let errorCount = 0;
 
   for (const candidate of candidates) {
     const amazon = amazonFromRecord(candidate as Record<string, unknown>);
@@ -1075,19 +1085,25 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
           scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
         }
       });
-      throw error;
+      reports.push(report);
+      errorCount += 1;
+      // Quota/rate-limit errors won't recover within the batch: stop but keep the
+      // already-paid-for results. Any other failure is isolated to this candidate.
+      if (error instanceof KeepaApiError || error instanceof SerpApiError) break;
+      continue;
     }
   }
 
+  const comparedCount = opportunities.length + manualReviews.length + rejected.length + errorCount;
   if (options.runId) {
     await options.db.amazonDiscoveryRun.update({
       where: { id: options.runId },
       data: {
-        comparedCount: { increment: candidates.length },
+        comparedCount: { increment: comparedCount },
         opportunityCount: { increment: opportunities.length }
       }
     });
   }
 
-  return { compared: candidates.length, opportunities, manualReviews, rejected, reports };
+  return { compared: comparedCount, opportunities, manualReviews, rejected, reports };
 }

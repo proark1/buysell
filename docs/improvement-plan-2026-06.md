@@ -1,5 +1,29 @@
 # Buysell — Improvement Plan (Audit 2026-06-19)
 
+## Implementation status (updated 2026-06-19)
+
+**Landed & verified (typecheck + lint + 21 tests green):**
+- **P0 — Concurrency & double-execution:** atomic `APPROVED→EXECUTING` action claim before any external call (new `EXECUTING` enum, migration `0018`); daily spend cap re-checked inside a Serializable transaction guarded by a Postgres advisory lock; effective spend recorded (no more null-price undercount); manual compare routes wrapped in the shared scheduler lock; atomic per-candidate compare claim; idempotent `createOrderAndBuyAction` (P2002 fallback); listing-limit scoped to real listings.
+- **P0 — Safety guardrails:** `safeMode` now blocks BUY/REPRICE and forces LIST→PREPARE; `/orders/:id/amazon-purchase` enforces the daily cap + requires a positive price; removed the local-agent `actionCompleted` self-report bypass; autopilot evidence gate requires explicit completion; `maxPrice` propagated to the operator and enforced; automation-mode PATCH blocks re-approving terminal actions; `finishAutomationRun` refuses to overwrite terminal runs; autopilot-failures serialization bug fixed.
+- **P0 — Auth/perimeter:** rate limiter keys on framework `request.ip` + configurable `TRUST_PROXY` (no more X-Forwarded-For spoof); HMAC-only agent auth with nonce replay cache + 90s window (raw shared-secret header removed from agent and no longer accepted); per-credential decrypt failure no longer locks out auth; constant-time compares without length pre-check; credential rotation audited; credential reads fail closed with logging.
+- **P1 — Money-math:** ROI denominator = cash actually invested (incl. shipping label + packaging); `shippingLabelCost` added to config + wired through profit inputs; eBay buyer-paid shipping included in the fee base and revenue across all four call sites; `scoreOpportunity` divide-by-zero/NaN guard.
+- **P1 — Security/response quick wins:** CSV formula-injection neutralized; `safeUrl()` http(s)-only guard on all 15 dashboard href sinks; baseline security headers (nosniff/Referrer-Policy/X-Frame-Options/CSP frame-ancestors).
+- **P1 — API cost:** eBay OAuth access-token cache + single-flight + error-body; shared `fetchWithTimeout`/`fetchWithRetry` (`clients/httpClient.ts`) wired into Keepa + SerpApi (request timeouts + backoff on 5xx/network); per-candidate compare loops now ERROR-and-continue (break only on quota) instead of discarding already-paid-for results.
+- **P1 — Stuck-state/resilience:** graceful SIGTERM/SIGINT shutdown + unhandledRejection/uncaughtException guards (`index.ts`); reclaim of `COMPARING` candidates stranded by a crash (eBay + Amazon); `finishAutomationRun` terminal-state guard.
+- **P1 — Match-quality:** `soldCount=0` no longer fabricates HIGH_COMPETITION/LOW_SELL_THROUGH; brand match uses word boundaries (no more "Sony" in "Unisony"); pack-count regex no longer reads `NxM` dimensions as a pack.
+- **P1 — Realized P/L + observability:** **`ProfitLedgerEntry` is now written and `ProductFamily.realizedProfit` incremented** (idempotent) when an Amazon purchase is recorded — the headline financial metric is no longer permanently $0; new `GET /api/audit` (filterable, paginated) + `audit` CSV export.
+- **P2:** hot-path FK indexes (migration `0018`); `patchRuleConfig` is now an atomic upsert; `prisma.$disconnect()` on shutdown.
+- **New features (migration `0019`):**
+  - **Off-dashboard alerting** — fire-and-forget webhook (`NOTIFICATION_WEBHOOK_URL` credential, https-only) on failed/review automation runs, new BUY actions awaiting purchase, dead-lettered actions, and source-price risk.
+  - **Automatic eBay order-sync scheduler** — DB-locked, config-gated (`ebayOrderSync*`), reusing a shared `runEbayOrderSync` service (route refactored onto it).
+  - **Retry/dead-letter** — failed automation runs increment an attempt counter with exponential backoff; after `maxAutomationAttempts` the action moves to `ERROR`; backed-off actions are excluded from the approved-actions poll so nothing retries every cycle.
+  - **Verification-freshness TTL** — opt-in (`verificationTtlMinutes`, default off) gate blocking LIST/BUY whose latest passed verification is stale.
+  - **Fresh price re-check at purchase** — on order sync, re-pull live Amazon buy-box/availability, refresh `maxPrice`, record a `PriceObservation`, and flag + alert when the source went out of stock or rose beyond tolerance.
+
+**Remaining (not yet implemented):** the larger P1 items (automation-run lease/heartbeat + sweeper, identity-first best match, GTIN check digits, Keepa batching/caching + token pre-checks on manual routes, route tests for executor/orders/credentials, API-usage tracking table); some P2 (batch dashboard counts, rejection groupBy, dedup/uniqueness, settings guardrails); and the remaining growth features (**automated repricing / auto-resume engine**, **inventory/stock-availability sync**, **closing the learning loop + threshold backtesting**, reuse-persisted-payloads-on-recompare). Tables below are the full backlog.
+
+---
+
 Generated by a multi-agent audit: 17 finders (12 subsystem + 5 cross-cutting) produced 178 candidate findings; each was adversarially verified against the source. **139 confirmed real.**
 
 - **Severity:** 0 critical · 23 high · 42 medium · 74 low

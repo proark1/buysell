@@ -1,5 +1,36 @@
 import type { PrismaClient } from '@prisma/client';
 import { conflict, notFound } from '../security/httpErrors.js';
+import { notify } from './notificationService.js';
+import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+
+/**
+ * After a failed run, either dead-letter the action (status ERROR) once it has exhausted
+ * maxAutomationAttempts, or schedule a backoff window so the local agent stops re-polling
+ * a reliably-failing action every cycle.
+ */
+async function applyAutomationFailureBackoff(db: PrismaClient, actionItemId: string, priorAttempts: number, error?: string): Promise<void> {
+  const config = await getActiveRuleConfig(db);
+  const attempts = priorAttempts + 1;
+  if (attempts >= config.maxAutomationAttempts) {
+    await db.actionItem.updateMany({
+      where: { id: actionItemId, status: { in: ['APPROVED', 'EXECUTING'] } },
+      data: { status: 'ERROR', automationAttempts: attempts, nextAttemptAt: null }
+    });
+    notify(db, {
+      code: 'ACTION_DEAD_LETTERED',
+      severity: 'high',
+      title: 'Action moved to manual intervention',
+      message: `Action ${actionItemId} failed ${attempts} times and was set to ERROR.${error ? ` Last error: ${error}` : ''}`,
+      data: { actionItemId, attempts }
+    });
+    return;
+  }
+  const backoffMs = Math.min(30, 2 ** attempts) * 60_000;
+  await db.actionItem.update({
+    where: { id: actionItemId },
+    data: { automationAttempts: attempts, nextAttemptAt: new Date(Date.now() + backoffMs) }
+  });
+}
 
 export const automationModes = ['VERIFY', 'DRAFT', 'ASSISTED', 'AUTOPILOT'] as const;
 export const automationRunStatuses = ['RUNNING', 'NEEDS_HUMAN_CONFIRMATION', 'COMPLETED', 'FAILED', 'REVIEW_REQUIRED', 'CANCELLED'] as const;
@@ -272,6 +303,20 @@ export async function finishAutomationRun(db: PrismaClient, input: FinishAutomat
   });
 
   await persistAutomationArtifacts(db, run.id, run.actionItemId, input.result);
+
+  if (input.status === 'FAILED' || input.status === 'REVIEW_REQUIRED') {
+    notify(db, {
+      code: `AUTOMATION_${input.status}`,
+      severity: input.status === 'FAILED' ? 'high' : 'medium',
+      title: `Automation run ${input.status === 'FAILED' ? 'failed' : 'needs review'}`,
+      message: input.message ?? input.error ?? `Automation run ${input.runId} is ${input.status}.`,
+      data: { runId: input.runId, actionItemId: run.actionItemId, actionType: run.actionItem.type, mode: run.mode }
+    });
+  }
+
+  if (input.status === 'FAILED') {
+    await applyAutomationFailureBackoff(db, run.actionItemId, run.actionItem.automationAttempts, input.error);
+  }
 
   await db.auditLog.create({
     data: {

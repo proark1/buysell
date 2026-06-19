@@ -33,6 +33,11 @@ export interface ActiveRuleConfig {
   ebayAmazonCompareAutoRunEnabled: boolean;
   ebayAmazonCompareAutoRunIntervalMinutes: number;
   ebayAmazonCompareAutoRunLimit: number;
+  ebayOrderSyncEnabled: boolean;
+  ebayOrderSyncIntervalMinutes: number;
+  ebayOrderSyncLookbackHours: number;
+  maxAutomationAttempts: number;
+  verificationTtlMinutes: number;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -69,7 +74,12 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   ebayDiscoveryAutoCompareEnabled: false,
   ebayAmazonCompareAutoRunEnabled: false,
   ebayAmazonCompareAutoRunIntervalMinutes: 1,
-  ebayAmazonCompareAutoRunLimit: 1
+  ebayAmazonCompareAutoRunLimit: 1,
+  ebayOrderSyncEnabled: false,
+  ebayOrderSyncIntervalMinutes: 15,
+  ebayOrderSyncLookbackHours: 48,
+  maxAutomationAttempts: 3,
+  verificationTtlMinutes: 0
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -126,6 +136,11 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     ebayDiscoveryAutoCompareEnabled: typeof config.ebayDiscoveryAutoCompareEnabled === 'boolean' ? config.ebayDiscoveryAutoCompareEnabled : defaultRuleConfig.ebayDiscoveryAutoCompareEnabled,
     ebayAmazonCompareAutoRunEnabled: typeof config.ebayAmazonCompareAutoRunEnabled === 'boolean' ? config.ebayAmazonCompareAutoRunEnabled : defaultRuleConfig.ebayAmazonCompareAutoRunEnabled,
     ebayAmazonCompareAutoRunIntervalMinutes: numberValue(config.ebayAmazonCompareAutoRunIntervalMinutes, defaultRuleConfig.ebayAmazonCompareAutoRunIntervalMinutes),
-    ebayAmazonCompareAutoRunLimit: numberValue(config.ebayAmazonCompareAutoRunLimit, defaultRuleConfig.ebayAmazonCompareAutoRunLimit)
+    ebayAmazonCompareAutoRunLimit: numberValue(config.ebayAmazonCompareAutoRunLimit, defaultRuleConfig.ebayAmazonCompareAutoRunLimit),
+    ebayOrderSyncEnabled: typeof config.ebayOrderSyncEnabled === 'boolean' ? config.ebayOrderSyncEnabled : defaultRuleConfig.ebayOrderSyncEnabled,
+    ebayOrderSyncIntervalMinutes: numberValue(config.ebayOrderSyncIntervalMinutes, defaultRuleConfig.ebayOrderSyncIntervalMinutes),
+    ebayOrderSyncLookbackHours: numberValue(config.ebayOrderSyncLookbackHours, defaultRuleConfig.ebayOrderSyncLookbackHours),
+    maxAutomationAttempts: numberValue(config.maxAutomationAttempts, defaultRuleConfig.maxAutomationAttempts),
+    verificationTtlMinutes: numberValue(config.verificationTtlMinutes, defaultRuleConfig.verificationTtlMinutes)
   };
 }

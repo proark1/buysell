@@ -42,11 +42,14 @@ export function calculateEbayMarketMetrics(input: {
   const priceSpreadPercent = medianSoldPrice && lowSoldPrice !== undefined && highSoldPrice !== undefined
     ? ((highSoldPrice - lowSoldPrice) / medianSoldPrice) * 100
     : undefined;
-  const sellThroughRate = activeCount !== undefined
-    ? soldCount / Math.max(soldCount + activeCount, 1)
+  // With no sold sample, dividing by a floor of 1 fabricates a sell-through of 0 and a
+  // competition ratio equal to the active count (e.g. a fake HIGH_COMPETITION). Leave both
+  // undefined and let NO_SOLD_MARKET_SAMPLE carry the signal instead.
+  const sellThroughRate = activeCount !== undefined && soldCount > 0
+    ? soldCount / (soldCount + activeCount)
     : undefined;
-  const competitionRatio = activeCount !== undefined
-    ? activeCount / Math.max(soldCount, 1)
+  const competitionRatio = activeCount !== undefined && soldCount > 0
+    ? activeCount / soldCount
     : undefined;
   const targetPricePercentile = percentileRank(soldPrices, input.targetPrice);
   const riskFlags: string[] = [];

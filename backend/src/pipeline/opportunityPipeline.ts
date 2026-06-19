@@ -26,6 +26,7 @@ export interface BuildOpportunitiesOptions {
   priceChangeBuffer?: number;
   sourceShippingCost?: number;
   packagingCost?: number;
+  shippingLabelCost?: number;
   paymentFixedFee?: number;
   promotedListingFeeRate?: number;
   returnReserveRate?: number;
@@ -127,12 +128,14 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
 
     const profit = calculateProfit({
       ebaySalePrice: ebay.soldPrice,
+      ebayShippingPrice: ebay.shippingPrice,
       amazonItemCost: amazonCost,
       estimatedSalesTaxRate: options.estimatedSalesTaxRate ?? 0.08,
       returnRiskBuffer: options.returnRiskBuffer ?? 2,
       priceChangeBuffer: options.priceChangeBuffer ?? 2,
       sourceShippingCost: options.sourceShippingCost ?? 0,
       packagingCost: options.packagingCost ?? 0,
+      shippingLabelCost: options.shippingLabelCost ?? 0,
       paymentFixedFee: options.paymentFixedFee ?? 0,
       promotedListingFeeRate: options.promotedListingFeeRate ?? 0,
       returnReserveRate: options.returnReserveRate ?? 0,

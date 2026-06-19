@@ -68,15 +68,18 @@ function riskPenalty(riskFlags: string[]): number {
 }
 
 export function scoreOpportunity(opportunity: ProductOpportunity, thresholds: ScoreThresholds, riskFlags: string[]): OpportunityScore {
-  const profit = clamp((opportunity.profit.expectedProfit / thresholds.minimumProfitUsd) * 22, 0, 24);
-  const roi = clamp((opportunity.profit.roiPercent / thresholds.minimumRoiPercent) * 16, 0, 18);
+  // Guard the threshold divisors: a configured 0 (or NaN profit/roi) must not produce a
+  // non-finite total that silently bypasses the low-score reject gate downstream.
+  const profit = clamp((opportunity.profit.expectedProfit / Math.max(thresholds.minimumProfitUsd, 0.01)) * 22, 0, 24);
+  const roi = clamp((opportunity.profit.roiPercent / Math.max(thresholds.minimumRoiPercent, 0.01)) * 16, 0, 18);
   const demand = demandScore(opportunity.amazon.salesRank, opportunity.amazon.reviewCount, opportunity.amazon.rating);
   const priceSignal = priceSignalScore(opportunity.amazon.priceDropPercent, Boolean(opportunity.amazon.buyBoxPrice ?? opportunity.amazon.currentPrice));
   const market = opportunity.marketMetrics ? clamp((opportunity.marketMetrics.demandScore / 100) * 12, 0, 12) : 0;
   const match = clamp((opportunity.amazon.matchConfidence ?? 0) * 23, 0, 23);
   const combinedRiskFlags = [...new Set([...riskFlags, ...(opportunity.marketMetrics?.riskFlags ?? [])])];
   const risk = riskPenalty(combinedRiskFlags);
-  const total = round(clamp(profit + roi + demand + priceSignal + market + match - risk, 0, 100));
+  const rawTotal = profit + roi + demand + priceSignal + market + match - risk;
+  const total = round(clamp(Number.isFinite(rawTotal) ? rawTotal : 0, 0, 100));
 
   const reasons: string[] = [];
   if (opportunity.profit.expectedProfit >= thresholds.minimumProfitUsd) reasons.push(`Profit ${opportunity.profit.expectedProfit.toFixed(2)} clears minimum.`);

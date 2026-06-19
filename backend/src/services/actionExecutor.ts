@@ -445,6 +445,23 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
     );
   }
 
+  // Verification freshness gate (opt-in): block LIST/BUY whose latest passed price
+  // verification is older than the configured TTL, so we never act on a stale price.
+  if (config.verificationTtlMinutes > 0 && (action.type === 'LIST' || action.type === 'BUY') && action.productCandidateId) {
+    const ttlCutoff = new Date(Date.now() - config.verificationTtlMinutes * 60_000);
+    const fresh = await db.priceVerification.findFirst({
+      where: { productCandidateId: action.productCandidateId, status: 'PASSED', checkedAt: { gte: ttlCutoff } },
+      orderBy: { checkedAt: 'desc' },
+      select: { id: true }
+    });
+    if (!fresh) {
+      throw conflict(
+        `A price verification within the last ${config.verificationTtlMinutes} minutes is required before executing this ${action.type}.`,
+        'VERIFICATION_STALE'
+      );
+    }
+  }
+
   // Atomically claim the action (APPROVED -> EXECUTING) BEFORE any external call so a
   // double-click, retry, or concurrent worker cannot execute the same action twice.
   const claim = await db.actionItem.updateMany({

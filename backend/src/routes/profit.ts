@@ -4,6 +4,7 @@ import { calculateProfit } from '../services/profitCalculator.js';
 
 const profitRequestSchema = z.object({
   ebaySalePrice: z.number().positive(),
+  ebayShippingPrice: z.number().min(0).optional(),
   amazonItemCost: z.number().positive(),
   ebayFinalValueFeeRate: z.number().min(0).optional(),
   categoryFinalValueFeeRate: z.number().min(0).optional(),
