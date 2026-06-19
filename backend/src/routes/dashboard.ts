@@ -921,6 +921,19 @@ function endLocalJob(key){
   renderJobActivity();
   renderComparisonJobStatus();
 }
+function clearLocalJobsByCategory(category){
+  var changed=false;
+  Object.keys(state.localJobs||{}).forEach(function(key){
+    if(state.localJobs[key]&&state.localJobs[key].category===category){
+      delete state.localJobs[key];
+      changed=true;
+    }
+  });
+  if(changed){
+    renderJobActivity();
+    renderComparisonJobStatus();
+  }
+}
 function localJobRows(category){
   return Object.keys(state.localJobs||{}).map(function(key){
     var job=state.localJobs[key];
@@ -2587,6 +2600,7 @@ function saveEbayAmazonCompareAutoRun(){
 function stopEbayAmazonCompareAutoRun(){
   if(!confirmAction('Stop Amazon comparison auto-run?','This disables future scheduled Amazon comparisons but keeps the current interval and product count.'))return;
   apiJson('/api/ebay-discovery/amazon-compare-auto-run/stop',{method:'POST'}).then(function(res){
+    clearLocalJobsByCategory('comparison');
     toast('Amazon comparison auto-run stopped',res,'ok');
     load();
   }).catch(function(e){toast('Stop failed',e.message,'err')});
@@ -2594,6 +2608,7 @@ function stopEbayAmazonCompareAutoRun(){
 function deleteEbayAmazonCompareAutoRun(){
   if(!confirmAction('Delete Amazon comparison auto-run job?','This disables the scheduled Amazon comparison job and resets its interval and product count to defaults. Product data and past completed runs are kept.'))return;
   apiJson('/api/ebay-discovery/amazon-compare-auto-run/delete',{method:'POST'}).then(function(res){
+    clearLocalJobsByCategory('comparison');
     toast('Amazon comparison auto-run deleted',res,'ok');
     load();
   }).catch(function(e){toast('Delete failed',e.message,'err')});

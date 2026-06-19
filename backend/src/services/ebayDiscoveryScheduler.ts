@@ -43,8 +43,8 @@ type EbayAmazonComparisonRunDelegate = {
     data: { mode: 'AUTO' | 'MANUAL'; status: 'RUNNING' };
     select: { id: true };
   }): Promise<{ id: string }>;
-  update(args: {
-    where: { id: string };
+  updateMany(args: {
+    where: { id: string; status: 'RUNNING' };
     data: {
       status: 'COMPLETED' | 'SKIPPED' | 'FAILED';
       selectedCount: number;
@@ -60,7 +60,7 @@ type EbayAmazonComparisonRunDelegate = {
       error?: string;
       completedAt: Date;
     };
-  }): Promise<unknown>;
+  }): Promise<{ count: number }>;
 };
 
 const comparisonRunDb = prisma as typeof prisma & { ebayAmazonComparisonRun: EbayAmazonComparisonRunDelegate };
@@ -200,8 +200,8 @@ async function finishAmazonComparisonRun(
   error?: unknown
 ): Promise<void> {
   const message = error ? publicErrorMessage(error) : undefined;
-  await comparisonRunDb.ebayAmazonComparisonRun.update({
-    where: { id: runId },
+  await comparisonRunDb.ebayAmazonComparisonRun.updateMany({
+    where: { id: runId, status: 'RUNNING' },
     data: {
       status,
       selectedCount: result.selected.length,

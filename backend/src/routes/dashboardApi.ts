@@ -80,6 +80,14 @@ async function cancelRunningAmazonComparisonAutoRuns(reason: string): Promise<nu
   return result.count;
 }
 
+async function releaseComparingEbayCandidates(): Promise<number> {
+  const result = await prisma.ebayDiscoveryCandidate.updateMany({
+    where: { comparisonStatus: 'COMPARING' },
+    data: { comparisonStatus: 'NOT_COMPARED', selected: false }
+  });
+  return result.count;
+}
+
 export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health/db', async () => {
     try {
@@ -178,7 +186,8 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     const ruleConfig = await patchRuleConfig({ ebayAmazonCompareAutoRunEnabled: false });
     const cancelledRuns = await cancelRunningAmazonComparisonAutoRuns('Amazon comparison auto-run stopped by user.');
-    return { stopped: true, deleted: false, cancelledRuns, ruleConfig };
+    const releasedComparingRows = await releaseComparingEbayCandidates();
+    return { stopped: true, deleted: false, cancelledRuns, releasedComparingRows, ruleConfig };
   });
 
   app.post('/api/ebay-discovery/amazon-compare-auto-run/delete', async (request, reply) => {
@@ -189,6 +198,7 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
       ebayAmazonCompareAutoRunLimit: defaultRuleConfig.ebayAmazonCompareAutoRunLimit
     });
     const cancelledRuns = await cancelRunningAmazonComparisonAutoRuns('Amazon comparison auto-run deleted by user.');
-    return { stopped: true, deleted: true, cancelledRuns, ruleConfig };
+    const releasedComparingRows = await releaseComparingEbayCandidates();
+    return { stopped: true, deleted: true, cancelledRuns, releasedComparingRows, ruleConfig };
   });
 }
