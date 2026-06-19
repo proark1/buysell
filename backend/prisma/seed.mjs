@@ -29,7 +29,6 @@ await prisma.ruleConfig.upsert({
     blockedBrands: [],
     blockedCategories: ['Clothing', 'Shoes', 'Food', 'Grocery', 'Beauty', 'Health', 'Baby', 'Medical', 'Adult', 'Weapons'],
     blockedKeywords: ['shirt', 'dress', 'shoe', 'sneaker', 'food', 'snack', 'supplement', 'vitamin', 'makeup', 'cosmetic', 'lotion', 'medicine', 'baby formula', 'knife', 'gun', 'adult'],
-    allowedCategories: ['Electronics', 'Office Products', 'Tools', 'Home Improvement', 'Home & Kitchen', 'Automotive', 'Pet Supplies'],
     amazonPriceCheckIntervalMinutes: 30
   },
   create: {
@@ -59,7 +58,6 @@ await prisma.ruleConfig.upsert({
     blockedBrands: [],
     blockedCategories: ['Clothing', 'Shoes', 'Food', 'Grocery', 'Beauty', 'Health', 'Baby', 'Medical', 'Adult', 'Weapons'],
     blockedKeywords: ['shirt', 'dress', 'shoe', 'sneaker', 'food', 'snack', 'supplement', 'vitamin', 'makeup', 'cosmetic', 'lotion', 'medicine', 'baby formula', 'knife', 'gun', 'adult'],
-    allowedCategories: ['Electronics', 'Office Products', 'Tools', 'Home Improvement', 'Home & Kitchen', 'Automotive', 'Pet Supplies'],
     amazonPriceCheckIntervalMinutes: 30
   }
 });

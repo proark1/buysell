@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { defaultAllowedCategories, defaultBlockedCategories, defaultBlockedKeywords } from '../services/discoveryPolicy.js';
+import { defaultBlockedCategories, defaultBlockedKeywords } from '../services/discoveryPolicy.js';
 import type { OpportunityThresholds } from '../services/opportunityDecider.js';
 
 export interface ActiveRuleConfig {
@@ -24,7 +24,6 @@ export interface ActiveRuleConfig {
   blockedBrands: string[];
   blockedCategories: string[];
   blockedKeywords: string[];
-  allowedCategories: string[];
   amazonPriceCheckIntervalMinutes: number;
   ebayDiscoveryAutoRunEnabled: boolean;
   ebayDiscoveryAutoRunIntervalMinutes: number;
@@ -61,7 +60,6 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   blockedBrands: [],
   blockedCategories: defaultBlockedCategories,
   blockedKeywords: defaultBlockedKeywords,
-  allowedCategories: defaultAllowedCategories,
   amazonPriceCheckIntervalMinutes: 30,
   ebayDiscoveryAutoRunEnabled: false,
   ebayDiscoveryAutoRunIntervalMinutes: 1,
@@ -118,7 +116,6 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     blockedBrands: stringArray(config.blockedBrands),
     blockedCategories: stringArray(config.blockedCategories).length > 0 ? stringArray(config.blockedCategories) : defaultRuleConfig.blockedCategories,
     blockedKeywords: stringArray(config.blockedKeywords).length > 0 ? stringArray(config.blockedKeywords) : defaultRuleConfig.blockedKeywords,
-    allowedCategories: stringArray(config.allowedCategories).length > 0 ? stringArray(config.allowedCategories) : defaultRuleConfig.allowedCategories,
     amazonPriceCheckIntervalMinutes: numberValue(config.amazonPriceCheckIntervalMinutes, defaultRuleConfig.amazonPriceCheckIntervalMinutes),
     ebayDiscoveryAutoRunEnabled: typeof config.ebayDiscoveryAutoRunEnabled === 'boolean' ? config.ebayDiscoveryAutoRunEnabled : defaultRuleConfig.ebayDiscoveryAutoRunEnabled,
     ebayDiscoveryAutoRunIntervalMinutes: numberValue(config.ebayDiscoveryAutoRunIntervalMinutes, defaultRuleConfig.ebayDiscoveryAutoRunIntervalMinutes),

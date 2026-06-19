@@ -496,8 +496,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       safeMode: parsed.data.safeMode ?? ruleConfig.safeMode,
       blockedBrands: ruleConfig.blockedBrands,
       blockedCategories: ruleConfig.blockedCategories,
-      blockedKeywords: ruleConfig.blockedKeywords,
-      allowedCategories: ruleConfig.allowedCategories
+      blockedKeywords: ruleConfig.blockedKeywords
     });
 
     const accepted = opportunities.filter((opportunity) => opportunity.decision.decision !== 'REJECT');
@@ -599,8 +598,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         safeMode,
         blockedBrands: ruleConfig.blockedBrands,
         blockedCategories: ruleConfig.blockedCategories,
-        blockedKeywords: ruleConfig.blockedKeywords,
-        allowedCategories: ruleConfig.allowedCategories
+        blockedKeywords: ruleConfig.blockedKeywords
       });
 
       const accepted = opportunities.filter((opportunity) => opportunity.decision.decision !== 'REJECT');
