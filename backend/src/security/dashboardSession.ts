@@ -32,16 +32,21 @@ const fromBase64Url = (value: string): string => Buffer
 const hashSecret = (value: string): Buffer => createHash('sha256').update(value).digest();
 
 export const secretMatches = (provided: string, configured: string): boolean => {
-  const providedHash = hashSecret(provided);
-  const configuredHash = hashSecret(configured);
-  return provided.length === configured.length && timingSafeEqual(providedHash, configuredHash);
+  // Compare fixed-width digests so this never short-circuits on length.
+  return timingSafeEqual(hashSecret(provided), hashSecret(configured));
 };
 
 export async function getConfiguredLocalAgentSecrets(db: PrismaClient): Promise<string[]> {
-  return [
-    env.LOCAL_AGENT_SHARED_SECRET,
-    await getCredentialValue(db, 'LOCAL_AGENT_SHARED_SECRET')
-  ].filter((value): value is string => Boolean(value));
+  // A corrupt or undecryptable stored secret must not lock out the entire auth path:
+  // skip it with a warning and fall back to the environment secret.
+  let stored: string | undefined;
+  try {
+    stored = await getCredentialValue(db, 'LOCAL_AGENT_SHARED_SECRET');
+  } catch (error) {
+    console.warn('Failed to read stored LOCAL_AGENT_SHARED_SECRET; using environment secret only.', error instanceof Error ? error.message : error);
+    stored = undefined;
+  }
+  return [env.LOCAL_AGENT_SHARED_SECRET, stored].filter((value): value is string => Boolean(value));
 }
 
 function parseCookies(request: FastifyRequest): Record<string, string> {
@@ -99,7 +104,7 @@ function verifySession(value: string | undefined, secrets: string[]): DashboardS
 
   const matched = secrets.some((secret) => {
     const expected = signSession(payloadText, secret);
-    return signature.length === expected.length && timingSafeEqual(hashSecret(signature), hashSecret(expected));
+    return timingSafeEqual(hashSecret(signature), hashSecret(expected));
   });
   if (!matched) return undefined;
 

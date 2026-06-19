@@ -14,6 +14,15 @@ const payloadRecord = (action: ActionItemDto): Record<string, unknown> => (
 
 const stringValue = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
 
+const numberValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
 const stringArray = (value: unknown): string[] => Array.isArray(value)
   ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
   : [];
@@ -150,6 +159,12 @@ function instructionsForAction(action: ActionItemDto, mode: AutomationMode): str
 }
 
 export function buildAutomationJob(options: BackendClientOptions, action: ActionItemDto, mode: AutomationMode): ComputerUseAutomationJob {
+  const payload = payloadRecord(action);
+  const maxPrice = action.type === 'BUY' ? numberValue(payload.maxPrice) : undefined;
+  const quantity = action.type === 'BUY' ? numberValue(payload.quantity) : undefined;
+  const guardrailInstructions = maxPrice !== undefined
+    ? [`Do not purchase above the max price of ${maxPrice}. Abort and return REVIEW_REQUIRED if the observed price exceeds it.`]
+    : [];
   return {
     actionId: action.id,
     actionType: action.type,
@@ -157,15 +172,24 @@ export function buildAutomationJob(options: BackendClientOptions, action: Action
     reason: action.reason,
     orderId: action.orderId,
     backendUrl: options.backendUrl,
-    payload: payloadRecord(action),
+    payload,
     guardrails: {
       finalSubmitAllowed: mode === 'AUTOPILOT',
       requiresHumanConfirmation: mode !== 'AUTOPILOT',
-      allowedDomains: allowedDomains(options)
+      allowedDomains: allowedDomains(options),
+      maxPrice,
+      quantity
     },
-    instructions: instructionsForAction(action, mode)
+    instructions: [...guardrailInstructions, ...instructionsForAction(action, mode)]
   };
 }
+
+const observedPurchasePrice = (result: ComputerUseAutomationResult): number | undefined => {
+  const evidence = result.evidence ?? {};
+  return numberValue(recordValue(evidence, 'purchasePrice'))
+    ?? numberValue(recordValue(evidence, 'observedPrice'))
+    ?? numberValue(recordValue(evidence, 'orderTotal'));
+};
 
 export function autopilotEvidenceFailures(job: ComputerUseAutomationJob, result: ComputerUseAutomationResult): string[] {
   if (job.mode !== 'AUTOPILOT' || result.actionCompleted !== true) return [];
@@ -201,6 +225,16 @@ export function autopilotEvidenceFailures(job: ComputerUseAutomationJob, result:
     || recordValue(evidence, 'approvedPayloadMatched') === true;
   if (!visibleDataMatched) {
     failures.push('Autopilot completion requires visibleDataMatched, payloadMatched, or approvedPayloadMatched evidence.');
+  }
+
+  // Enforce the per-order spend guardrail: never auto-complete a BUY above maxPrice.
+  if (job.actionType === 'BUY' && typeof job.guardrails.maxPrice === 'number') {
+    const observed = observedPurchasePrice(result);
+    if (observed === undefined) {
+      failures.push('Autopilot BUY completion requires an observed purchase price to check against maxPrice.');
+    } else if (observed > job.guardrails.maxPrice) {
+      failures.push(`Autopilot BUY price ${observed} exceeds the max price ${job.guardrails.maxPrice}.`);
+    }
   }
 
   return failures;
@@ -248,7 +282,11 @@ function manualVerificationPayload(action: ActionItemDto): VerificationResultDto
 function normalizeOperatorStatus(mode: AutomationMode, result: ComputerUseAutomationResult): AutomationRunStatus {
   const status = validRunStatus(result.status);
   if (status === 'FAILED' || status === 'REVIEW_REQUIRED' || status === 'CANCELLED') return status;
-  if (mode !== 'AUTOPILOT' && result.actionCompleted !== true) return 'NEEDS_HUMAN_CONFIRMATION';
+  if (result.actionCompleted !== true) {
+    // No explicit completion signal. Autopilot must fall back to human review rather than
+    // silently resolving COMPLETED (which would also skip the evidence gate).
+    return mode === 'AUTOPILOT' ? 'REVIEW_REQUIRED' : 'NEEDS_HUMAN_CONFIRMATION';
+  }
   return status ?? 'COMPLETED';
 }
 
@@ -357,12 +395,15 @@ async function runOperatorMode(options: BackendClientOptions, action: ActionItem
   await finishAutomationRun(options, runId, {
     status,
     phase: status,
-    result: autopilotFailures.length ? { ...result, autopilotEvidenceFailures } as Record<string, unknown> : result as Record<string, unknown>,
+    result: autopilotFailures.length ? { ...result, autopilotEvidenceFailures: autopilotFailures } as Record<string, unknown> : result as Record<string, unknown>,
     eventType: `COMPUTER_USE_${mode}_FINISHED`,
     message: autopilotFailures.length ? `Autopilot evidence incomplete: ${autopilotFailures.join(' ')}` : result.summary ?? `${mode} automation finished with ${status}.`
   });
 
-  if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions || result.actionCompleted === true)) {
+  // Only AUTOPILOT (after passing the evidence gate) or an explicit operator opt-in may
+  // auto-execute. A non-autopilot operator self-reporting actionCompleted can no longer
+  // bypass the DRAFT/ASSISTED human-confirmation gate.
+  if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions)) {
     await executeAction(options, action.id, result as Record<string, unknown>);
   }
 }

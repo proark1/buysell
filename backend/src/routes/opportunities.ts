@@ -31,6 +31,7 @@ import {
   type EbayComparisonSettings
 } from '../services/marketplaces.js';
 import { getSecret } from '../services/secrets.js';
+import { withSchedulerLock } from '../services/schedulerLocks.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import type { ProductOpportunity } from '../domain/products.js';
 
@@ -419,6 +420,11 @@ function ruleConfigWithComparisonThresholds(ruleConfig: ActiveRuleConfig, input:
     minimumOpportunityScore: input?.minOpportunityScore ?? ruleConfig.minimumOpportunityScore
   };
 }
+
+// Shared with the scheduler so manual and automatic Amazon comparisons never run
+// concurrently and double-spend Keepa tokens on the same candidates.
+const COMPARISON_LOCK_NAME = 'ebay-amazon-comparison-auto-run';
+const COMPARISON_LOCK_TTL_MS = 6 * 60 * 1000;
 
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
@@ -955,16 +961,23 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       const runId = typeof persistedRun === 'object' && persistedRun && 'id' in persistedRun ? String(persistedRun.id) : undefined;
       if (runId) {
         try {
-          comparison = await compareEbayDiscoveryCandidates({
-            db: prisma,
-            keepaApiKey,
-            serpApiKey,
-            ruleConfig: comparisonRuleConfig,
-            runId,
-            limit: parsed.data.compareLimit,
-            marketKey: parsed.data.marketKey,
-            amazonMatchLimit: parsed.data.amazonMatchLimit
-          });
+          const locked = await withSchedulerLock(
+            prisma,
+            { name: COMPARISON_LOCK_NAME, ttlMs: COMPARISON_LOCK_TTL_MS, metadata: { job: 'manual-ebay-discovery-run-autocompare' } },
+            () => compareEbayDiscoveryCandidates({
+              db: prisma,
+              keepaApiKey,
+              serpApiKey,
+              ruleConfig: comparisonRuleConfig,
+              runId,
+              limit: parsed.data.compareLimit,
+              marketKey: parsed.data.marketKey,
+              amazonMatchLimit: parsed.data.amazonMatchLimit
+            })
+          );
+          // If another comparison holds the lock, skip auto-compare; the run is persisted
+          // and its candidates can be compared later.
+          comparison = locked.acquired ? locked.result : undefined;
         } catch (error) {
           if (error instanceof KeepaApiError) {
             const keepaError = keepaErrorResponse(error);
@@ -1046,18 +1059,29 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
     let comparison: Awaited<ReturnType<typeof compareEbayDiscoveryCandidates>>;
     try {
-      comparison = await compareEbayDiscoveryCandidates({
-        db: prisma,
-        keepaApiKey,
-        serpApiKey,
-        ruleConfig: comparisonRuleConfig,
-        runId: parsed.data.runId,
-        candidateIds: parsed.data.candidateIds,
-        limit: parsed.data.limit,
-        marketKey: parsed.data.marketKey,
-        amazonMatchLimit: parsed.data.amazonMatchLimit,
-        force: parsed.data.force
-      });
+      const locked = await withSchedulerLock(
+        prisma,
+        { name: COMPARISON_LOCK_NAME, ttlMs: COMPARISON_LOCK_TTL_MS, metadata: { job: 'manual-ebay-discovery-compare' } },
+        () => compareEbayDiscoveryCandidates({
+          db: prisma,
+          keepaApiKey,
+          serpApiKey,
+          ruleConfig: comparisonRuleConfig,
+          runId: parsed.data.runId,
+          candidateIds: parsed.data.candidateIds,
+          limit: parsed.data.limit,
+          marketKey: parsed.data.marketKey,
+          amazonMatchLimit: parsed.data.amazonMatchLimit,
+          force: parsed.data.force
+        })
+      );
+      if (!locked.acquired) {
+        return reply.status(409).send({
+          error: 'An Amazon comparison run is already in progress. Try again shortly.',
+          code: 'COMPARISON_IN_PROGRESS'
+        });
+      }
+      comparison = locked.result;
     } catch (error) {
       if (error instanceof KeepaApiError) {
         const keepaError = keepaErrorResponse(error);

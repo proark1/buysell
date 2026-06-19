@@ -104,6 +104,21 @@ export async function registerCredentialRoutes(app: FastifyInstance): Promise<vo
     }
 
     await setCredentialValue(prisma, params.data.key, value);
+
+    // Rotating the auth secret is security-sensitive: record it (without the value) and
+    // note that the environment secret, if set, also remains valid.
+    if (params.data.key === 'LOCAL_AGENT_SHARED_SECRET') {
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'Credential',
+          entityId: params.data.key,
+          action: value === '' ? 'SHARED_SECRET_CLEARED' : 'SHARED_SECRET_ROTATED',
+          actor: 'dashboard',
+          afterJson: { key: params.data.key, envSecretStillValid: Boolean(env.LOCAL_AGENT_SHARED_SECRET) }
+        }
+      });
+    }
+
     const storedKeys = await getStoredCredentialKeys(prisma);
     return { credential: await statusFor(params.data.key, storedKeys) };
   });

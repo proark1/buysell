@@ -242,6 +242,12 @@ export async function finishAutomationRun(db: PrismaClient, input: FinishAutomat
   const existing = await db.automationRun.findUnique({ where: { id: input.runId } });
   if (!existing) throw notFound('Automation run not found', 'AUTOMATION_RUN_NOT_FOUND');
 
+  // A run that already reached a terminal state must not be overwritten or resurrected
+  // (e.g. a late duplicate finish replacing a COMPLETED run's result).
+  if (isTerminalAutomationStatus(existing.status)) {
+    throw conflict('Automation run is already finalized', 'AUTOMATION_RUN_FINALIZED');
+  }
+
   const completedAt = isTerminalAutomationStatus(input.status) ? new Date() : undefined;
   const run = await db.automationRun.update({
     where: { id: input.runId },

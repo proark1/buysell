@@ -1,5 +1,6 @@
 export interface ProfitCalculatorInput {
   ebaySalePrice: number;
+  ebayShippingPrice?: number;
   amazonItemCost: number;
   ebayFinalValueFeeRate?: number;
   categoryFinalValueFeeRate?: number;
@@ -73,14 +74,19 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
   const estimatedSalesTaxRate = input.estimatedSalesTaxRate ?? 0;
   const returnRiskBuffer = input.returnRiskBuffer ?? 0;
   const priceChangeBuffer = input.priceChangeBuffer ?? 0;
+  const ebayShippingPrice = input.ebayShippingPrice ?? 0;
 
-  const estimatedVariableFees = input.ebaySalePrice * (ebayFinalValueFeeRate + ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate);
-  const currencyConversionReserve = input.ebaySalePrice * currencyConversionBufferRate;
+  // eBay charges its final-value fee on the full buyer payment (item + shipping), and the
+  // buyer-paid shipping is also revenue to the seller.
+  const grossRevenue = input.ebaySalePrice + ebayShippingPrice;
+
+  const estimatedVariableFees = grossRevenue * (ebayFinalValueFeeRate + ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate);
+  const currencyConversionReserve = grossRevenue * currencyConversionBufferRate;
   const estimatedFees = estimatedVariableFees + paymentFixedFee + insertionFee + listingUpgradeFees + promotedListingFixedFee;
   const estimatedTax = input.amazonItemCost * estimatedSalesTaxRate;
-  const returnReserve = input.ebaySalePrice * returnReserveRate;
-  const returnShippingReserve = input.ebaySalePrice * returnShippingReserveRate;
-  const cancellationReserve = input.ebaySalePrice * cancellationReserveRate;
+  const returnReserve = grossRevenue * returnReserveRate;
+  const returnShippingReserve = grossRevenue * returnShippingReserveRate;
+  const cancellationReserve = grossRevenue * cancellationReserveRate;
   const bufferAmount = returnRiskBuffer
     + priceChangeBuffer
     + returnReserve
@@ -89,8 +95,10 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
     + marketplaceRiskBuffer
     + stockoutRiskBuffer;
   const totalSourceCost = input.amazonItemCost + sourceShippingCost + estimatedTax;
+  // Cash actually invested (out-of-pocket), excluding risk reserves which are not spend.
+  const cashInvested = totalSourceCost + shippingLabelCost + packagingCost;
   const totalLandedCost = totalSourceCost + shippingLabelCost + packagingCost + bufferAmount;
-  const expectedProfit = input.ebaySalePrice - estimatedFees - totalLandedCost;
+  const expectedProfit = grossRevenue - estimatedFees - totalLandedCost;
 
   return {
     estimatedVariableFees: roundMoney(estimatedVariableFees),

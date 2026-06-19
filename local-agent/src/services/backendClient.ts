@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 export interface ActionItemDto {
   id: string;
@@ -74,15 +74,18 @@ const headers = (input: {
   const base: Record<string, string> = { 'content-type': 'application/json' };
   if (input.sharedSecret) {
     const timestamp = String(Date.now());
+    const nonce = randomUUID();
     const message = [
       timestamp,
+      nonce,
       input.method.toUpperCase(),
       input.path,
       bodyHash(input.body)
     ].join('\n');
     base['x-local-agent-timestamp'] = timestamp;
+    base['x-local-agent-nonce'] = nonce;
+    // HMAC signature only — the raw shared secret is never transmitted.
     base['x-local-agent-signature'] = createHmac('sha256', input.sharedSecret).update(message).digest('hex');
-    base['x-local-agent-secret'] = input.sharedSecret;
   }
   return base;
 };

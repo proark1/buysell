@@ -11,7 +11,8 @@ import {
 import { getSecret } from './secrets.js';
 import { badRequest, conflict, notFound } from '../security/httpErrors.js';
 import { recordAmazonPurchaseRows } from '../repositories/orderRepository.js';
-import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { getActiveRuleConfig, type ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
+import { enforceDailyListingLimit, enforceDailyPurchaseLimit, lockDailyPurchaseBudget } from './spendLimits.js';
 
 interface ActionPayload {
   listingId?: string;
@@ -38,6 +39,8 @@ export interface ExecuteActionInput {
   idempotencyKey?: string;
   result?: Record<string, unknown>;
 }
+
+type ActionRecord = NonNullable<Awaited<ReturnType<PrismaClient['actionItem']['findUnique']>>>;
 
 const stringValue = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
@@ -133,57 +136,26 @@ function requiredEbayListingFields(payload: ActionPayload, result: Record<string
   return { categoryId, merchantLocationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
 }
 
-const startOfUtcDay = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
-
-async function enforceDailyListingLimit(db: PrismaClient): Promise<void> {
-  const config = await getActiveRuleConfig(db);
-  const completedToday = await db.actionItem.count({
-    where: {
-      type: 'LIST',
-      status: 'COMPLETED',
-      reviewedAt: { gte: startOfUtcDay() }
-    }
-  });
-  if (completedToday >= config.maxDailyListings) {
-    throw conflict(`Daily listing limit reached (${completedToday}/${config.maxDailyListings}).`, 'DAILY_LISTING_LIMIT_REACHED');
-  }
+async function releaseExecutingClaim(db: PrismaClient, actionId: string): Promise<void> {
+  // Hand the action back to APPROVED so a failed execution can be retried.
+  await db.actionItem.updateMany({ where: { id: actionId, status: 'EXECUTING' }, data: { status: 'APPROVED' } });
 }
 
-async function enforceDailyPurchaseLimit(db: PrismaClient, purchaseAmount: number): Promise<void> {
-  const config = await getActiveRuleConfig(db);
-  const purchases = await db.amazonPurchase.findMany({
-    where: {
-      createdAt: { gte: startOfUtcDay() },
-      status: { notIn: ['CANCELLED', 'ERROR'] }
-    },
-    select: { purchasePrice: true }
-  });
-  const spentToday = purchases.reduce((sum: number, purchase: { purchasePrice: unknown }) => sum + (numberValue(purchase.purchasePrice) ?? 0), 0);
-  if (spentToday + purchaseAmount > config.maxDailyPurchaseAmountUsd) {
-    throw conflict(
-      `Daily purchase limit would be exceeded (${(spentToday + purchaseAmount).toFixed(2)}/${config.maxDailyPurchaseAmountUsd.toFixed(2)}).`,
-      'DAILY_PURCHASE_LIMIT_REACHED'
-    );
-  }
-}
-
-export async function executeAction(db: PrismaClient, actionId: string, input: ExecuteActionInput = {}): Promise<unknown> {
-  const action = await db.actionItem.findUnique({ where: { id: actionId } });
-  if (!action) throw notFound('Action not found', 'ACTION_NOT_FOUND');
-  const existingPayload = actionPayload(action.payloadJson) as Record<string, unknown>;
-  const replay = idempotentReplay(existingPayload, input.idempotencyKey);
-  if (replay) return replay;
-  if (action.status !== 'APPROVED') throw conflict('Action must be APPROVED before execution', 'ACTION_NOT_APPROVED');
-
+async function runClaimedAction(
+  db: PrismaClient,
+  action: ActionRecord,
+  config: ActiveRuleConfig,
+  input: ExecuteActionInput
+): Promise<unknown> {
   const actor = input.actor ?? 'action-executor';
 
   if (action.type === 'LIST') {
-    await enforceDailyListingLimit(db);
     const payload = actionPayload(action.payloadJson);
-    const mode = listingMode(payload, input.result);
+    // Safe mode downgrades every listing to a local PREPARE draft; it never
+    // creates or publishes a live eBay offer.
+    let mode = listingMode(payload, input.result);
+    if (config.safeMode) mode = 'PREPARE';
+    if (mode !== 'PREPARE') await enforceDailyListingLimit(db);
     const marketplaceId = (await getSecret(db, 'EBAY_MARKETPLACE_ID')) ?? 'EBAY_US';
     const draft = prepareEbayListingDraft({
       sku: action.productCandidateId ?? action.id,
@@ -385,14 +357,19 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
     if (estimatedPurchaseAmount === undefined || estimatedPurchaseAmount <= 0) {
       throw badRequest('BUY execution requires a positive purchasePrice or payload maxPrice', 'BUY_PURCHASE_AMOUNT_REQUIRED');
     }
-    await enforceDailyPurchaseLimit(db, estimatedPurchaseAmount);
-
     let response: unknown;
+    // Serialize the budget re-check, purchase row, and completion in one transaction so
+    // concurrent BUY executions can't both pass the daily spend cap. A transaction-scoped
+    // advisory lock (auto-released at commit/rollback) forces them to run one at a time.
+    // The recorded purchasePrice falls back to the estimated amount so the daily spend sum
+    // matches what the limit check counted (instead of recording null and undercounting).
     await db.$transaction(async (tx) => {
+      await lockDailyPurchaseBudget(tx);
+      await enforceDailyPurchaseLimit(tx, estimatedPurchaseAmount);
       const purchase = await recordAmazonPurchaseRows(tx, action.orderId as string, {
         asin,
         amazonOrderId,
-        purchasePrice,
+        purchasePrice: purchasePrice ?? estimatedPurchaseAmount,
         trackingNumber,
         carrier,
         status
@@ -450,4 +427,36 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
   }
 
   throw badRequest(`Execution is not implemented for action type ${action.type}`, 'ACTION_EXECUTION_NOT_IMPLEMENTED');
+}
+
+export async function executeAction(db: PrismaClient, actionId: string, input: ExecuteActionInput = {}): Promise<unknown> {
+  const action = await db.actionItem.findUnique({ where: { id: actionId } });
+  if (!action) throw notFound('Action not found', 'ACTION_NOT_FOUND');
+  const existingPayload = actionPayload(action.payloadJson) as Record<string, unknown>;
+  const replay = idempotentReplay(existingPayload, input.idempotencyKey);
+  if (replay) return replay;
+
+  const config = await getActiveRuleConfig(db);
+  // Safe mode is a hard kill-switch for irreversible money/marketplace mutations.
+  if (config.safeMode && (action.type === 'BUY' || action.type === 'REPRICE')) {
+    throw conflict(
+      `Safe mode is enabled; ${action.type} execution is blocked. Disable safe mode in settings to proceed.`,
+      'SAFE_MODE_ACTION_BLOCKED'
+    );
+  }
+
+  // Atomically claim the action (APPROVED -> EXECUTING) BEFORE any external call so a
+  // double-click, retry, or concurrent worker cannot execute the same action twice.
+  const claim = await db.actionItem.updateMany({
+    where: { id: actionId, status: 'APPROVED' },
+    data: { status: 'EXECUTING' }
+  });
+  if (claim.count === 0) throw conflict('Action must be APPROVED before execution', 'ACTION_NOT_APPROVED');
+
+  try {
+    return await runClaimedAction(db, { ...action, status: 'EXECUTING' }, config, input);
+  } catch (error) {
+    await releaseExecutingClaim(db, actionId);
+    throw error;
+  }
 }

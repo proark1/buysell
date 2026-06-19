@@ -13,6 +13,7 @@ export function profitInputsFromRuleConfig(ruleConfig: ActiveRuleConfig, market?
   priceChangeBuffer: number;
   sourceShippingCost: number;
   packagingCost: number;
+  shippingLabelCost: number;
   paymentFixedFee: number;
   promotedListingFeeRate: number;
   returnReserveRate: number;
@@ -32,6 +33,7 @@ export function profitInputsFromRuleConfig(ruleConfig: ActiveRuleConfig, market?
     priceChangeBuffer: ruleConfig.priceChangeBuffer,
     sourceShippingCost: ruleConfig.sourceShippingCost,
     packagingCost: ruleConfig.packagingCost,
+    shippingLabelCost: ruleConfig.shippingLabelCost,
     paymentFixedFee: marketDefaultWhenConfigIsDefault(
       ruleConfig.paymentFixedFee,
       defaultRuleConfig.paymentFixedFee,

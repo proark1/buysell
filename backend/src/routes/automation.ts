@@ -110,6 +110,13 @@ export async function registerAutomationRoutes(app: FastifyInstance): Promise<vo
     const action = await prisma.actionItem.findUnique({ where: { id: params.data.id } });
     if (!action) return reply.status(404).send({ error: 'Action not found' });
 
+    // Only PENDING/APPROVED actions may be (re)approved. Re-approving a terminal or
+    // in-flight action here would bypass the executor's state machine and allow a
+    // completed action to be re-run.
+    if (body.data.approve && action.status !== 'PENDING' && action.status !== 'APPROVED') {
+      return reply.status(409).send({ error: `Action is ${action.status} and cannot be re-approved.` });
+    }
+
     const existingPayload = action.payloadJson && typeof action.payloadJson === 'object' && !Array.isArray(action.payloadJson)
       ? action.payloadJson as Record<string, unknown>
       : {};

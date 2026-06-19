@@ -46,6 +46,7 @@ enum ActionType {
 enum ActionStatus {
   PENDING
   APPROVED
+  EXECUTING
   COMPLETED
   REJECTED
   CANCELLED
@@ -201,6 +202,10 @@ model EbayListing {
   orders             Order[]
   listingLifecycleEvents ListingLifecycleEvent[]
   profitLedgerEntries    ProfitLedgerEntry[]
+
+  @@index([amazonMatchId])
+  @@index([productCandidateId])
+  @@index([listingStatus])
 }
 
 model Order {
@@ -219,6 +224,9 @@ model Order {
   amazonPurchases               AmazonPurchase[]
   actionItems                   ActionItem[]
   profitLedgerEntries           ProfitLedgerEntry[]
+
+  @@index([ebayListingId])
+  @@index([orderStatus])
 }
 
 model AmazonPurchase {
@@ -233,6 +241,9 @@ model AmazonPurchase {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status, createdAt])
 }
 
 model AuditLog {
@@ -358,6 +369,7 @@ model RuleConfig {
   priceChangeBuffer               Decimal  @default(2.00) @db.Decimal(10, 2)
   sourceShippingCost              Decimal  @default(0.00) @db.Decimal(10, 2)
   packagingCost                   Decimal  @default(0.00) @db.Decimal(10, 2)
+  shippingLabelCost               Decimal  @default(0.00) @db.Decimal(10, 2)
   paymentFixedFee                 Decimal  @default(0.00) @db.Decimal(10, 2)
   defaultPromotedListingFeeRate   Decimal  @default(0.0000) @db.Decimal(5, 4)
   returnReserveRate               Decimal  @default(0.0000) @db.Decimal(5, 4)

@@ -47,9 +47,9 @@ const requestIp = (request: FastifyRequest): string => {
 };
 
 function clientKey(request: FastifyRequest): string {
-  const forwardedFor = request.headers['x-forwarded-for'];
-  const forwarded = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-  const ip = forwarded?.split(',')[0]?.trim() || requestIp(request);
+  // Use the framework-computed client IP (request.ip), which honors trustProxy. Keying
+  // on a raw X-Forwarded-For header let any client spoof its bucket and bypass limits.
+  const ip = requestIp(request);
   const method = requestMethod(request).toUpperCase();
   const path = requestUrl(request).split('?')[0] || '/';
   const group = expensivePathPattern.test(path) ? 'expensive' : method === 'GET' ? 'read' : 'write';

@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
-import { createOrderAndBuyAction, recordAmazonPurchase } from '../repositories/orderRepository.js';
+import { createOrderAndBuyAction, recordAmazonPurchaseRows } from '../repositories/orderRepository.js';
+import { enforceDailyPurchaseLimit, lockDailyPurchaseBudget } from '../services/spendLimits.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import { getSecret } from '../services/secrets.js';
 import { getEbayAccessToken } from '../clients/ebaySellClient.js';
@@ -16,13 +17,15 @@ const ebayOrderSchema = z.object({
 });
 
 const orderParamsSchema = z.object({ id: z.string().min(1) });
+const purchaseStatuses = ['PENDING', 'PURCHASED', 'SHIPPED', 'CANCELLED', 'ERROR'] as const;
+const budgetCountingStatuses = new Set<string>(['PENDING', 'PURCHASED', 'SHIPPED']);
 const amazonPurchaseSchema = z.object({
   asin: z.string().min(1),
   amazonOrderId: z.string().min(1).optional(),
   purchasePrice: z.number().positive().optional(),
   trackingNumber: z.string().min(1).optional(),
   carrier: z.string().min(1).optional(),
-  status: z.string().min(1).optional()
+  status: z.enum(purchaseStatuses).optional()
 });
 
 const ebayOrderSyncSchema = z.object({
@@ -120,6 +123,25 @@ export async function registerOrderRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    return await recordAmazonPurchase(prisma, params.data.id, body.data);
+    // A budget-counting purchase must carry a positive price, otherwise it would be
+    // recorded with a null price and silently bypass the daily spend cap.
+    const requestedStatus = body.data.status ?? 'PURCHASED';
+    if (budgetCountingStatuses.has(requestedStatus) && body.data.purchasePrice === undefined) {
+      return reply.status(400).send({
+        error: 'A positive purchasePrice is required for a budget-counting purchase.',
+        code: 'PURCHASE_PRICE_REQUIRED'
+      });
+    }
+
+    // Enforce the daily spend cap and write the purchase in one serialized transaction
+    // so this operator route can no longer bypass the budget that executeAction enforces.
+    return await prisma.$transaction(async (tx) => {
+      const status = body.data.status ?? 'PURCHASED';
+      if (budgetCountingStatuses.has(status) && body.data.purchasePrice !== undefined) {
+        await lockDailyPurchaseBudget(tx);
+        await enforceDailyPurchaseLimit(tx, body.data.purchasePrice);
+      }
+      return recordAmazonPurchaseRows(tx, params.data.id, body.data);
+    });
   });
 }

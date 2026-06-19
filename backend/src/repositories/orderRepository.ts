@@ -2,6 +2,22 @@ import type { PrismaClient } from '@prisma/client';
 import { encryptJson } from '../security/encryption.js';
 import { notFound } from '../security/httpErrors.js';
 
+const prismaErrorCode = (error: unknown): string | undefined => (
+  error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined
+);
+
+async function existingOrderResult(db: PrismaClient, ebayOrderId: string): Promise<unknown | undefined> {
+  const existingOrder = await db.order.findUnique({ where: { ebayOrderId } });
+  if (!existingOrder) return undefined;
+  const existingAction = await db.actionItem.findFirst({
+    where: { orderId: existingOrder.id, type: 'BUY' },
+    orderBy: { createdAt: 'desc' }
+  });
+  return { order: existingOrder, action: existingAction, alreadyRecorded: true };
+}
+
 export interface CreateEbayOrderInput {
   ebayOrderId: string;
   ebayItemId: string;
@@ -20,16 +36,11 @@ export async function createOrderAndBuyAction(db: PrismaClient, input: CreateEba
 
   if (!listing) throw notFound(`No eBay listing found for item ${input.ebayItemId}`, 'EBAY_LISTING_NOT_FOUND');
 
-  const existingOrder = await db.order.findUnique({ where: { ebayOrderId: input.ebayOrderId } });
-  if (existingOrder) {
-    const existingAction = await db.actionItem.findFirst({
-      where: { orderId: existingOrder.id, type: 'BUY' },
-      orderBy: { createdAt: 'desc' }
-    });
-    return { order: existingOrder, action: existingAction, alreadyRecorded: true };
-  }
+  const existing = await existingOrderResult(db, input.ebayOrderId);
+  if (existing) return existing;
 
-  return db.$transaction(async (tx) => {
+  try {
+    return await db.$transaction(async (tx) => {
     const order = await tx.order.create({
       data: {
         ebayOrderId: input.ebayOrderId,
@@ -73,7 +84,16 @@ export async function createOrderAndBuyAction(db: PrismaClient, input: CreateEba
     });
 
     return { order, action, alreadyRecorded: false };
-  });
+    });
+  } catch (error) {
+    // Concurrent sync/webhook deliveries for the same eBay order race on the unique
+    // ebayOrderId; fall back to the already-created order so this stays idempotent.
+    if (prismaErrorCode(error) === 'P2002') {
+      const existingAfterRace = await existingOrderResult(db, input.ebayOrderId);
+      if (existingAfterRace) return existingAfterRace;
+    }
+    throw error;
+  }
 }
 
 async function upsertAmazonPurchase(

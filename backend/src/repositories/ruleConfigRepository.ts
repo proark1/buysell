@@ -9,6 +9,7 @@ export interface ActiveRuleConfig {
   priceChangeBuffer: number;
   sourceShippingCost: number;
   packagingCost: number;
+  shippingLabelCost: number;
   paymentFixedFee: number;
   defaultPromotedListingFeeRate: number;
   returnReserveRate: number;
@@ -45,6 +46,7 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   priceChangeBuffer: 2,
   sourceShippingCost: 0,
   packagingCost: 0,
+  shippingLabelCost: 0,
   paymentFixedFee: 0,
   defaultPromotedListingFeeRate: 0,
   returnReserveRate: 0,
@@ -101,6 +103,7 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     priceChangeBuffer: numberValue(config.priceChangeBuffer, defaultRuleConfig.priceChangeBuffer),
     sourceShippingCost: numberValue(config.sourceShippingCost, defaultRuleConfig.sourceShippingCost),
     packagingCost: numberValue(config.packagingCost, defaultRuleConfig.packagingCost),
+    shippingLabelCost: numberValue(config.shippingLabelCost, defaultRuleConfig.shippingLabelCost),
     paymentFixedFee: numberValue(config.paymentFixedFee, defaultRuleConfig.paymentFixedFee),
     defaultPromotedListingFeeRate: numberValue(config.defaultPromotedListingFeeRate, defaultRuleConfig.defaultPromotedListingFeeRate),
     returnReserveRate: numberValue(config.returnReserveRate, defaultRuleConfig.returnReserveRate),

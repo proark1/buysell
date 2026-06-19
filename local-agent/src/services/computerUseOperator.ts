@@ -14,6 +14,8 @@ export interface ComputerUseAutomationJob {
     finalSubmitAllowed: boolean;
     requiresHumanConfirmation: boolean;
     allowedDomains: string[];
+    maxPrice?: number;
+    quantity?: number;
   };
   instructions: string[];
 }

@@ -1224,7 +1224,13 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
       continue;
     }
 
-    await options.db.ebayDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
+    // Atomically claim the candidate so a concurrent compare can't process it twice
+    // and double-spend Keepa tokens. Skip it if another worker already moved it.
+    const claimed = await options.db.ebayDiscoveryCandidate.updateMany({
+      where: { id: candidate.id, comparisonStatus: { in: allowedStatuses } },
+      data: { selected: true, comparisonStatus: 'COMPARING' }
+    });
+    if (claimed.count === 0) continue;
     try {
       const amazonSearch = await findAmazonMatchesForEbayProduct({
         ebay,

@@ -25,11 +25,15 @@ export async function setCredentialValue(db: PrismaClient, key: string, value: s
  * they indicate an encryption-key mismatch that should not be silently ignored.
  */
 export async function getCredentialValue(db: PrismaClient, key: string): Promise<string | undefined> {
+  // A missing row legitimately returns undefined; a real DB read error or a decrypt
+  // failure (key mismatch / corruption) is propagated so security-sensitive callers
+  // fail closed instead of silently treating the secret as "not configured".
   let row: { encryptedValue: string } | null;
   try {
     row = await db.credential.findUnique({ where: { key }, select: { encryptedValue: true } });
-  } catch {
-    return undefined;
+  } catch (error) {
+    console.error(`Failed to read credential ${key} from the database.`, error instanceof Error ? error.message : error);
+    throw error;
   }
   if (!row) return undefined;
   const value = decryptJson<string>(row.encryptedValue);
@@ -41,7 +45,8 @@ export async function getStoredCredentialKeys(db: PrismaClient): Promise<Set<str
   try {
     const rows = (await db.credential.findMany({ select: { key: true } })) as Array<{ key: string }>;
     return new Set(rows.map((row) => row.key));
-  } catch {
+  } catch (error) {
+    console.error('Failed to list stored credential keys.', error instanceof Error ? error.message : error);
     return new Set();
   }
 }
