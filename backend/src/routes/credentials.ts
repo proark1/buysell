@@ -6,6 +6,9 @@ import { CREDENTIAL_KEYS, getCredentialDef, isManagedCredential } from '../confi
 import { getCredentialValue, getStoredCredentialKeys, setCredentialValue } from '../repositories/credentialRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import type { CredentialType } from '../config/credentialKeys.js';
+import { getSecret } from '../services/secrets.js';
+import { getKeepaTokenStatus } from '../clients/keepaClient.js';
+import { getEbayAccessToken } from '../clients/ebaySellClient.js';
 
 const updateSchema = z.object({ value: z.string() });
 const paramsSchema = z.object({ key: z.string().min(1) });
@@ -48,6 +51,32 @@ async function statusFor(key: string, storedKeys: Set<string>): Promise<unknown>
   };
 }
 
+async function checkCredential(key: string): Promise<unknown> {
+  if (key === 'KEEPA_API_KEY') {
+    const apiKey = await getSecret(prisma, key);
+    if (!apiKey) return { ok: false, status: 'missing', message: 'Keepa API key is not configured.' };
+    const tokenStatus = await getKeepaTokenStatus(apiKey);
+    return { ok: true, status: 'live', message: 'Keepa token endpoint responded.', tokenStatus };
+  }
+
+  if (key.startsWith('EBAY_')) {
+    const clientId = await getSecret(prisma, 'EBAY_CLIENT_ID');
+    const clientSecret = await getSecret(prisma, 'EBAY_CLIENT_SECRET');
+    const refreshToken = await getSecret(prisma, 'EBAY_REFRESH_TOKEN');
+    const sandbox = (await getSecret(prisma, 'EBAY_SANDBOX')) === 'true';
+    if (!clientId || !clientSecret || !refreshToken) {
+      return { ok: false, status: 'missing', message: 'eBay client ID, client secret, and refresh token are required for a live OAuth check.' };
+    }
+    await getEbayAccessToken({ clientId, clientSecret, refreshToken, sandbox });
+    return { ok: true, status: 'live', message: 'eBay OAuth token exchange succeeded.' };
+  }
+
+  const value = await getSecret(prisma, key);
+  return value
+    ? { ok: true, status: 'configured', message: `${key} is configured. Live checks are not run for this credential to avoid spending provider quota.` }
+    : { ok: false, status: 'missing', message: `${key} is not configured.` };
+}
+
 export async function registerCredentialRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/credentials', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
@@ -77,5 +106,26 @@ export async function registerCredentialRoutes(app: FastifyInstance): Promise<vo
     await setCredentialValue(prisma, params.data.key, value);
     const storedKeys = await getStoredCredentialKeys(prisma);
     return { credential: await statusFor(params.data.key, storedKeys) };
+  });
+
+  app.post('/api/credentials/:key/test', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+
+    const params = paramsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: 'Invalid credential key', details: params.error.flatten() });
+    }
+    if (!isManagedCredential(params.data.key)) {
+      return reply.status(404).send({ error: 'Unknown credential key' });
+    }
+
+    try {
+      return { check: await checkCredential(params.data.key) };
+    } catch (error) {
+      return reply.status(502).send({
+        error: 'Credential check failed',
+        details: error instanceof Error ? error.message.slice(0, 500) : 'Unexpected credential check failure'
+      });
+    }
   });
 }

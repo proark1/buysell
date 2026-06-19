@@ -10,7 +10,7 @@ import {
 } from '../clients/ebaySellClient.js';
 import { getSecret } from './secrets.js';
 import { badRequest, conflict, notFound } from '../security/httpErrors.js';
-import { recordAmazonPurchase } from '../repositories/orderRepository.js';
+import { recordAmazonPurchaseRows } from '../repositories/orderRepository.js';
 import { getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 
 interface ActionPayload {
@@ -35,6 +35,7 @@ interface ActionPayload {
 
 export interface ExecuteActionInput {
   actor?: string;
+  idempotencyKey?: string;
   result?: Record<string, unknown>;
 }
 
@@ -56,6 +57,20 @@ const numberValue = (value: unknown): number | undefined => {
 const actionPayload = (value: unknown): ActionPayload => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as ActionPayload : {}
 );
+
+const idempotentReplay = (payload: Record<string, unknown>, key: string | undefined): unknown | undefined => {
+  if (!key) return undefined;
+  return payload.executionIdempotencyKey === key && payload.executionResponse
+    ? { idempotent: true, result: payload.executionResponse }
+    : undefined;
+};
+
+const executionMetadata = (input: ExecuteActionInput, response: unknown): Record<string, unknown> => ({
+  executionResult: input.result,
+  executionIdempotencyKey: input.idempotencyKey,
+  executionCompletedAt: new Date().toISOString(),
+  executionResponse: response
+});
 
 const listingMode = (payload: ActionPayload, result: Record<string, unknown> | undefined): 'PREPARE' | 'DRAFT' | 'PUBLISH' => {
   const raw = stringValue(result?.ebayPublishMode) ?? stringValue(result?.listingMode) ?? payload.ebayPublishMode;
@@ -158,6 +173,9 @@ async function enforceDailyPurchaseLimit(db: PrismaClient, purchaseAmount: numbe
 export async function executeAction(db: PrismaClient, actionId: string, input: ExecuteActionInput = {}): Promise<unknown> {
   const action = await db.actionItem.findUnique({ where: { id: actionId } });
   if (!action) throw notFound('Action not found', 'ACTION_NOT_FOUND');
+  const existingPayload = actionPayload(action.payloadJson) as Record<string, unknown>;
+  const replay = idempotentReplay(existingPayload, input.idempotencyKey);
+  if (replay) return replay;
   if (action.status !== 'APPROVED') throw conflict('Action must be APPROVED before execution', 'ACTION_NOT_APPROVED');
 
   const actor = input.actor ?? 'action-executor';
@@ -221,6 +239,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
       }
     }
 
+    const response = { draft, ebayResult };
     await db.$transaction(async (tx) => {
       let listingId: string | undefined;
       if (action.productCandidateId && action.amazonMatchId && (mode !== 'PREPARE' || ebayItemId || ebayOfferId)) {
@@ -248,7 +267,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
           status: 'COMPLETED',
           reviewedBy: actor,
           reviewedAt: new Date(),
-          payloadJson: { ...payload, ebayDraft: draft, ebayResult, ebayListingId: listingId, executionResult: input.result }
+          payloadJson: { ...payload, ebayDraft: draft, ebayResult, ebayListingId: listingId, ...executionMetadata(input, response) }
         }
       });
 
@@ -263,7 +282,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
       });
     });
 
-    return { draft, ebayResult };
+    return response;
   }
 
   if (action.type === 'PAUSE') {
@@ -282,9 +301,10 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
       ebayResult = await withdrawEbayOffer({ offerId, accessToken, sandbox });
     }
 
+    const response = { listingId: listing?.id, offerId, ebayResult };
     await db.$transaction(async (tx) => {
       if (listing) await tx.ebayListing.update({ where: { id: listing.id }, data: { listingStatus: 'PAUSED' } });
-      await tx.actionItem.update({ where: { id: action.id }, data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date(), payloadJson: { ...payload, ebayResult, executionResult: input.result } } });
+      await tx.actionItem.update({ where: { id: action.id }, data: { status: 'COMPLETED', reviewedBy: actor, reviewedAt: new Date(), payloadJson: { ...payload, ebayResult, ...executionMetadata(input, response) } } });
       await tx.auditLog.create({
         data: {
           entityType: 'ActionItem',
@@ -295,7 +315,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
         }
       });
     });
-    return { listingId: listing?.id, offerId, ebayResult };
+    return response;
   }
 
   if (action.type === 'REPRICE') {
@@ -321,6 +341,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
       });
     }
 
+    const response = { listingId: listing.id, listedPrice: recommendedPrice, ebayResult };
     await db.$transaction(async (tx) => {
       await tx.ebayListing.update({ where: { id: listing.id }, data: { listedPrice: recommendedPrice.toFixed(2) } });
       await tx.actionItem.update({
@@ -329,7 +350,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
           status: 'COMPLETED',
           reviewedBy: actor,
           reviewedAt: new Date(),
-          payloadJson: { ...payload, previousPrice: listing.listedPrice, appliedPrice: recommendedPrice, ebayResult, executionResult: input.result }
+          payloadJson: { ...payload, previousPrice: listing.listedPrice, appliedPrice: recommendedPrice, ebayResult, ...executionMetadata(input, response) }
         }
       });
       await tx.auditLog.create({
@@ -344,7 +365,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
       });
     });
 
-    return { listingId: listing.id, listedPrice: recommendedPrice, ebayResult };
+    return response;
   }
 
   if (action.type === 'BUY') {
@@ -366,24 +387,28 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
     }
     await enforceDailyPurchaseLimit(db, estimatedPurchaseAmount);
 
-    const purchase = await recordAmazonPurchase(db, action.orderId, {
-      asin,
-      amazonOrderId,
-      purchasePrice,
-      trackingNumber,
-      carrier,
-      status
+    let response: unknown;
+    await db.$transaction(async (tx) => {
+      const purchase = await recordAmazonPurchaseRows(tx, action.orderId as string, {
+        asin,
+        amazonOrderId,
+        purchasePrice,
+        trackingNumber,
+        carrier,
+        status
+      }, actor);
+      response = { actionId: action.id, purchase };
+      await tx.actionItem.update({
+        where: { id: action.id },
+        data: {
+          status: 'COMPLETED',
+          reviewedBy: actor,
+          reviewedAt: new Date(),
+          payloadJson: { ...payload, ...executionMetadata(input, response) }
+        }
+      });
     });
-    await db.actionItem.update({
-      where: { id: action.id },
-      data: {
-        status: 'COMPLETED',
-        reviewedBy: actor,
-        reviewedAt: new Date(),
-        payloadJson: { ...payload, executionResult: input.result }
-      }
-    });
-    return { actionId: action.id, purchase };
+    return response;
   }
 
   if (action.type === 'REVIEW') {
@@ -402,7 +427,7 @@ export async function executeAction(db: PrismaClient, actionId: string, input: E
           status: 'COMPLETED',
           reviewedBy: actor,
           reviewedAt: new Date(),
-          payloadJson: { ...payload, manualReviewCompletedAt: new Date().toISOString(), executionResult: input.result }
+          payloadJson: { ...payload, manualReviewCompletedAt: new Date().toISOString(), ...executionMetadata(input, result) }
         }
       });
 

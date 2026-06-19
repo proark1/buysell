@@ -45,10 +45,26 @@ const discoveryCandidatesQuerySchema = z.object({
   take: z.coerce.number().int().positive().max(2000).default(500)
 });
 
+const exportParamsSchema = z.object({
+  entity: z.enum(['actions', 'candidates', 'listings', 'orders', 'profit-ledger'])
+});
+
+const exportQuerySchema = z.object({
+  format: z.enum(['json', 'csv']).default('json'),
+  take: z.coerce.number().int().positive().max(5000).default(1000)
+});
+
 type RuleConfigPatchValue = string | number | boolean | string[] | undefined;
 type RuleConfigPatch = Record<string, RuleConfigPatchValue>;
+type ExportEntity = 'actions' | 'candidates' | 'listings' | 'orders' | 'profit-ledger';
+type HeaderReply = {
+  type(value: string): HeaderReply;
+  header(name: string, value: string): HeaderReply;
+  send(payload: unknown): unknown;
+};
 
 type EbayAmazonComparisonRunRouteDelegate = {
+  count(args?: unknown): Promise<number>;
   updateMany(args: {
     where: { mode: 'AUTO'; status: 'RUNNING' };
     data: {
@@ -92,6 +108,90 @@ async function releaseComparingEbayCandidates(): Promise<number> {
   return result.count;
 }
 
+const csvValue = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+function rowsToCsv(rows: Array<Record<string, unknown>>): string {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0] ?? {});
+  return [
+    headers.join(','),
+    ...rows.map((row) => headers.map((header) => csvValue(row[header])).join(','))
+  ].join('\n');
+}
+
+async function exportRows(entity: ExportEntity, take: number): Promise<Array<Record<string, unknown>>> {
+  if (entity === 'actions') {
+    return prisma.actionItem.findMany({
+      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+      take,
+      select: { id: true, type: true, status: true, priority: true, reason: true, createdBy: true, reviewedBy: true, createdAt: true, updatedAt: true }
+    }) as Promise<Array<Record<string, unknown>>>;
+  }
+  if (entity === 'candidates') {
+    return prisma.productCandidate.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: { id: true, source: true, ebayTitle: true, ebayUrl: true, ebaySoldPrice: true, ebayCondition: true, opportunityScore: true, safetyStatus: true, createdAt: true }
+    }) as Promise<Array<Record<string, unknown>>>;
+  }
+  if (entity === 'listings') {
+    return prisma.ebayListing.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take,
+      select: { id: true, ebayItemId: true, ebayOfferId: true, listingStatus: true, listedPrice: true, quantity: true, title: true, createdAt: true, updatedAt: true }
+    }) as Promise<Array<Record<string, unknown>>>;
+  }
+  if (entity === 'orders') {
+    return prisma.order.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: { id: true, ebayOrderId: true, ebayListingId: true, buyerName: true, salePrice: true, orderStatus: true, fulfillmentStatus: true, amazonOrderStatus: true, createdAt: true, updatedAt: true }
+    }) as Promise<Array<Record<string, unknown>>>;
+  }
+  return prisma.profitLedgerEntry.findMany({
+    orderBy: { realizedAt: 'desc' },
+    take,
+    select: { id: true, productCandidateId: true, ebayListingId: true, orderId: true, revenue: true, sourceCost: true, marketplaceFees: true, shippingCost: true, refunds: true, netProfit: true, currency: true, realizedAt: true }
+  }) as Promise<Array<Record<string, unknown>>>;
+}
+
+async function dashboardAlerts(): Promise<Array<Record<string, unknown>>> {
+  const staleRunCutoff = new Date(Date.now() - 30 * 60 * 1000);
+  const staleLockCutoff = new Date();
+  const [
+    failedAutomationRuns,
+    reviewAutomationRuns,
+    staleAutomationRuns,
+    failedComparisonRuns,
+    staleLocks,
+    pendingVerifyActions,
+    pendingBuyActions
+  ] = await Promise.all([
+    prisma.automationRun.count({ where: { status: 'FAILED', updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
+    prisma.automationRun.count({ where: { status: 'REVIEW_REQUIRED' } }),
+    prisma.automationRun.count({ where: { status: 'RUNNING', updatedAt: { lte: staleRunCutoff } } }),
+    routeDb.ebayAmazonComparisonRun.count({ where: { status: 'FAILED' } }),
+    prisma.schedulerLock.count({ where: { leasedUntil: { lte: staleLockCutoff } } }),
+    prisma.actionItem.count({ where: { type: 'VERIFY', status: 'PENDING' } }),
+    prisma.actionItem.count({ where: { type: 'BUY', status: 'PENDING' } })
+  ]);
+
+  const alerts = [
+    failedAutomationRuns > 0 ? { severity: 'high', code: 'AUTOMATION_FAILURES', message: `${failedAutomationRuns} automation runs failed in the last 24 hours.` } : undefined,
+    reviewAutomationRuns > 0 ? { severity: 'medium', code: 'AUTOMATION_REVIEW_REQUIRED', message: `${reviewAutomationRuns} automation runs need review.` } : undefined,
+    staleAutomationRuns > 0 ? { severity: 'high', code: 'STALE_AUTOMATION_RUNS', message: `${staleAutomationRuns} automation runs have been running for more than 30 minutes.` } : undefined,
+    failedComparisonRuns > 0 ? { severity: 'medium', code: 'COMPARISON_RUN_HISTORY', message: `${failedComparisonRuns} Amazon comparison runs are recorded; check recent failures and token waits in Automation.` } : undefined,
+    staleLocks > 0 ? { severity: 'low', code: 'EXPIRED_SCHEDULER_LOCKS', message: `${staleLocks} scheduler locks are expired and available for takeover.` } : undefined,
+    pendingVerifyActions > 0 ? { severity: 'medium', code: 'PENDING_VERIFICATION', message: `${pendingVerifyActions} listing verifications are waiting.` } : undefined,
+    pendingBuyActions > 0 ? { severity: 'high', code: 'PENDING_BUY_ACTIONS', message: `${pendingBuyActions} purchase actions are waiting.` } : undefined
+  ];
+  return alerts.flatMap((alert) => alert ? [alert] : []);
+}
+
 export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health/db', async () => {
     try {
@@ -117,6 +217,35 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     const parsed = discoveryCandidatesQuerySchema.safeParse(request.query ?? {});
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid discovery candidates query', details: parsed.error.flatten() });
     return getDashboardDiscoveryCandidates(prisma, parsed.data.take);
+  });
+
+  app.get('/api/alerts', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return { alerts: await dashboardAlerts() };
+  });
+
+  app.get('/api/export/:entity', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    const params = exportParamsSchema.safeParse(request.params);
+    const query = exportQuerySchema.safeParse(request.query ?? {});
+    if (!params.success || !query.success) {
+      return reply.status(400).send({
+        error: 'Invalid export request',
+        details: {
+          params: params.success ? undefined : params.error.flatten(),
+          query: query.success ? undefined : query.error.flatten()
+        }
+      });
+    }
+
+    const rows = await exportRows(params.data.entity, query.data.take);
+    if (query.data.format === 'csv') {
+      return (reply as unknown as HeaderReply)
+        .type('text/csv')
+        .header('content-disposition', `attachment; filename="buysell-${params.data.entity}.csv"`)
+        .send(rowsToCsv(rows));
+    }
+    return { entity: params.data.entity, rows };
   });
 
   app.get('/api/settings', async (request, reply) => {

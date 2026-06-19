@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { OpportunityDecision } from '../domain/products.js';
-import { badRequest, notFound } from '../security/httpErrors.js';
+import { badRequest, conflict, notFound } from '../security/httpErrors.js';
 
 export interface CreateActionInput {
   productCandidateId?: string;
@@ -156,13 +156,51 @@ export async function updateActionStatus(
 ): Promise<unknown> {
   const existing = await db.actionItem.findUnique({ where: { id } });
   if (!existing) throw notFound('Action not found', 'ACTION_NOT_FOUND');
+  if (existing.status === status) return existing;
 
-  return db.actionItem.update({
-    where: { id },
-    data: {
-      status,
-      reviewedBy,
-      reviewedAt: new Date()
-    }
+  const terminalStatuses = new Set(['COMPLETED', 'REJECTED', 'CANCELLED']);
+  if (terminalStatuses.has(existing.status)) {
+    throw conflict(`Cannot change action status from ${existing.status} to ${status}`, 'ACTION_TERMINAL_STATUS');
+  }
+
+  if (status === 'COMPLETED' && existing.type !== 'REVIEW') {
+    throw conflict('Only REVIEW actions can be completed manually. Use the execution or verification endpoint for marketplace actions.', 'ACTION_COMPLETION_REQUIRES_EXECUTION');
+  }
+
+  if (existing.status === 'PENDING' && !['APPROVED', 'REJECTED', 'CANCELLED', 'ERROR'].includes(status)) {
+    throw conflict(`Cannot change action status from ${existing.status} to ${status}`, 'ACTION_INVALID_STATUS_TRANSITION');
+  }
+
+  if (existing.status === 'APPROVED' && !['COMPLETED', 'REJECTED', 'CANCELLED', 'ERROR'].includes(status)) {
+    throw conflict(`Cannot change action status from ${existing.status} to ${status}`, 'ACTION_INVALID_STATUS_TRANSITION');
+  }
+
+  if (existing.status === 'ERROR' && !['APPROVED', 'CANCELLED'].includes(status)) {
+    throw conflict(`Cannot change action status from ${existing.status} to ${status}`, 'ACTION_INVALID_STATUS_TRANSITION');
+  }
+
+  const actor = reviewedBy ?? 'dashboard';
+  return db.$transaction(async (tx) => {
+    const updated = await tx.actionItem.update({
+      where: { id },
+      data: {
+        status,
+        reviewedBy: actor,
+        reviewedAt: new Date()
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        entityType: 'ActionItem',
+        entityId: id,
+        action: 'ACTION_STATUS_CHANGED',
+        actor,
+        beforeJson: { status: existing.status },
+        afterJson: { status, type: existing.type }
+      }
+    });
+
+    return updated;
   });
 }

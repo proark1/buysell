@@ -121,7 +121,8 @@ export async function executeAction(
   result?: Record<string, unknown>
 ): Promise<void> {
   const path = `/actions/${actionId}/execute`;
-  const body = JSON.stringify({ actor: 'local-agent', result });
+  const resultHash = createHash('sha256').update(JSON.stringify(result ?? {})).digest('hex').slice(0, 24);
+  const body = JSON.stringify({ actor: 'local-agent', idempotencyKey: `local-agent-${actionId}-${resultHash}`, result });
   const response = await fetch(`${options.backendUrl}${path}`, {
     method: 'POST',
     headers: headers({ sharedSecret: options.sharedSecret, method: 'POST', path, body }),

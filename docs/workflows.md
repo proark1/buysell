@@ -57,6 +57,8 @@ The opportunity search request accepts `"persist": true`. When enabled, the back
 
 When persisted opportunities produce a `LIST`, `REPRICE`, `PAUSE`, or `MANUAL_REVIEW` decision, the backend creates an `ActionItem`. Operators can fetch pending work with `GET /actions` and approve, reject, complete, cancel, or mark an item as errored with `PATCH /actions/:id`. This maps the chart's `Aktionsliste` step into a database-backed review queue before eBay or Amazon automation runs.
 
+Action status changes are validated as state transitions and written to `AuditLog`. Marketplace-changing work cannot be marked completed directly through the status endpoint; it must complete through the execution endpoint, verification endpoint, or a manual `REVIEW` completion. Operators can also post structured review feedback to `/actions/:id/feedback`, which records reason codes and notes in `OpportunityFeedback`.
+
 
 ## Local Agent Polling
 
@@ -73,6 +75,8 @@ The local agent leaves manual marketplace actions open by default so the dashboa
 
 `COMPUTER_USE_VERIFIER_COMMAND` is the dedicated verification adapter. `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, and `COMPUTER_USE_AUTOPILOT_COMMAND` are mode-specific operator adapters; `COMPUTER_USE_OPERATOR_COMMAND` is the fallback. Each command is parsed into an executable plus arguments, receives job JSON on stdin, and returns validated structured JSON plus evidence on stdout.
 
+Autopilot completion is evidence-gated in the local agent. A completed operator result must include an allowed final URL, artifact or screenshot evidence, and an explicit visible-payload match signal such as `payloadMatched`, `visibleDataMatched`, or `approvedPayloadMatched`. Missing evidence leaves the automation run in `REVIEW_REQUIRED` instead of executing the marketplace action.
+
 ## Automation Runs
 
 `AutomationRun` records the mode, agent type, phase, status, risk score, result JSON, and error for every AI/browser operation. `AutomationEvent` stores recent run events. The dashboard's Automation view shows these records, and the Actions view can queue a selected action as Verify, Draft, Assisted, or Autopilot by setting `payloadJson.automationMode` and approving it.
@@ -80,6 +84,8 @@ The local agent leaves manual marketplace actions open by default so the dashboa
 ## Local Agent Authentication
 
 Protected operator routes require a shared secret. Configure `LOCAL_AGENT_SHARED_SECRET` on the backend, then send the same value in the `x-local-agent-secret` header from the local agent or dashboard. A secret stored in the encrypted credentials table can also authorize requests after the backend has been bootstrapped with an existing valid secret.
+
+The browser dashboard does not store the shared secret after login. It exchanges the secret for a signed HttpOnly dashboard session cookie and a CSRF token. Local-agent HMAC signatures remain the preferred non-browser authorization path; the raw shared-secret header remains for CLI/backward compatibility.
 
 ## Rule Configuration
 
@@ -95,6 +101,8 @@ Approved `REPRICE` actions update the internal listing and attempt an eBay Sell 
 
 `POST /orders/ebay/manual` records an eBay order against a known `EbayListing`, encrypts the buyer shipping address, marks the order ready for purchase review, and creates a high-priority `BUY` action for the local agent/operator. This is the bridge between an eBay sale and the Amazon purchase workflow while keeping checkout manual in the MVP.
 
+`POST /orders/ebay/sync` polls recent eBay Fulfillment API orders with the configured eBay OAuth credentials. Orders whose line items map to known `EbayListing.ebayItemId` values create the same BUY action as manual intake; unknown listings or incomplete totals are reported as skipped.
+
 ## Amazon Purchase Recording
 
 After the operator/local agent completes an Amazon purchase, `POST /orders/:id/amazon-purchase` stores the Amazon order details, updates the eBay order status, and appends an audit log. Tracking details can be included immediately or added by posting another purchase/status update once Amazon provides carrier and tracking information.
@@ -109,4 +117,4 @@ When Amazon source price rises, the monitor queues a high-priority `PAUSE` actio
 
 The dashboard now includes operator forms for searching opportunities, approving/rejecting/executing actions, creating manual eBay order intake records, and recording Amazon purchases, so the main MVP workflows can be driven from the browser instead of raw curl commands.
 
-The dashboard includes a connection section for `LOCAL_AGENT_SHARED_SECRET`; when saved in the browser, protected action execution and Amazon-purchase routes send the same `x-local-agent-secret` header as the local agent.
+The dashboard also exposes operational alerts, CSV exports for core tables, and per-credential checks. High-risk dashboard operations require typed confirmation words before the request is sent.

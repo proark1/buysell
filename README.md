@@ -154,7 +154,7 @@ Manual marketplace actions are left open by default after the agent prepares the
 
 Set `COMPUTER_USE_VERIFIER_COMMAND`, `COMPUTER_USE_DRAFT_COMMAND`, `COMPUTER_USE_ASSISTED_COMMAND`, `COMPUTER_USE_AUTOPILOT_COMMAND`, or fallback `COMPUTER_USE_OPERATOR_COMMAND` to connect Codex Computer Use or another real computer-use provider. The command is parsed into an executable plus arguments, not run through a shell, so use direct commands such as `node ./operator.js` instead of shell pipelines. The local agent sends a job JSON object on stdin and expects validated structured JSON on stdout. No Playwright browser automation is used for marketplace account flows.
 
-Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment or in the dashboard's Settings → Local Agent Connection field so action polling, credential updates, settings writes, discovery runs, and order updates are accepted. The local agent also sends timestamped HMAC request signatures derived from that secret; the legacy `x-local-agent-secret` header remains accepted for dashboard compatibility.
+Protected operator routes require a shared secret. Set `LOCAL_AGENT_SHARED_SECRET` on the backend, and include the same value in the local agent environment so action polling, credential updates, settings writes, discovery runs, and order updates are accepted. The local agent sends timestamped HMAC request signatures derived from that secret; the legacy `x-local-agent-secret` header remains accepted for CLI/backward compatibility. Browser dashboard users sign in once with the shared secret and then use a short-lived HttpOnly session plus CSRF token.
 
 Execute approved listing draft action:
 
@@ -179,6 +179,12 @@ curl -X POST http://localhost:3000/orders/ebay/manual \
   -H 'content-type: application/json' \
   -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"ebayOrderId":"ORDER-1","ebayItemId":"EBAY-ITEM-1","buyerName":"Buyer","buyerShippingAddress":{"country":"US"},"salePrice":54.99}'
+
+# Poll recent eBay orders and create BUY actions for known listings
+curl -X POST http://localhost:3000/orders/ebay/sync \
+  -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
+  -d '{"lookbackHours":24,"limit":50}'
 ```
 
 Record Amazon purchase:
@@ -277,11 +283,13 @@ npm run lint
 
 CI validation:
 
-The GitHub Actions workflow in `.github/workflows/ci.yml` runs install, typecheck, build, tests, and lint validation on pushes and pull requests.
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs install, production dependency audit, typecheck, build, Prisma validation, a Postgres-backed migration smoke test, tests, and lint validation on pushes and pull requests.
 
 Dashboard:
 
-Open `/` on the Railway app to use the Buysell Control Center — a single-page operator dashboard with a sidebar (Overview, Actions, Listings & Orders, Discovery, API Keys, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, guided discovery profiles, and a manual Amazon price-check trigger.
+Open `/` on the Railway app to use the Buysell Control Center. The dashboard requires sign-in with the configured `LOCAL_AGENT_SHARED_SECRET`; after login, the browser uses a short-lived HttpOnly session cookie plus CSRF token instead of storing the shared secret in `localStorage`. Mutating dashboard requests require the CSRF token, while the local agent continues to use timestamped HMAC signatures.
+
+The dashboard includes a sidebar (Overview, Actions, Listings & Orders, Discovery, Settings), live stat cards, sortable data tables with status badges, toast notifications, a live Postgres connection indicator, guided discovery profiles, alert checks, CSV exports, credential checks, and a manual Amazon price-check trigger. High-risk actions such as execution, purchase recording, and Autopilot queueing require typed confirmation words.
 
 Discovery:
 
@@ -299,7 +307,7 @@ Safety defaults can be edited in **Settings → Discovery Safety**.
 
 API Keys & Credentials:
 
-The **API Keys** tab lets operators manage all API keys and config (SerpApi, Keepa, OpenAI, eBay credentials/marketplace/sandbox, and the local-agent secret) without redeploying. Values are encrypted with AES-256-GCM and stored in the `Credential` table (`backend/prisma/migrations/0004_add_credential`); a stored value takes precedence over the matching environment variable. The API never returns full secrets — only a masked preview, the source (`database` / `environment` / `unset`), and whether the key is configured:
+The **Settings** tab lets operators manage all API keys and config (SerpApi, Keepa, OpenAI, eBay credentials/marketplace/sandbox, and the local-agent secret) without redeploying. Values are encrypted with AES-256-GCM and stored in the `Credential` table (`backend/prisma/migrations/0004_add_credential`); a stored value takes precedence over the matching environment variable. The API never returns full secrets — only a masked preview, the source (`database` / `environment` / `unset`), and whether the key is configured:
 
 ```bash
 # Read masked status of all managed keys
@@ -311,6 +319,14 @@ curl -X PUT http://localhost:3000/api/credentials/SERPAPI_API_KEY \
   -H 'content-type: application/json' \
   -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
   -d '{"value":"your-serpapi-key"}'
+
+# Check a configured credential without revealing it
+curl -X POST http://localhost:3000/api/credentials/KEEPA_API_KEY/test \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
+
+# Export selected operational data
+curl "http://localhost:3000/api/export/actions?format=csv" \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
 ```
 
 Both routes require a configured local-agent secret, matching the rest of the protected API. `DATABASE_URL` and `BUYSELL_ENCRYPTION_KEY` are intentionally **not** manageable here — they are required from the environment to reach and decrypt the credential store. Set `BUYSELL_ENCRYPTION_KEY` to a stable 32+ character value in production so stored secrets remain decryptable across deploys.

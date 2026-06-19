@@ -1,4 +1,4 @@
-import { buildAutomationJob, describeAction, resolveAutomationMode } from './actionRunner.js';
+import { autopilotEvidenceFailures, buildAutomationJob, describeAction, resolveAutomationMode } from './actionRunner.js';
 import { parseCommandLine } from './jsonCommand.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 
@@ -104,6 +104,30 @@ const customDomainJob = buildAutomationJob({ ...baseOptions, allowedDomains: ['s
   reason: 'Prepare purchase.'
 }, 'ASSISTED');
 assertEqual(customDomainJob.guardrails.allowedDomains.includes('supplier.example'), true, 'guardrails include custom domain');
+
+const autopilotJob = buildAutomationJob({ ...baseOptions, automationMode: 'AUTOPILOT' }, {
+  id: 'autopilot-evidence-job',
+  type: 'LIST',
+  status: 'APPROVED',
+  reason: 'Publish listing.'
+}, 'AUTOPILOT');
+
+assertEqual(autopilotEvidenceFailures(autopilotJob, {
+  actionCompleted: true,
+  evidence: {
+    finalUrl: 'https://www.ebay.com/sh/lst/active',
+    payloadMatched: true,
+    screenshotPath: '/tmp/final.png'
+  }
+}).length, 0, 'valid autopilot evidence passes');
+
+assertEqual(autopilotEvidenceFailures(autopilotJob, {
+  actionCompleted: true,
+  evidence: {
+    finalUrl: 'https://example.com/final',
+    payloadMatched: true
+  }
+}).length > 0, true, 'invalid autopilot evidence is rejected');
 
 const parsedCommand = parseCommandLine('node "./operator script.js" --mode draft');
 assertEqual(parsedCommand[0], 'node', 'command parser executable');

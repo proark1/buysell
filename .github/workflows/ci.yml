@@ -10,6 +10,22 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: buysell
+          POSTGRES_PASSWORD: buysell
+          POSTGRES_DB: buysell
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U buysell -d buysell"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://buysell:buysell@localhost:5432/buysell
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +48,10 @@ jobs:
         run: npm run build
 
       - name: Prisma validation
-        run: DATABASE_URL='postgresql://user:pass@localhost:5432/buysell' npm run prisma:validate
+        run: npm run prisma:validate
+
+      - name: Prisma migration smoke test
+        run: npm run prisma:deploy
 
       - name: Test
         run: npm run test

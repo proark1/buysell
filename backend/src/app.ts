@@ -9,10 +9,12 @@ import { registerDashboardApiRoutes } from './routes/dashboardApi.js';
 import { registerCredentialRoutes } from './routes/credentials.js';
 import { registerAutomationRoutes } from './routes/automation.js';
 import { registerErrorHandler } from './security/errorHandler.js';
+import { registerRateLimit } from './security/rateLimit.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
   registerErrorHandler(app);
+  registerRateLimit(app);
 
   await registerDashboardRoutes(app);
   await registerDashboardApiRoutes(app);

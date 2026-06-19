@@ -1,4 +1,55 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { prisma } from '../db/prisma.js';
+import {
+  clearDashboardSessionHeaders,
+  createDashboardSessionHeaders,
+  setCookieHeaders,
+  verifyDashboardSessionRequest
+} from '../security/dashboardSession.js';
+
+const dashboardLoginHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Buysell Sign In</title>
+  <style>
+    :root{color-scheme:dark;--bg:#08111f;--panel:#111b2b;--border:rgba(148,163,184,.24);--text:#e8eefc;--muted:#94a3b8;--brand:#0ea5e9;--red:#f87171}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);padding:24px}
+    .login{width:min(420px,100%);border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:24px;box-shadow:0 18px 40px -20px rgba(0,0,0,.65)}
+    h1{font-size:22px;margin:0 0 8px}p{color:var(--muted);line-height:1.5;margin:0 0 18px}label{display:block;font-size:12px;font-weight:800;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+    input{width:100%;height:42px;border:1px solid var(--border);border-radius:6px;background:#0d1828;color:var(--text);padding:0 12px;font-size:14px}
+    button{height:42px;border:0;border-radius:6px;background:var(--brand);color:white;font-weight:800;padding:0 16px;margin-top:14px;cursor:pointer;width:100%}
+    .error{display:none;color:#fecaca;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);padding:10px 12px;border-radius:6px;margin-top:14px;font-size:13px}
+  </style>
+</head>
+<body>
+  <main class="login">
+    <h1>Buysell Control Center</h1>
+    <p>Sign in with the configured local-agent shared secret. The dashboard will use a short-lived HttpOnly session after this step.</p>
+    <form id="loginForm">
+      <label for="secret">Shared Secret</label>
+      <input id="secret" name="secret" type="password" autocomplete="current-password" autofocus />
+      <button type="submit">Sign In</button>
+      <div class="error" id="error"></div>
+    </form>
+  </main>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit',function(event){
+      event.preventDefault();
+      var error=document.getElementById('error');
+      error.style.display='none';
+      fetch('/dashboard/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({secret:document.getElementById('secret').value})})
+        .then(function(response){return response.json().catch(function(){return{error:'HTTP '+response.status}}).then(function(body){if(!response.ok)throw new Error(body.error||('HTTP '+response.status));return body})})
+        .then(function(){window.location.href='/'})
+        .catch(function(err){error.textContent=err.message;error.style.display='block'});
+    });
+  </script>
+</body>
+</html>`;
+
+const loginBodySchema = z.object({ secret: z.string().min(1) });
 
 const dashboardHtml = `<!doctype html>
 <html lang="en">
@@ -450,6 +501,17 @@ const dashboardHtml = `<!doctype html>
                 </div>
               </details>
             </div>
+            <div class="inline" style="margin-bottom:14px">
+              <select id="feedbackType" style="max-width:190px">
+                <option value="GOOD_OPPORTUNITY">Good opportunity</option>
+                <option value="BAD_MATCH">Bad match</option>
+                <option value="BAD_ECONOMICS">Bad economics</option>
+                <option value="BAD_SOURCE">Bad source</option>
+                <option value="NEEDS_REVIEW">Needs review</option>
+              </select>
+              <input id="feedbackReason" placeholder="Feedback note" style="max-width:320px">
+              <button class="btn ghost requires-action" id="feedbackActionBtn" onclick="recordActionFeedback()" disabled>Save Feedback</button>
+            </div>
             <div class="table-wrap"><div id="actionsTable"></div></div>
           </div>
         </div>
@@ -499,6 +561,7 @@ const dashboardHtml = `<!doctype html>
           <div class="panel">
             <div class="panel-head"><h2>Manual eBay Order</h2><span class="hint">Create a BUY action</span></div>
             <div class="panel-body">
+              <div class="actions-row" style="margin-bottom:10px"><button class="btn" onclick="syncEbayOrders()">Sync Recent eBay Orders</button></div>
               <details class="advanced">
                 <summary>Add order manually</summary>
                 <div class="form-grid">
@@ -752,19 +815,36 @@ const dashboardHtml = `<!doctype html>
           <div class="panel-head"><h2>Settings</h2><span class="hint">All configuration lives here. Automation pages only run and monitor jobs.</span></div>
           <div class="panel-body">
             <details class="advanced settings-group" open>
-              <summary>Local agent connection</summary>
-              <div class="field"><label>Shared Secret</label>
-                <div class="inline"><input id="agentSecret" type="password" placeholder="LOCAL_AGENT_SHARED_SECRET" style="max-width:280px">
-                <button class="btn" onclick="saveSecret()">Save</button><button class="btn ghost" onclick="clearSecret()">Clear</button></div>
-                <div class="hint" style="margin-top:6px">This value stays in this browser and unlocks protected local routes.</div>
+              <summary>Dashboard session</summary>
+              <div class="field"><label>Signed In</label>
+                <div class="inline"><span class="chip">Session active</span><button class="btn ghost" onclick="logoutDashboard()">Logout</button></div>
+                <div class="hint" style="margin-top:6px">Protected dashboard calls use a short-lived HttpOnly session and CSRF token. The local-agent shared secret can be rotated under Security credentials.</div>
               </div>
             </details>
             <details class="advanced settings-group" open>
               <summary>Marketplace credentials</summary>
               <div class="banner" id="keysLocked" style="display:none;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#fde68a;margin-bottom:14px">
-                <span>Locked</span><span>Configure <b>LOCAL_AGENT_SHARED_SECRET</b> on the backend, then save the same value above in this browser.</span>
+                <span>Locked</span><span>Configure <b>LOCAL_AGENT_SHARED_SECRET</b> on the backend, then sign in again.</span>
               </div>
               <div id="credsContainer"><div class="empty">Open Settings after the shared secret is configured to manage credentials.</div></div>
+            </details>
+            <details class="advanced settings-group">
+              <summary>Exports and alerts</summary>
+              <div class="subtle-box">
+                <div class="setup-title">Operational alerts</div>
+                <div id="alertsBox" style="margin-top:10px"><div class="empty">Alerts load when Settings opens.</div></div>
+                <div class="actions-row"><button class="btn" onclick="loadAlerts()">Refresh Alerts</button></div>
+              </div>
+              <div class="subtle-box" style="margin-top:12px">
+                <div class="setup-title">Data exports</div>
+                <div class="actions-row">
+                  <button class="btn ghost" onclick="downloadExport('actions')">Actions CSV</button>
+                  <button class="btn ghost" onclick="downloadExport('candidates')">Candidates CSV</button>
+                  <button class="btn ghost" onclick="downloadExport('listings')">Listings CSV</button>
+                  <button class="btn ghost" onclick="downloadExport('orders')">Orders CSV</button>
+                  <button class="btn ghost" onclick="downloadExport('profit-ledger')">Profit CSV</button>
+                </div>
+              </div>
             </details>
             <details class="advanced settings-group" open>
               <summary>Automation schedules</summary>
@@ -856,12 +936,19 @@ var BADGE={
 };
 var COLORS={green:'#34d399',amber:'#fbbf24',red:'#f87171',blue:'#60a5fa',slate:'#94a3b8',teal:'#2dd4bf'};
 
-  function authHeaders(){var s=localStorage.getItem('localAgentSecret');return s?{'x-local-agent-secret':s}:{}}
-  function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h}))}
+  function cookieValue(name){return document.cookie.split(';').map(function(v){return v.trim()}).reduce(function(found,item){if(found)return found;var prefix=name+'=';return item.indexOf(prefix)===0?decodeURIComponent(item.slice(prefix.length)):''},'')}
+  function authHeaders(){var csrf=cookieValue('buysell_dashboard_csrf');return csrf?{'x-csrf-token':csrf}:{}}
+  function apiFetch(url,options){options=options||{};var h=Object.assign({},options.headers||{},authHeaders());return fetch(url,Object.assign({},options,{headers:h,credentials:'same-origin'}))}
   function responseJson(r){return r.json().catch(function(){return{error:'HTTP '+r.status}}).then(function(j){if(!r.ok){var m=j.error||('HTTP '+r.status);if(j.details)m+='\\n'+(typeof j.details==='string'?j.details:JSON.stringify(j.details));var err=new Error(m);err.status=r.status;err.payload=j;throw err}return j})}
   function apiJson(url,options){return apiFetch(url,options).then(responseJson)}
-  function jpost(url,body){var h=Object.assign({'content-type':'application/json'},authHeaders());return fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)}).then(responseJson)}
-  function confirmAction(title,detail){return window.confirm(title+(detail?'\\n\\n'+detail:''))}
+  function jpost(url,body){var h=Object.assign({'content-type':'application/json'},authHeaders());return fetch(url,{method:'POST',headers:h,credentials:'same-origin',body:JSON.stringify(body)}).then(responseJson)}
+  function confirmAction(title,detail,word){
+    if(word){
+      var value=window.prompt(title+(detail?'\\n\\n'+detail:'')+'\\n\\nType '+word+' to continue.');
+      return value===word;
+    }
+    return window.confirm(title+(detail?'\\n\\n'+detail:''));
+  }
   function applyListRowsExpanded(id){
     var el=document.getElementById(id);
     if(!el||!state.expandedLists)return;
@@ -1233,12 +1320,12 @@ function setSetupCard(id,status,label,copy){
   if(copyEl&&copy)copyEl.textContent=copy;
 }
 function updateSetupChecklist(){
-  var hasBrowserSecret=!!localStorage.getItem('localAgentSecret');
-  state.setup.browserSecret=hasBrowserSecret;
+  var hasBrowserSecret=true;
+  state.setup.browserSecret=true;
   setSetupCard('setupDb',state.setup.db?'ok':'err',state.setup.db?'Connected':'Needs setup',state.setup.db?'Postgres is reachable.':'DATABASE_URL is missing or Postgres is unavailable.');
   var backendStatus=state.setup.backendSecret;
   setSetupCard('setupBackendSecret',backendStatus==='ok'?'ok':(backendStatus==='checking'?'warn':'err'),backendStatus==='ok'?'Configured':(backendStatus==='checking'?'Checking':'Needs setup'),backendStatus==='ok'?'Protected backend routes are available.':'Set LOCAL_AGENT_SHARED_SECRET in the backend environment.');
-  setSetupCard('setupBrowserSecret',hasBrowserSecret?'ok':'warn',hasBrowserSecret?'Saved':'Needed',hasBrowserSecret?'This browser will send the shared secret with protected requests.':'Save the same LOCAL_AGENT_SHARED_SECRET under Settings.');
+  setSetupCard('setupBrowserSecret','ok','Signed in','This browser uses a protected dashboard session for API calls.');
   var keysReady=state.setup.dashboard&&state.setup.db&&backendStatus==='ok'&&hasBrowserSecret;
   setSetupCard('setupKeys',keysReady?'ok':'warn',keysReady?'Manage now':'After setup',keysReady?'Open Settings to add or update SerpAPI, Keepa, and eBay credentials.':'Credentials unlock after the database and shared secret are configured.');
   var checklist=document.getElementById('setupChecklist');
@@ -2497,7 +2584,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
     document.getElementById('viewTitle').textContent=meta[0];
     document.getElementById('viewSub').textContent=meta[1];
     if(navView==='ebayDiscovery'){renderDiscoverMode();loadDashboardDiscoveryRows();}
-    if(navView==='settings')loadCredentials();
+    if(navView==='settings'){loadCredentials();loadAlerts();}
 }
 
 function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
@@ -2513,8 +2600,9 @@ function credField(c){
   }
   var help=c.help?'<div class="hint" style="margin-top:4px">'+esc(c.help)+'</div>':'';
   var clearBtn=c.source==='database'?'<button class="btn ghost sm" onclick="clearCred(\\''+c.key+'\\')">Clear</button>':'';
+  var testBtn=c.source!=='unset'?'<button class="btn ghost sm" onclick="testCred(\\''+c.key+'\\')">Test</button>':'';
   return '<div class="cred-row"><div class="cred-meta"><div class="cred-label">'+esc(c.label)+' '+credBadge(c.source)+'</div>'+help+'</div>'+
-    '<div class="cred-input">'+input+'</div><div class="cred-actions"><button class="btn primary sm" onclick="saveCred(\\''+c.key+'\\')">Save</button>'+clearBtn+'</div></div>';
+    '<div class="cred-input">'+input+'</div><div class="cred-actions"><button class="btn primary sm" onclick="saveCred(\\''+c.key+'\\')">Save</button>'+testBtn+clearBtn+'</div></div>';
 }
 function renderCredentials(list){
   var groups={},order=[];
@@ -2525,7 +2613,7 @@ function renderCredentials(list){
 }
   function loadCredentials(){
     apiFetch('/api/credentials').then(function(r){
-      if(r.status===401){state.setup.backendSecret='ok';updateSetupChecklist();document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Save the Local Agent Shared Secret above, then refresh Settings.</div>';return null}
+      if(r.status===401){state.setup.backendSecret='ok';updateSetupChecklist();document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Locked. Sign in again to refresh the dashboard session.</div>';return null}
       if(r.status===503){state.setup.backendSecret='missing';updateSetupChecklist();document.getElementById('keysLocked').style.display='flex';document.getElementById('credsContainer').innerHTML='<div class="empty">Protected routes are not configured. Set LOCAL_AGENT_SHARED_SECRET on the backend first.</div>';return null}
       state.setup.backendSecret='ok';updateSetupChecklist();
       document.getElementById('keysLocked').style.display='none';return responseJson(r);
@@ -2533,13 +2621,21 @@ function renderCredentials(list){
   }
   function putCred(key,value,okMsg){
     return apiFetch('/api/credentials/'+encodeURIComponent(key),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({value:value})}).then(function(r){
-      if(r.status===401){document.getElementById('keysLocked').style.display='flex';throw new Error('Unauthorized — set the Local Agent Shared Secret in Settings')}
+      if(r.status===401){document.getElementById('keysLocked').style.display='flex';throw new Error('Unauthorized — sign in again to refresh the dashboard session')}
       if(r.status===503){document.getElementById('keysLocked').style.display='flex';throw new Error('Protected routes are not configured — set LOCAL_AGENT_SHARED_SECRET on the backend first')}
       return responseJson(r);
     }).then(function(){toast(okMsg,key,'ok');loadCredentials()}).catch(function(e){toast('Save failed',e.message,'err')});
   }
 function saveCred(key){var el=document.getElementById('cred_'+key);putCred(key,el?el.value:'','Credential saved')}
 function clearCred(key){putCred(key,'','Credential cleared')}
+function testCred(key){apiFetch('/api/credentials/'+encodeURIComponent(key)+'/test',{method:'POST'}).then(responseJson).then(function(res){toast('Credential check',res.check||res,'ok')}).catch(function(e){toast('Credential check failed',e.message,'err')})}
+function renderAlerts(alerts){
+  var el=document.getElementById('alertsBox');if(!el)return;
+  if(!alerts||!alerts.length){el.innerHTML='<div class="empty">No operational alerts right now.</div>';return}
+  el.innerHTML=alerts.map(function(a){return '<div class="activity-row"><div><b>'+esc(a.code||'ALERT')+'</b><div class="muted">'+esc(a.message||'')+'</div></div><span class="badge '+esc(a.severity||'low')+'">'+esc(a.severity||'low')+'</span></div>'}).join('');
+}
+function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var el=document.getElementById('alertsBox');if(el)el.innerHTML='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>'})}
+function downloadExport(entity){window.location.href='/api/export/'+encodeURIComponent(entity)+'?format=csv&take=5000'}
 
 function setDb(connected,msg){
   var dot=document.getElementById('dbDot'),lbl=document.getElementById('dbLabel');
@@ -2555,7 +2651,6 @@ function checkDb(){
 }
 
   function load(){
-    document.getElementById('agentSecret').value=localStorage.getItem('localAgentSecret')||'';
     updateSetupChecklist();
     checkDb();
     apiJson('/api/dashboard').then(function(data){
@@ -2572,8 +2667,7 @@ function checkDb(){
     });
   }
 
-  function saveSecret(){localStorage.setItem('localAgentSecret',document.getElementById('agentSecret').value);updateSetupChecklist();toast('Secret saved','Stored in this browser.','ok');load()}
-  function clearSecret(){localStorage.removeItem('localAgentSecret');document.getElementById('agentSecret').value='';updateSetupChecklist();toast('Secret cleared',null,'ok')}
+  function logoutDashboard(){apiFetch('/dashboard/logout',{method:'POST'}).then(function(){window.location.href='/' }).catch(function(){window.location.href='/'})}
   function saveInterval(){var v=Number(document.getElementById('interval').value);if(!v)return toast('Invalid interval',null,'warn');
     apiJson('/api/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({amazonPriceCheckIntervalMinutes:v})}).then(function(){toast('Interval saved',v+' minutes','ok');load()}).catch(function(e){toast('Save failed',e.message,'err')})}
 function saveEbayAutoRun(){
@@ -2700,16 +2794,18 @@ function saveSafety(){
   }
   function runMonitor(){if(!confirmAction('Run Amazon price check now?','This can pause internal listings and create PAUSE actions when source prices rise.'))return;beginLocalJob('priceMonitor','Amazon price check running','Scanning active listings','automation');toast('Running price check','Scanning active listings…');
     jpost('/api/monitor/amazon-prices/run',{}).then(function(res){toast('Price check complete',res,'ok');endLocalJob('priceMonitor');load()}).catch(function(e){endLocalJob('priceMonitor');toast('Price check failed',e.message,'err')})}
+  function idempotencyKey(prefix){return prefix+'-'+Date.now()+'-'+Math.random().toString(36).slice(2)}
   function actId(){var id=document.getElementById('actionId').value.trim();if(!id)toast('No action selected','Click a row or paste an Action ID.','warn');return id}
   function updateAction(status){var id=actId();if(!id)return;if(!confirmAction(status.charAt(0)+status.slice(1).toLowerCase()+' this action?',id))return;apiFetch('/actions/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:status,reviewedBy:'dashboard'})}).then(responseJson).then(function(){toast('Action '+status.toLowerCase(),id,'ok');load()}).catch(function(e){toast('Update failed',e.message,'err')})}
   function approveAction(){updateAction('APPROVED')}
   function rejectAction(){updateAction('REJECTED')}
   function completeSelectedAction(){updateAction('COMPLETED')}
-  function executeAction(){var id=actId();if(!id)return;if(!confirmAction('Execute this approved action?',id))return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST'}).then(responseJson).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
+  function executeAction(){var id=actId();if(!id)return;if(!confirmAction('Execute this approved action?',id,'EXECUTE'))return;apiFetch('/actions/'+encodeURIComponent(id)+'/execute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({actor:'dashboard',idempotencyKey:idempotencyKey('execute')})}).then(responseJson).then(function(res){toast('Action executed',res,'ok');load()}).catch(function(e){toast('Execute failed',e.message,'err')})}
+  function recordActionFeedback(){var id=actId();if(!id)return;var type=document.getElementById('feedbackType').value;var reason=document.getElementById('feedbackReason').value.trim();apiFetch('/actions/'+encodeURIComponent(id)+'/feedback',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({feedbackType:type,reasonText:reason||undefined,reasonCode:type,weight:type==='GOOD_OPPORTUNITY'?2:-1})}).then(responseJson).then(function(res){toast('Feedback saved',res.feedback&&res.feedback.feedbackType,'ok');document.getElementById('feedbackReason').value='';load()}).catch(function(e){toast('Feedback failed',e.message,'err')})}
   function queueAutomation(mode){
     var id=actId();if(!id)return;
     var detail=mode==='AUTOPILOT'?'Autopilot allows a configured local agent to complete the final marketplace action. Backend limits and agent config still apply.':id;
-    if(!confirmAction('Queue '+mode+' automation?',detail))return;
+    if(!confirmAction('Queue '+mode+' automation?',detail,mode==='AUTOPILOT'?'AUTOPILOT':undefined))return;
     apiFetch('/actions/'+encodeURIComponent(id)+'/automation-mode',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({mode:mode,approve:true,reviewedBy:'dashboard'})}).then(responseJson).then(function(res){toast('Automation queued',{id:id,mode:mode,status:res.action&&res.action.status},'ok');load();navigate('automation')}).catch(function(e){toast('Queue failed',e.message,'err')})
   }
 function toggleAmazonCandidate(el){
@@ -2904,7 +3000,8 @@ function searchOpportunities(){
   jpost('/opportunities/scan',body).then(function(res){renderScanResults(res);toast('Scan complete',res.summary,'ok');endLocalJob('guidedScan');load()}).catch(function(e){endLocalJob('guidedScan');toast('Scan failed',e.message,'err')})
 }
   function createOrder(){var orderId=document.getElementById('orderEbayOrderId').value;if(!confirmAction('Create BUY action from this eBay order?',orderId||'New manual order'))return;jpost('/orders/ebay/manual',{ebayOrderId:orderId,ebayItemId:document.getElementById('orderEbayItemId').value,buyerName:document.getElementById('orderBuyerName').value,buyerShippingAddress:{enteredInDashboard:true},salePrice:Number(document.getElementById('orderSalePrice').value)}).then(function(res){toast('Order created',res,'ok');load()}).catch(function(e){toast('Create failed',e.message,'err')})}
-  function recordPurchase(){var orderId=document.getElementById('purchaseOrderId').value;if(!confirmAction('Record this Amazon purchase?',orderId||'Selected internal order'))return;apiFetch('/orders/'+encodeURIComponent(orderId)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(responseJson).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
+  function syncEbayOrders(){if(!confirmAction('Sync recent eBay orders?','This fetches recent eBay orders and creates BUY actions for known listings.'))return;jpost('/orders/ebay/sync',{lookbackHours:24,limit:50}).then(function(res){toast('eBay order sync complete',res,'ok');load()}).catch(function(e){toast('Sync failed',e.message,'err')})}
+  function recordPurchase(){var orderId=document.getElementById('purchaseOrderId').value;if(!confirmAction('Record this Amazon purchase?',orderId||'Selected internal order','PURCHASE'))return;apiFetch('/orders/'+encodeURIComponent(orderId)+'/amazon-purchase',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({asin:document.getElementById('purchaseAsin').value,amazonOrderId:document.getElementById('purchaseAmazonOrderId').value,purchasePrice:Number(document.getElementById('purchasePrice').value),status:'PURCHASED'})}).then(responseJson).then(function(res){toast('Purchase recorded',res,'ok');load()}).catch(function(e){toast('Record failed',e.message,'err')})}
 
   document.getElementById('nav').addEventListener('click',function(e){var item=e.target.closest('.nav-item');if(item)navigate(item.getAttribute('data-view'))});
   document.getElementById('mobileNav').addEventListener('change',function(e){navigate(e.target.value)});
@@ -2947,6 +3044,23 @@ setInterval(loadKeepaTokenStatus,60000);
 </html>`;
 
 export async function registerDashboardRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
+  app.get('/', async (request, reply) => {
+    if (!(await verifyDashboardSessionRequest(prisma, request))) {
+      return reply.type('text/html').send(dashboardLoginHtml);
+    }
+    return reply.type('text/html').send(dashboardHtml);
+  });
+  app.post('/dashboard/login', async (request, reply) => {
+    const parsed = loginBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Shared secret is required.' });
+    const cookies = await createDashboardSessionHeaders(prisma, parsed.data.secret);
+    if (!cookies) return reply.status(401).send({ error: 'Invalid shared secret.' });
+    setCookieHeaders(reply, cookies);
+    return { ok: true };
+  });
+  app.post('/dashboard/logout', async (_request, reply) => {
+    setCookieHeaders(reply, clearDashboardSessionHeaders());
+    return { ok: true };
+  });
   app.get('/favicon.ico', async (_request, reply) => reply.status(204).send(null));
 }

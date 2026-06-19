@@ -1,8 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { env } from '../config/env.js';
 import type { PrismaClient } from '@prisma/client';
-import { getCredentialValue } from '../repositories/credentialRepository.js';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { getConfiguredLocalAgentSecrets, secretMatches, verifyDashboardSessionRequest } from './dashboardSession.js';
 
 const headerValue = (value: string | string[] | undefined): string | undefined => {
   if (Array.isArray(value)) return value[0];
@@ -10,12 +9,6 @@ const headerValue = (value: string | string[] | undefined): string | undefined =
 };
 
 const hashSecret = (value: string): Buffer => createHash('sha256').update(value).digest();
-
-const secretMatches = (provided: string, configured: string): boolean => {
-  const providedHash = hashSecret(provided);
-  const configuredHash = hashSecret(configured);
-  return provided.length === configured.length && timingSafeEqual(providedHash, configuredHash);
-};
 
 const bodyHash = (body: unknown): string => createHash('sha256')
   .update(body === undefined ? '' : JSON.stringify(body))
@@ -58,10 +51,11 @@ export async function verifyLocalAgentRequest(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<boolean> {
-  const configuredSecrets = [
-    env.LOCAL_AGENT_SHARED_SECRET,
-    await getCredentialValue(db, 'LOCAL_AGENT_SHARED_SECRET')
-  ].filter((value): value is string => Boolean(value));
+  const method = requestMethod(request).toUpperCase();
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  if (await verifyDashboardSessionRequest(db, request, { requireCsrf: isMutation })) return true;
+
+  const configuredSecrets = await getConfiguredLocalAgentSecrets(db);
 
   if (configuredSecrets.length === 0) {
     reply.status(503).send({

@@ -66,6 +66,10 @@ function buildVerificationJob(action: ActionItemDto): ComputerUseVerificationJob
   };
 }
 
+const recordValue = (value: unknown, key: string): unknown => (
+  value && typeof value === 'object' && key in value ? (value as Record<string, unknown>)[key] : undefined
+);
+
 function allowedDomains(options: BackendClientOptions): string[] {
   const domains = new Set([
     'amazon.com',
@@ -161,6 +165,45 @@ export function buildAutomationJob(options: BackendClientOptions, action: Action
     },
     instructions: instructionsForAction(action, mode)
   };
+}
+
+export function autopilotEvidenceFailures(job: ComputerUseAutomationJob, result: ComputerUseAutomationResult): string[] {
+  if (job.mode !== 'AUTOPILOT' || result.actionCompleted !== true) return [];
+
+  const failures = [...(result.failureReasons ?? [])];
+  const evidence = result.evidence ?? {};
+  const finalUrl = stringValue(recordValue(evidence, 'finalUrl')) ?? stringValue(recordValue(evidence, 'url'));
+  if (!finalUrl) {
+    failures.push('Autopilot completion requires evidence.finalUrl.');
+  } else {
+    try {
+      const host = new URL(finalUrl).hostname.toLowerCase().replace(/^www\./, '');
+      const allowed = job.guardrails.allowedDomains.some((domain) => {
+        const normalized = domain.toLowerCase().replace(/^www\./, '');
+        return host === normalized || host.endsWith(`.${normalized}`);
+      });
+      if (!allowed) failures.push(`Autopilot final URL is outside allowed domains: ${host}.`);
+    } catch {
+      failures.push('Autopilot final URL is invalid.');
+    }
+  }
+
+  const artifacts = result.artifacts ?? [];
+  const screenshotEvidence = stringValue(recordValue(evidence, 'screenshotPath'))
+    ?? stringValue(recordValue(evidence, 'beforeScreenshotPath'))
+    ?? stringValue(recordValue(evidence, 'afterScreenshotPath'));
+  if (!artifacts.length && !screenshotEvidence) {
+    failures.push('Autopilot completion requires at least one artifact or screenshot path.');
+  }
+
+  const visibleDataMatched = recordValue(evidence, 'visibleDataMatched') === true
+    || recordValue(evidence, 'payloadMatched') === true
+    || recordValue(evidence, 'approvedPayloadMatched') === true;
+  if (!visibleDataMatched) {
+    failures.push('Autopilot completion requires visibleDataMatched, payloadMatched, or approvedPayloadMatched evidence.');
+  }
+
+  return failures;
 }
 
 export function describeAction(action: ActionItemDto): string {
@@ -308,13 +351,15 @@ async function runOperatorMode(options: BackendClientOptions, action: ActionItem
   });
 
   const result = await runComputerUseOperator(command, job, options.computerUseTimeoutMs ?? 10 * 60 * 1000);
-  const status = normalizeOperatorStatus(mode, result);
+  const normalizedStatus = normalizeOperatorStatus(mode, result);
+  const autopilotFailures = autopilotEvidenceFailures(job, result);
+  const status: AutomationRunStatus = autopilotFailures.length ? 'REVIEW_REQUIRED' : normalizedStatus;
   await finishAutomationRun(options, runId, {
     status,
     phase: status,
-    result: result as Record<string, unknown>,
+    result: autopilotFailures.length ? { ...result, autopilotEvidenceFailures } as Record<string, unknown> : result as Record<string, unknown>,
     eventType: `COMPUTER_USE_${mode}_FINISHED`,
-    message: result.summary ?? `${mode} automation finished with ${status}.`
+    message: autopilotFailures.length ? `Autopilot evidence incomplete: ${autopilotFailures.join(' ')}` : result.summary ?? `${mode} automation finished with ${status}.`
   });
 
   if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions || result.actionCompleted === true)) {

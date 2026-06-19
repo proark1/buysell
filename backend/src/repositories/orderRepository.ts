@@ -125,41 +125,48 @@ export interface RecordAmazonPurchaseInput {
   status?: string;
 }
 
+export async function recordAmazonPurchaseRows(
+  db: PrismaClient,
+  orderId: string,
+  input: RecordAmazonPurchaseInput,
+  actor = 'local-agent'
+): Promise<unknown> {
+  const existingOrder = await db.order.findUnique({ where: { id: orderId } });
+  if (!existingOrder) throw notFound('Order not found', 'ORDER_NOT_FOUND');
+
+  const purchase = await upsertAmazonPurchase(db, orderId, input);
+  const order = await db.order.update({
+    where: { id: orderId },
+    data: {
+      orderStatus: input.trackingNumber ? 'SHIPPED' : 'PURCHASED',
+      amazonOrderStatus: input.status ?? 'PURCHASED',
+      fulfillmentStatus: input.trackingNumber ? 'TRACKING_RECEIVED' : 'AWAITING_TRACKING'
+    }
+  });
+
+  await db.auditLog.create({
+    data: {
+      entityType: 'Order',
+      entityId: orderId,
+      action: 'AMAZON_PURCHASE_RECORDED',
+      actor,
+      afterJson: {
+        amazonPurchaseId: typeof purchase === 'object' && purchase && 'id' in purchase ? purchase.id : undefined,
+        amazonOrderId: input.amazonOrderId,
+        trackingNumber: input.trackingNumber,
+        carrier: input.carrier,
+        status: input.status ?? 'PURCHASED'
+      }
+    }
+  });
+
+  return { order, purchase };
+}
+
 export async function recordAmazonPurchase(
   db: PrismaClient,
   orderId: string,
   input: RecordAmazonPurchaseInput
 ): Promise<unknown> {
-  const existingOrder = await db.order.findUnique({ where: { id: orderId } });
-  if (!existingOrder) throw notFound('Order not found', 'ORDER_NOT_FOUND');
-
-  return db.$transaction(async (tx) => {
-    const purchase = await upsertAmazonPurchase(tx, orderId, input);
-    const order = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        orderStatus: input.trackingNumber ? 'SHIPPED' : 'PURCHASED',
-        amazonOrderStatus: input.status ?? 'PURCHASED',
-        fulfillmentStatus: input.trackingNumber ? 'TRACKING_RECEIVED' : 'AWAITING_TRACKING'
-      }
-    });
-
-    await tx.auditLog.create({
-      data: {
-        entityType: 'Order',
-        entityId: orderId,
-        action: 'AMAZON_PURCHASE_RECORDED',
-        actor: 'local-agent',
-        afterJson: {
-          amazonPurchaseId: typeof purchase === 'object' && purchase && 'id' in purchase ? purchase.id : undefined,
-          amazonOrderId: input.amazonOrderId,
-          trackingNumber: input.trackingNumber,
-          carrier: input.carrier,
-          status: input.status ?? 'PURCHASED'
-        }
-      }
-    });
-
-    return { order, purchase };
-  });
+  return db.$transaction((tx) => recordAmazonPurchaseRows(tx, orderId, input));
 }

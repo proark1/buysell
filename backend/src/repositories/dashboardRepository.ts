@@ -4,7 +4,7 @@ import { rejectionStageForFlag } from '../services/discoveryPolicy.js';
 
 type EbayAmazonComparisonRunDashboardDelegate = {
   findMany(args: { orderBy: { startedAt: 'desc' }; take: number }): Promise<unknown[]>;
-  count(): Promise<number>;
+  count(args?: unknown): Promise<number>;
 };
 
 type DashboardPrismaClient = PrismaClient & {
