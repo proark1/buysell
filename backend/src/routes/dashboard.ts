@@ -64,7 +64,7 @@ const dashboardHtml = `<!doctype html>
     :root{
       --bg:#08111f;--bg-2:#0d1828;--panel:#111b2b;--panel-2:#172438;
       --border:rgba(148,163,184,.14);--border-strong:rgba(148,163,184,.28);
-      --text:#e8eefc;--muted:#94a3b8;--faint:#64748b;
+      --text:#e8eefc;--muted:#94a3b8;--faint:#7e8da2;
       --brand:#0ea5e9;--brand-2:#14b8a6;--accent:#2dd4bf;
       --green:#34d399;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--slate:#94a3b8;--teal:#2dd4bf;
       --shadow:0 18px 40px -20px rgba(0,0,0,.65);
@@ -369,6 +369,40 @@ const dashboardHtml = `<!doctype html>
     .cred-label{font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .cred-actions{display:flex;gap:8px}
     @media(max-width:760px){.cred-row{grid-template-columns:1fr;gap:10px}}
+    /* Analytics + a11y (Slice 1) */
+    .analytics-pl{margin-bottom:14px}
+    .analytics-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:14px}
+    .analytics-card{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.24);padding:13px 14px;min-width:0}
+    .analytics-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+    .bs-funnel{display:grid;gap:9px}
+    .bs-frow{display:grid;grid-template-columns:84px 1fr 44px;align-items:center;gap:9px}
+    .bs-flabel{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .bs-ftrack{height:14px;border-radius:5px;background:rgba(148,163,184,.12);overflow:hidden}
+    .bs-fbar{height:100%;border-radius:5px}
+    .bs-fval{font-size:12px;font-weight:700;text-align:right}
+    .bs-fnote{margin-top:11px;font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+    .bs-gauge{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:128px}
+    .bs-gauge-sub{font-size:11px;color:var(--muted);text-align:center}
+    .bs-donut-legend{display:grid;gap:6px;margin-top:10px;font-size:11px;color:var(--muted)}
+    .bs-donut-legend span{display:inline-flex;align-items:center;gap:6px}
+    .bs-dot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}
+    .bs-highlight{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+    .bs-conf{min-width:0}
+    .bs-conf-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+    .bs-conf-track{height:8px;border-radius:5px;background:rgba(148,163,184,.14);overflow:hidden}
+    .bs-conf-bar{display:block;height:100%;border-radius:5px}
+    .bs-prof{text-align:right;white-space:nowrap}
+    .bs-prof-main{font-size:20px;font-weight:800;line-height:1}
+    .bs-prof-sub{font-size:11px;color:var(--muted);margin-top:3px}
+    .notif{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;border:1px solid var(--border);border-left:3px solid var(--slate);border-radius:10px;background:rgba(2,6,23,.24);padding:10px 12px;margin-bottom:8px}
+    .notif:last-child{margin-bottom:0}
+    .notif-ic{display:flex;align-items:center;justify-content:center;padding-top:1px}
+    .notif-main{min-width:0}
+    .notif-title{font-weight:700;font-size:13px}
+    .notif-msg{color:var(--muted);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
+    @media(max-width:960px){.analytics-grid{grid-template-columns:1fr}}
+    .nav-item{border:0;background:transparent;width:100%;text-align:left;font:inherit;cursor:pointer}
+    .nav-item:focus-visible,.btn:focus-visible,.tab-btn:focus-visible,.discover-tab:focus-visible,.mobile-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </style>
 </head>
 <body>
@@ -379,12 +413,12 @@ const dashboardHtml = `<!doctype html>
       <div><b>Buysell</b><span>Control Center</span></div>
     </div>
     <nav id="nav">
-      <div class="nav-item active" data-view="overview"><span class="ic">H</span> Home</div>
-      <div class="nav-item" data-view="ebayDiscovery"><span class="ic">D</span> Discover</div>
-      <div class="nav-item" data-view="actions"><span class="ic">R</span> Review</div>
-      <div class="nav-item" data-view="catalog"><span class="ic">L</span> Listings &amp; Orders</div>
-      <div class="nav-item" data-view="automation"><span class="ic">A</span> Automation</div>
-      <div class="nav-item" data-view="settings"><span class="ic">S</span> Settings</div>
+      <button type="button" class="nav-item active" data-view="overview" aria-current="page"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 12 5l7 7"/><path d="M6 10.5V19a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-8.5"/></svg></span> Home</button>
+      <button type="button" class="nav-item" data-view="ebayDiscovery"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.2-3.2"/></svg></span> Discover</button>
+      <button type="button" class="nav-item" data-view="actions"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h9"/><path d="M10 12h9"/><path d="M10 18h9"/><path d="m4 6 1.2 1.2L7.5 5"/><path d="m4 12 1.2 1.2L7.5 11"/><path d="m4 18 1.2 1.2L7.5 17"/></svg></span> Review</button>
+      <button type="button" class="nav-item" data-view="catalog"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 5 7.5v9L12 20l7-3.5v-9z"/><path d="M5 7.5 12 11l7-3.5"/><path d="M12 11v9"/></svg></span> Listings &amp; Orders</button>
+      <button type="button" class="nav-item" data-view="automation"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><path d="M12 9V5"/><circle cx="12" cy="4" r="1"/><path d="M9.5 13.5h.01"/><path d="M14.5 13.5h.01"/><path d="M9.5 16.5h5"/></svg></span> Automation</button>
+      <button type="button" class="nav-item" data-view="settings"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg></span> Settings</button>
     </nav>
     <div class="side-foot">
       API: <a href="/health">/health</a> · <a href="/api/dashboard">/api/dashboard</a><br>
@@ -447,6 +481,21 @@ const dashboardHtml = `<!doctype html>
           </div>
         </div>
         <div class="stats" id="stats"></div>
+        <div class="panel" id="analyticsPanel">
+          <div class="panel-head"><h2>Performance</h2><span class="hint">Realized P/L, discovery funnel, outcome split, and metered-API budget</span></div>
+          <div class="panel-body">
+            <div class="analytics-pl"><div class="analytics-title">Realized P/L &mdash; last 30 days<span id="plSource" class="bs-gauge-sub" style="margin-left:auto;text-align:right"></span></div><div id="plChart"></div></div>
+            <div class="analytics-grid">
+              <div class="analytics-card"><div class="analytics-title">Discovery funnel</div><div id="funnelChart"></div></div>
+              <div class="analytics-card"><div class="analytics-title">Outcome split</div><div id="outcomeChart"></div></div>
+              <div class="analytics-card"><div class="analytics-title">Keepa budget</div><div id="keepaGauge"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" id="notificationsPanel">
+          <div class="panel-head"><h2>Notifications</h2><span class="hint">Operational alerts &mdash; profitable opportunities, price-spike pauses, failed runs, low API budget</span><span class="spacer"></span><button class="btn sm" onclick="loadAlerts()">Refresh</button></div>
+          <div class="panel-body"><div id="notificationsBox"><div class="empty">Loading notifications…</div></div></div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Opportunity Pipeline</h2><span class="hint">eBay demand to Amazon source comparison</span><span class="spacer"></span><button class="btn sm" onclick="navigate('ebayDiscovery')">Open Discovery</button></div>
           <div class="panel-body">
@@ -848,6 +897,20 @@ const dashboardHtml = `<!doctype html>
                 <div class="setup-title">Operational alerts</div>
                 <div id="alertsBox" style="margin-top:10px"><div class="empty">Alerts load when Settings opens.</div></div>
                 <div class="actions-row"><button class="btn" onclick="loadAlerts()">Refresh Alerts</button></div>
+              </div>
+              <div class="subtle-box" style="margin-top:12px">
+                <div class="setup-title">Notification delivery</div>
+                <div class="result-meta" style="margin-bottom:10px">Choose what to be notified about. Dispatch to webhook/email is wired in a backend follow-up; preferences save locally on this browser for now.</div>
+                <div class="field" style="margin-bottom:10px"><label for="notifWebhook">Webhook URL</label><input id="notifWebhook" placeholder="https://hooks.slack.com/services/…"></div>
+                <label class="check" style="margin-bottom:8px"><input type="checkbox" id="notifEmail"> Email alerts</label>
+                <div class="subsection-title">Notify me about</div>
+                <label class="check"><input type="checkbox" id="notifOpp" checked> Profitable opportunity</label>
+                <label class="check"><input type="checkbox" id="notifPause" checked> Price-spike PAUSE</label>
+                <label class="check"><input type="checkbox" id="notifFail" checked> Automation run FAILED</label>
+                <label class="check"><input type="checkbox" id="notifKeepa" checked> Keepa tokens low</label>
+                <label class="check"><input type="checkbox" id="notifBuy"> Pending BUY</label>
+                <div class="field" style="margin-top:10px;max-width:220px"><label for="notifMinProfit">Min. profit to alert (USD)</label><input id="notifMinProfit" type="number" step="0.01" placeholder="15.00"></div>
+                <div class="actions-row"><button class="btn primary" onclick="saveNotifPrefs()">Save Preferences</button></div>
               </div>
               <div class="subtle-box" style="margin-top:12px">
                 <div class="setup-title">Data exports</div>
@@ -1511,6 +1574,7 @@ function renderKeepaTokenStatus(status){
     return;
   }
   state.keepaToken=status;
+  renderKeepaGauge();
   var refill=status.retryAfterSeconds||((status.refillInMs||status.refillIn)?Math.ceil((status.refillInMs||status.refillIn)/1000):0);
   var parts=['Keepa tokens '+status.tokensLeft];
   if(status.refillRate!==undefined&&status.refillRate!==null)parts.push('+'+status.refillRate+'/min');
@@ -2168,6 +2232,22 @@ function inspectorActionsForAmazon(c){
   if(ebayMatch&&ebayMatch.url)html+='<a class="btn sm" href="'+esc(ebayMatch.url)+'" target="_blank" rel="noreferrer">Open eBay</a>';
   return html+'</div>';
 }
+function renderInspectorHighlight(c){
+  var comparison=ebayComparison(c);
+  if(!comparison)return '';
+  var best=comparisonFallbackMatch(comparison)||{};
+  var market=comparison.market||ebayCandidateMarket(c);
+  var conf=(best.matchConfidence!==undefined&&best.matchConfidence!==null)?Math.max(0,Math.min(100,Number(best.matchConfidence)*100)):null;
+  var hasProfit=best.expectedProfit!==undefined&&best.expectedProfit!==null;
+  var profitNum=Number(best.expectedProfit||0);
+  var pcol=hasProfit?(profitNum>0?COLORS.green:(profitNum<0?COLORS.red:COLORS.amber)):COLORS.slate;
+  var ccol=conf===null?COLORS.slate:(conf>=80?COLORS.green:(conf>=55?COLORS.amber:COLORS.red));
+  if(conf===null&&!hasProfit)return '';
+  var bar=conf===null?'<div class="bs-conf"><div class="bs-conf-head"><span>Match confidence</span><span>—</span></div></div>':
+    '<div class="bs-conf"><div class="bs-conf-head"><span>Match confidence</span><span style="color:'+ccol+'">'+conf.toFixed(0)+'%</span></div><div class="bs-conf-track"><span class="bs-conf-bar" style="width:'+conf.toFixed(0)+'%;background:'+ccol+'"></span></div></div>';
+  var prof='<div class="bs-prof"><div class="bs-prof-main" style="color:'+pcol+'">'+(hasProfit?marketMoney(best.expectedProfit,market):'—')+'</div><div class="bs-prof-sub">net · ROI '+(best.roiPercent===undefined||best.roiPercent===null?'—':Number(best.roiPercent).toFixed(1)+'%')+'</div></div>';
+  return '<div class="inspector-section bs-highlight">'+bar+prof+'</div>';
+}
 function renderDiscoverInspector(){
   var el=document.getElementById('discoverInspector');
   if(!el)return;
@@ -2200,6 +2280,7 @@ function renderDiscoverInspector(){
     var eReview=isManualReviewEbayCandidate(item);
     el.innerHTML='<div class="inspector-title">'+esc(ebayCandidateTitle(item))+'</div>'+
       '<div class="inspector-meta">Item <span class="mono">'+esc(ebayCandidateItemId(item)||'unknown')+'</span> · '+badge(ebayCandidateStatus(item))+'</div>'+
+      renderInspectorHighlight(item)+
       '<div class="inspector-section"><div class="inspector-section-title">Actions</div>'+inspectorActionsForEbay(item)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Source</div>'+ebayInspectorSourceGrid(item,eMarket)+'</div>'+
       '<div class="inspector-section"><div class="inspector-section-title">Demand</div><div class="comparison-grid">'+
@@ -2515,6 +2596,61 @@ function renderPipeline(){
   }).join(''):'<div class="empty">No scored opportunities yet. Open Discover to build the queue.</div>';
 }
 
+function bsBar(label,value,max,color){
+  var pct=max>0?Math.max(2,Math.round((value/max)*100)):0;
+  return '<div class="bs-frow"><span class="bs-flabel">'+esc(label)+'</span><span class="bs-ftrack"><span class="bs-fbar" style="width:'+pct+'%;background:'+color+'"></span></span><span class="bs-fval">'+esc(value==null?0:value)+'</span></div>';
+}
+function renderPlChart(){
+  var el=document.getElementById('plChart');if(!el)return;
+  var pl=(state.data&&state.data.pipeline&&state.data.pipeline.plTrend)||{};
+  var pts=pl.points||[];
+  var srcEl=document.getElementById('plSource');
+  if(srcEl)srcEl.textContent=pts.length?(pl.source==='cashflow'?'sales minus source cost':'from ledger'):'';
+  if(!pts.length){el.innerHTML='<div class="empty" style="padding:20px">No realized P/L recorded yet — fills in once purchases write ledger entries.</div>';return;}
+  var vals=pts.map(function(p){return Number(p.v)||0});
+  var lo=Math.min.apply(null,vals.concat(0)),hi=Math.max.apply(null,vals.concat(0));
+  var W=560,H=120,pad=8,span=(hi-lo)||1;
+  var xAt=function(i){return pts.length>1?pad+(i/(pts.length-1))*(W-2*pad):W/2};
+  var yAt=function(v){return H-pad-((v-lo)/span)*(H-2*pad)};
+  var d=pts.map(function(p,i){return (i?'L':'M')+xAt(i).toFixed(1)+' '+yAt(Number(p.v)||0).toFixed(1)}).join(' ');
+  var last=Number(pts[pts.length-1].v)||0;
+  var col=last>=0?COLORS.green:COLORS.red;
+  var area=d+' L'+xAt(pts.length-1).toFixed(1)+' '+(H-pad)+' L'+xAt(0).toFixed(1)+' '+(H-pad)+' Z';
+  var zeroY=yAt(0).toFixed(1);
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="120" preserveAspectRatio="none" role="img" aria-label="Realized profit and loss trend, latest '+money(last)+'"><line x1="0" y1="'+zeroY+'" x2="'+W+'" y2="'+zeroY+'" stroke="rgba(148,163,184,.18)" stroke-dasharray="3 3"/><path d="'+area+'" fill="'+col+'" fill-opacity="0.12"/><path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg><div class="bs-gauge-sub" style="text-align:left;margin-top:5px">Latest '+money(last)+' · '+pts.length+' days with activity</div>';
+}
+function renderFunnelChart(){
+  var el=document.getElementById('funnelChart');if(!el)return;
+  var f=(state.data&&state.data.pipeline&&state.data.pipeline.funnel)||{};
+  var rows=[['Queued',f.ebayQueued||0,COLORS.slate],['Comparing',f.ebayComparing||0,COLORS.blue],['Opportunities',f.ebayOpportunities||0,COLORS.green],['Active listings',f.activeListings||0,COLORS.teal]];
+  var max=rows.reduce(function(m,r){return Math.max(m,r[1])},0);
+  el.innerHTML='<div class="bs-funnel">'+rows.map(function(r){return bsBar(r[0],r[1],max,r[2])}).join('')+'</div><div class="bs-fnote"><span>Rejected '+esc(f.ebayRejected||0)+'</span><span>Manual review '+esc(f.ebayManualReview||0)+'</span><span>Errors '+esc(f.ebayErrors||0)+'</span></div>';
+}
+function bsDonut(segments,centerLabel){
+  var total=segments.reduce(function(s,x){return s+(x.value||0)},0);
+  var r=42,c=2*Math.PI*r,off=0,arcs='';
+  if(total>0){segments.forEach(function(s){var len=((s.value||0)/total)*c;arcs+='<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="13" stroke-dasharray="'+len.toFixed(1)+' '+(c-len).toFixed(1)+'" stroke-dashoffset="'+(-off).toFixed(1)+'" transform="rotate(-90 60 60)"/>';off+=len;});}
+  else{arcs='<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="13"/>';}
+  return '<svg viewBox="0 0 120 120" width="116" height="116" role="img" aria-label="Outcome split, '+total+' total"><g>'+arcs+'</g><text x="60" y="57" text-anchor="middle" style="fill:var(--text)" font-size="20" font-weight="700">'+total+'</text><text x="60" y="74" text-anchor="middle" style="fill:var(--muted)" font-size="10">'+esc(centerLabel||'')+'</text></svg>';
+}
+function renderOutcomeChart(){
+  var el=document.getElementById('outcomeChart');if(!el)return;
+  var f=(state.data&&state.data.pipeline&&state.data.pipeline.funnel)||{};
+  var segs=[{label:'Opportunities',value:f.ebayOpportunities||0,color:COLORS.green},{label:'Manual review',value:f.ebayManualReview||0,color:COLORS.amber},{label:'Rejected',value:f.ebayRejected||0,color:COLORS.red},{label:'Errors',value:f.ebayErrors||0,color:COLORS.slate}];
+  el.innerHTML='<div style="display:flex;justify-content:center">'+bsDonut(segs,'outcomes')+'</div><div class="bs-donut-legend">'+segs.map(function(s){return '<span><span class="bs-dot" style="background:'+s.color+'"></span>'+esc(s.label)+' &middot; '+esc(s.value)+'</span>'}).join('')+'</div>';
+}
+function renderKeepaGauge(){
+  var el=document.getElementById('keepaGauge');if(!el)return;
+  var k=state.keepaToken;
+  if(!k||k.tokensLeft===undefined||k.tokensLeft===null){el.innerHTML='<div class="bs-gauge"><div class="bs-gauge-sub">Keepa tokens unavailable</div></div>';return;}
+  var left=Number(k.tokensLeft)||0;
+  state.keepaTokenMax=Math.max(state.keepaTokenMax||0,left,1);
+  var max=state.keepaTokenMax,pct=Math.max(0,Math.min(1,left/max));
+  var color=left<60?COLORS.red:(left<200?COLORS.amber:COLORS.green);
+  var r=42,c=2*Math.PI*r,len=pct*c;
+  var sub=(k.refillRate!==undefined&&k.refillRate!==null)?('+'+k.refillRate+'/min &middot; peak ~'+max):('peak ~'+max);
+  el.innerHTML='<div class="bs-gauge"><svg viewBox="0 0 120 120" width="116" height="116" role="img" aria-label="Keepa tokens '+left+' remaining of about '+max+'"><circle cx="60" cy="60" r="'+r+'" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="13"/><circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="13" stroke-linecap="round" stroke-dasharray="'+len.toFixed(1)+' '+(c-len).toFixed(1)+'" transform="rotate(-90 60 60)"/><text x="60" y="57" text-anchor="middle" style="fill:var(--text)" font-size="22" font-weight="700">'+left+'</text><text x="60" y="74" text-anchor="middle" style="fill:var(--muted)" font-size="10">tokens left</text></svg><div class="bs-gauge-sub">'+esc(sub)+'</div></div>';
+}
 function render(){
   var d=state.data;if(!d)return;
   var icons={productCandidates:['PC','rgba(14,165,233,.16)'],amazonMatches:['AM','rgba(20,184,166,.16)'],ebayListings:['EL','rgba(52,211,153,.16)'],orders:['OR','rgba(96,165,250,.16)'],actions:['RV','rgba(251,191,36,.16)'],purchases:['PU','rgba(45,212,191,.16)'],discoveryScans:['SC','rgba(45,212,191,.16)'],amazonScouts:['AS','rgba(20,184,166,.16)'],ebayDiscoveries:['ES','rgba(52,211,153,.16)'],ebayAmazonComparisons:['AC','rgba(14,165,233,.16)'],automationRuns:['AU','rgba(96,165,250,.16)'],automationNeedsConfirmation:['HC','rgba(251,191,36,.16)'],automationFailures:['!','rgba(248,113,113,.16)']};
@@ -2525,6 +2661,7 @@ function render(){
   }).join('');
   renderJobActivity();
   renderPipeline();
+  renderPlChart();renderFunnelChart();renderOutcomeChart();renderKeepaGauge();
 
   var actCols=[
     {key:'id',label:'ID',fmt:function(v){return shortId(v)}},
@@ -2684,7 +2821,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
     var navView=activeNavView(view);
     var previousActive=document.querySelector('.view.active');
     var targetView='view-'+navView;
-    document.querySelectorAll('.nav-item').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===navView)});
+    document.querySelectorAll('.nav-item').forEach(function(n){var on=n.getAttribute('data-view')===navView;n.classList.toggle('active',on);if(on){n.setAttribute('aria-current','page')}else{n.removeAttribute('aria-current')}});
     document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id===targetView)});
     if(!previousActive||previousActive.id!==targetView){
       window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -2740,12 +2877,42 @@ function renderCredentials(list){
 function saveCred(key){var el=document.getElementById('cred_'+key);putCred(key,el?el.value:'','Credential saved')}
 function clearCred(key){putCred(key,'','Credential cleared')}
 function testCred(key){apiFetch('/api/credentials/'+encodeURIComponent(key)+'/test',{method:'POST'}).then(responseJson).then(function(res){toast('Credential check',res.check||res,'ok')}).catch(function(e){toast('Credential check failed',e.message,'err')})}
-function renderAlerts(alerts){
-  var el=document.getElementById('alertsBox');if(!el)return;
-  if(!alerts||!alerts.length){el.innerHTML='<div class="empty">No operational alerts right now.</div>';return}
-  el.innerHTML=alerts.map(function(a){return '<div class="activity-row"><div><b>'+esc(a.code||'ALERT')+'</b><div class="muted">'+esc(a.message||'')+'</div></div><span class="badge '+esc(a.severity||'low')+'">'+esc(a.severity||'low')+'</span></div>'}).join('');
+function notifIcon(kind){
+  if(kind==='high')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  if(kind==='medium')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>';
+  if(kind==='info')return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>';
+  return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
 }
-function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var el=document.getElementById('alertsBox');if(el)el.innerHTML='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>'})}
+function severityKind(sev){sev=String(sev||'low').toLowerCase();if(sev==='high'||sev==='critical')return 'high';if(sev==='medium'||sev==='warn'||sev==='warning')return 'medium';if(sev==='info')return 'info';return 'low';}
+function severityColor(kind){return kind==='high'?COLORS.red:(kind==='medium'?COLORS.amber:(kind==='info'?COLORS.blue:COLORS.slate));}
+function renderAlerts(alerts){
+  var html;
+  if(!alerts||!alerts.length){html='<div class="empty">No operational alerts right now.</div>';}
+  else{html=alerts.map(function(a){
+    var kind=severityKind(a.severity);var col=severityColor(kind);
+    return '<div class="notif" style="border-left-color:'+col+'"><span class="notif-ic" style="color:'+col+'">'+notifIcon(kind)+'</span><div class="notif-main"><div class="notif-title">'+esc(a.code||'ALERT')+'</div><div class="notif-msg">'+esc(a.message||'')+'</div></div><span class="badge" style="color:'+col+';background:'+col+'1f;border-color:'+col+'40">'+esc(String(a.severity||'low').toLowerCase())+'</span></div>';
+  }).join('');}
+  ['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=html;});
+}
+function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var h='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>';['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=h;});})}
+function saveNotifPrefs(){
+  try{
+    var chk=function(id){var el=document.getElementById(id);return !!(el&&el.checked);};
+    var p={webhook:inputValue('notifWebhook'),email:chk('notifEmail'),opp:chk('notifOpp'),pause:chk('notifPause'),fail:chk('notifFail'),keepa:chk('notifKeepa'),buy:chk('notifBuy'),minProfit:inputValue('notifMinProfit')};
+    localStorage.setItem('buysell.notifPrefs',JSON.stringify(p));
+    toast('Notification preferences saved','Stored locally on this browser. Webhook/email dispatch is a backend follow-up.','ok');
+  }catch(e){toast('Could not save preferences',String((e&&e.message)||e),'err');}
+}
+function loadNotifPrefs(){
+  try{
+    var raw=localStorage.getItem('buysell.notifPrefs');if(!raw)return;
+    var p=JSON.parse(raw)||{};
+    var setVal=function(id,v){var el=document.getElementById(id);if(el&&v!==undefined&&v!==null)el.value=v;};
+    var setChk=function(id,v){var el=document.getElementById(id);if(el)el.checked=!!v;};
+    setVal('notifWebhook',p.webhook);setVal('notifMinProfit',p.minProfit);
+    setChk('notifEmail',p.email);setChk('notifOpp',p.opp);setChk('notifPause',p.pause);setChk('notifFail',p.fail);setChk('notifKeepa',p.keepa);setChk('notifBuy',p.buy);
+  }catch(e){}
+}
 function downloadExport(entity){window.location.href='/api/export/'+encodeURIComponent(entity)+'?format=csv&take=5000'}
 
 function setDb(connected,msg){
@@ -2764,6 +2931,7 @@ function checkDb(){
   function load(){
     updateSetupChecklist();
     checkDb();
+    loadAlerts();
     apiJson('/api/dashboard').then(function(data){
       state.data=data;state.discoveryRowsLoaded=!!data.allEbayDiscoveryCandidatesLoaded;state.discoveryRowsLoading=false;state.setup.dashboard=true;state.setup.backendSecret='ok';document.getElementById('offline').classList.remove('show');updateSetupChecklist();render();
       if(document.getElementById('view-ebayDiscovery')&&document.getElementById('view-ebayDiscovery').classList.contains('active'))loadDashboardDiscoveryRows();
@@ -3145,6 +3313,7 @@ loadEbayDiscoveryProfiles();
 loadKeepaTokenStatus();
 updateAmazonScoutActions();
 updateEbayDiscoveryActions();
+loadNotifPrefs();
 load();
 setInterval(checkDb,30000);
 setInterval(load,30000);
