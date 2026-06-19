@@ -157,7 +157,9 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     dashboardDb.ebayAmazonComparisonRun.findMany({ orderBy: { startedAt: 'desc' }, take: 5 })
   ]);
 
+  const plTrend = await getPlTrend(db);
   return {
+    plTrend,
     funnel: {
       ebayQueued,
       ebayComparing,
@@ -187,6 +189,60 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     recentFeedback,
     recentComparisonRuns
   };
+}
+
+type PlTrendPoint = { t: string; v: number };
+
+export async function getPlTrend(
+  db: PrismaClient
+): Promise<{ points: PlTrendPoint[]; total: number; source: 'ledger' | 'cashflow' | 'none' }> {
+  const num = (value: unknown): number => (value === null || value === undefined ? 0 : Number(value));
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
+  const daily = new Map<string, number>();
+  let source: 'ledger' | 'cashflow' | 'none' = 'none';
+
+  const ledger = await db.profitLedgerEntry.findMany({
+    where: { realizedAt: { gte: since } },
+    select: { netProfit: true, realizedAt: true },
+    orderBy: { realizedAt: 'asc' }
+  });
+
+  if (ledger.length > 0) {
+    source = 'ledger';
+    for (const entry of ledger) {
+      const key = dayKey(entry.realizedAt);
+      daily.set(key, (daily.get(key) ?? 0) + num(entry.netProfit));
+    }
+  } else {
+    const [orders, purchases] = await Promise.all([
+      db.order.findMany({ where: { createdAt: { gte: since } }, select: { salePrice: true, createdAt: true } }),
+      db.amazonPurchase.findMany({
+        where: { createdAt: { gte: since } },
+        select: { purchasePrice: true, createdAt: true }
+      })
+    ]);
+    if (orders.length > 0 || purchases.length > 0) {
+      source = 'cashflow';
+      for (const order of orders) {
+        const key = dayKey(order.createdAt);
+        daily.set(key, (daily.get(key) ?? 0) + num(order.salePrice));
+      }
+      for (const purchase of purchases) {
+        const key = dayKey(purchase.createdAt);
+        daily.set(key, (daily.get(key) ?? 0) - num(purchase.purchasePrice));
+      }
+    }
+  }
+
+  const keys = Array.from(daily.keys()).sort();
+  let cumulative = 0;
+  const points: PlTrendPoint[] = keys.map((key) => {
+    cumulative += daily.get(key) ?? 0;
+    return { t: key, v: Math.round(cumulative * 100) / 100 };
+  });
+
+  return { points, total: Math.round(cumulative * 100) / 100, source };
 }
 
 export async function getDashboardData(db: PrismaClient): Promise<unknown> {

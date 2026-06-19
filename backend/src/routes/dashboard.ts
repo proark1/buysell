@@ -370,6 +370,7 @@ const dashboardHtml = `<!doctype html>
     .cred-actions{display:flex;gap:8px}
     @media(max-width:760px){.cred-row{grid-template-columns:1fr;gap:10px}}
     /* Analytics + a11y (Slice 1) */
+    .analytics-pl{margin-bottom:14px}
     .analytics-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:14px}
     .analytics-card{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.24);padding:13px 14px;min-width:0}
     .analytics-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:11px;display:flex;align-items:center;gap:7px}
@@ -467,8 +468,9 @@ const dashboardHtml = `<!doctype html>
         </div>
         <div class="stats" id="stats"></div>
         <div class="panel" id="analyticsPanel">
-          <div class="panel-head"><h2>Performance</h2><span class="hint">Discovery funnel, outcome split, and metered-API budget</span></div>
+          <div class="panel-head"><h2>Performance</h2><span class="hint">Realized P/L, discovery funnel, outcome split, and metered-API budget</span></div>
           <div class="panel-body">
+            <div class="analytics-pl"><div class="analytics-title">Realized P/L &mdash; last 30 days<span id="plSource" class="bs-gauge-sub" style="margin-left:auto;text-align:right"></span></div><div id="plChart"></div></div>
             <div class="analytics-grid">
               <div class="analytics-card"><div class="analytics-title">Discovery funnel</div><div id="funnelChart"></div></div>
               <div class="analytics-card"><div class="analytics-title">Outcome split</div><div id="outcomeChart"></div></div>
@@ -2549,6 +2551,25 @@ function bsBar(label,value,max,color){
   var pct=max>0?Math.max(2,Math.round((value/max)*100)):0;
   return '<div class="bs-frow"><span class="bs-flabel">'+esc(label)+'</span><span class="bs-ftrack"><span class="bs-fbar" style="width:'+pct+'%;background:'+color+'"></span></span><span class="bs-fval">'+esc(value==null?0:value)+'</span></div>';
 }
+function renderPlChart(){
+  var el=document.getElementById('plChart');if(!el)return;
+  var pl=(state.data&&state.data.pipeline&&state.data.pipeline.plTrend)||{};
+  var pts=pl.points||[];
+  var srcEl=document.getElementById('plSource');
+  if(srcEl)srcEl.textContent=pts.length?(pl.source==='cashflow'?'sales minus source cost':'from ledger'):'';
+  if(!pts.length){el.innerHTML='<div class="empty" style="padding:20px">No realized P/L recorded yet — fills in once purchases write ledger entries.</div>';return;}
+  var vals=pts.map(function(p){return Number(p.v)||0});
+  var lo=Math.min.apply(null,vals.concat(0)),hi=Math.max.apply(null,vals.concat(0));
+  var W=560,H=120,pad=8,span=(hi-lo)||1;
+  var xAt=function(i){return pts.length>1?pad+(i/(pts.length-1))*(W-2*pad):W/2};
+  var yAt=function(v){return H-pad-((v-lo)/span)*(H-2*pad)};
+  var d=pts.map(function(p,i){return (i?'L':'M')+xAt(i).toFixed(1)+' '+yAt(Number(p.v)||0).toFixed(1)}).join(' ');
+  var last=Number(pts[pts.length-1].v)||0;
+  var col=last>=0?COLORS.green:COLORS.red;
+  var area=d+' L'+xAt(pts.length-1).toFixed(1)+' '+(H-pad)+' L'+xAt(0).toFixed(1)+' '+(H-pad)+' Z';
+  var zeroY=yAt(0).toFixed(1);
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="120" preserveAspectRatio="none" role="img" aria-label="Realized profit and loss trend, latest '+money(last)+'"><line x1="0" y1="'+zeroY+'" x2="'+W+'" y2="'+zeroY+'" stroke="rgba(148,163,184,.18)" stroke-dasharray="3 3"/><path d="'+area+'" fill="'+col+'" fill-opacity="0.12"/><path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg><div class="bs-gauge-sub" style="text-align:left;margin-top:5px">Latest '+money(last)+' · '+pts.length+' days with activity</div>';
+}
 function renderFunnelChart(){
   var el=document.getElementById('funnelChart');if(!el)return;
   var f=(state.data&&state.data.pipeline&&state.data.pipeline.funnel)||{};
@@ -2591,7 +2612,7 @@ function render(){
   }).join('');
   renderJobActivity();
   renderPipeline();
-  renderFunnelChart();renderOutcomeChart();renderKeepaGauge();
+  renderPlChart();renderFunnelChart();renderOutcomeChart();renderKeepaGauge();
 
   var actCols=[
     {key:'id',label:'ID',fmt:function(v){return shortId(v)}},
