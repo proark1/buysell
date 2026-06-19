@@ -168,9 +168,14 @@ const dashboardHtml = `<!doctype html>
     .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .hidden{display:none!important}
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-    .tab-btn{border:1px solid var(--border-strong);background:rgba(148,163,184,.06);color:var(--muted);border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
+    .tab-btn{border:1px solid var(--border-strong);background:rgba(148,163,184,.06);color:var(--muted);border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
     .tab-btn.active{background:rgba(14,165,233,.16);color:var(--text);border-color:rgba(14,165,233,.34)}
-    .discover-tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .discover-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .discover-tab{min-height:52px;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;padding:12px 14px;font-size:13px;color:var(--text);background:rgba(148,163,184,.07)}
+    .discover-tab.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff;box-shadow:0 10px 24px -12px rgba(14,165,233,.72)}
+    .discover-tab:not(.active):hover{background:rgba(148,163,184,.13);border-color:var(--border-strong)}
+    .discover-controls{margin-top:14px}
+    .discover-controls .discover-command{padding-top:2px}
     .discover-command{display:none}
     .discover-command.active{display:block}
     .discover-mode-panel{display:none}
@@ -196,12 +201,15 @@ const dashboardHtml = `<!doctype html>
     .inspector-meta{color:var(--muted);font-size:12px;margin-top:4px}
     .inspector-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px;display:grid;gap:8px}
     .inspector-section-title{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
-    .queue-row{width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);padding:10px;display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+    .queue-row{width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.26);padding:11px;display:grid;grid-template-columns:42px minmax(0,1fr) minmax(126px,auto);gap:10px;align-items:start;color:var(--text);font:inherit;text-align:left;cursor:pointer}
     .queue-row:hover,.queue-row.active{border-color:var(--border-strong);background:rgba(15,23,42,.62)}
-    .queue-copy{min-width:0;display:grid;gap:2px}
+    .queue-copy{min-width:0;display:grid;gap:4px}
     .queue-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .queue-meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-    .queue-stats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:max-content}
+    .queue-reason{color:var(--text);font-size:12px;line-height:1.38;overflow-wrap:anywhere}
+    .queue-reason span{color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.45px;margin-right:5px}
+    .queue-stats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:flex-start;min-width:max-content}
+    .queue-time{font-size:11px;color:var(--muted);width:100%;text-align:right}
     .activity-list{display:grid;gap:8px}
     .activity-row{border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.22);padding:10px;display:grid;gap:6px}
     .activity-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -293,7 +301,7 @@ const dashboardHtml = `<!doctype html>
     .section-help{color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0}
     .result-section-body{display:grid;gap:12px;padding:12px}
     .mini-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;padding:8px 0}
-    .job-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px}
+    .job-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 0}
     .job-status-card{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);padding:12px;min-width:0}
     .job-status-card.running{border-color:rgba(96,165,250,.35);background:rgba(37,99,235,.09)}
     .job-status-card.paused{border-color:rgba(251,191,36,.35);background:rgba(120,53,15,.11)}
@@ -330,7 +338,7 @@ const dashboardHtml = `<!doctype html>
     .settings-group{margin-top:0;margin-bottom:12px}
     .settings-group:last-child{margin-bottom:0}
     @media(max-width:1100px){.discover-workbench{grid-template-columns:1fr}.discover-side{position:static;height:auto;max-height:none;grid-template-rows:auto}.discover-inspector,.discover-activity{overflow:visible}#discoverInspector,#discoverActivityTimeline{overflow:visible}}
-    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}.queue-row{grid-template-columns:38px minmax(0,1fr)}.queue-stats{grid-column:1/-1;justify-content:flex-start}.discover-primary-field{grid-column:auto}}
+    @media(max-width:920px){.compact-product summary{grid-template-columns:40px minmax(160px,1fr) 82px 80px}.compact-hide-sm{display:none}.job-status-grid{grid-template-columns:1fr}.queue-row{grid-template-columns:38px minmax(0,1fr)}.queue-stats{grid-column:1/-1;justify-content:flex-start}.queue-time{text-align:left}.discover-tabs{grid-template-columns:1fr}.discover-primary-field{grid-column:auto}}
     @media(max-width:760px){.list-controls{grid-template-columns:1fr 1fr}.pager{justify-content:flex-start;flex-wrap:wrap}}
     /* KV settings */
     .kv{display:grid;grid-template-columns:1fr auto;gap:10px 16px}
@@ -599,15 +607,20 @@ const dashboardHtml = `<!doctype html>
       <!-- DISCOVERY -->
       <section class="view" id="view-ebayDiscovery">
         <div class="panel">
-          <div class="panel-head"><h2>Discover Workbench</h2><span class="hint" id="discoverModeHint">Start from sold eBay demand, then compare with Amazon.</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
+          <div class="panel-head"><h2>Discover</h2><span class="hint" id="discoverModeHint">Recent Amazon comparison decisions first.</span><span class="spacer"></span><span class="hint" id="keepaTokenHint">Keepa tokens —</span></div>
           <div class="panel-body">
             <div class="discover-tabs">
-              <button class="tab-btn active" data-discover-mode="ebay" onclick="setDiscoverMode('ebay')">eBay-first</button>
-              <button class="tab-btn" data-discover-mode="amazon" onclick="setDiscoverMode('amazon')">Amazon-first</button>
-              <button class="tab-btn" data-discover-mode="queue" onclick="setDiscoverMode('queue')">Comparison Queue</button>
+              <button class="tab-btn discover-tab active" data-discover-mode="queue" onclick="setDiscoverMode('queue')">Comparison Results</button>
+              <button class="tab-btn discover-tab" data-discover-mode="ebay" onclick="setDiscoverMode('ebay')">eBay Search</button>
+              <button class="tab-btn discover-tab" data-discover-mode="amazon" onclick="setDiscoverMode('amazon')">Amazon Scout</button>
             </div>
 
-            <div class="discover-command active" data-discover-command="ebay">
+            <div class="discover-summary" id="discoverSummaryStrip"></div>
+
+            <details class="advanced discover-controls">
+              <summary id="discoverControlsSummary">Filter or run comparisons</summary>
+
+            <div class="discover-command" data-discover-command="ebay">
               <div class="subsection-title">Sold eBay search</div>
               <div class="discover-command-grid">
                 <div class="field"><label>Market</label><select id="ebayDiscoveryMarket"></select></div>
@@ -700,7 +713,7 @@ const dashboardHtml = `<!doctype html>
               </div>
             </div>
 
-            <div class="discover-command" data-discover-command="queue">
+            <div class="discover-command active" data-discover-command="queue">
               <div class="subsection-title">Comparison queue</div>
               <div class="discover-command-grid">
                 <div class="field discover-primary-field"><label>Search</label><input id="ebayCompareSearch" placeholder="title, item, Amazon match" oninput="updateEbayCompareFilters()"></div>
@@ -715,8 +728,7 @@ const dashboardHtml = `<!doctype html>
                 <button class="btn" onclick="navigate('settings')">Schedule Settings</button>
               </div>
             </div>
-
-            <div class="discover-summary" id="discoverSummaryStrip"></div>
+            </details>
           </div>
         </div>
 
@@ -724,21 +736,21 @@ const dashboardHtml = `<!doctype html>
           <div class="discover-main">
             <div class="subtle-box">
               <div class="discover-panel-head">
-                <h3 id="discoverQueueTitle">Sold Product Shortlist</h3>
-                <span class="hint" id="ebayDiscoverySummary">Run a sold-products search to build a shortlist.</span>
+                <h3 id="discoverQueueTitle">Latest Comparison Results</h3>
+                <span class="hint hidden" id="ebayDiscoverySummary">Run a sold-products search to build a shortlist.</span>
                 <span class="hint hidden" id="amazonScoutSummary">Run Amazon Scout to build a shortlist.</span>
-                <span class="hint hidden" id="ebayAmazonComparisonSummary">Highest eBay score is compared first.</span>
+                <span class="hint" id="ebayAmazonComparisonSummary">Newest decisions first; queued work stays below completed results.</span>
               </div>
-              <div class="discover-mode-panel active" data-discover-panel="ebay">
+              <div class="discover-mode-panel" data-discover-panel="ebay">
                 <div id="ebayDiscoveryResults" class="result-list"><div class="empty">No eBay discovery results yet.</div></div>
               </div>
               <div class="discover-mode-panel" data-discover-panel="amazon">
                 <div id="amazonScoutResults" class="result-list"><div class="empty">No Amazon scout results yet.</div></div>
               </div>
-              <div class="discover-mode-panel" data-discover-panel="queue">
-                <div id="ebayCompareJobStatus" class="job-status-grid"></div>
+              <div class="discover-mode-panel active" data-discover-panel="queue">
                 <div id="ebayAmazonComparisonRows" class="compact-products"><div class="empty">No comparison rows yet.</div></div>
                 <div id="ebayComparePager" class="pager"></div>
+                <div id="ebayCompareJobStatus" class="job-status-grid"></div>
               </div>
             </div>
           </div>
@@ -911,7 +923,7 @@ const dashboardHtml = `<!doctype html>
 <div class="toasts" id="toasts"></div>
 
 <script>
-var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,discoverMode:'ebay',discoverSelection:null,discoveryRowsLoaded:false,discoveryRowsLoading:false,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
+var state={data:null,profiles:[],amazonProfiles:[],amazonMarkets:[],ebayPresets:[],amazonScoutRunId:null,amazonScoutCandidates:[],amazonScoutReview:[],amazonScoutRejected:[],selectedAmazon:{},ebayDiscoveryProfiles:[],ebayDiscoveryMarkets:[],ebayDiscoveryRunId:null,ebayDiscoveryCandidates:[],ebayDiscoveryReview:[],ebayDiscoveryRejected:[],selectedEbay:{},scanOpportunities:[],keepaToken:null,discoverMode:'queue',discoverSelection:null,discoveryRowsLoaded:false,discoveryRowsLoading:false,ebayCompactPage:1,ebayComparePage:1,tablePages:{},cardPages:{},sectionOpen:{},expandedLists:{},localJobs:{},setup:{db:false,dashboard:false,backendSecret:'checking',browserSecret:false}};
 var pageSize=20;
 var tablePageSize=12;
 var cardPageSize=8;
@@ -920,8 +932,8 @@ var META={
   actions:['Review','Approve, verify, draft, execute, complete, or reject one item at a time'],
   automation:['Automation','Price protection, schedules, browser runs, and confirmation states'],
   catalog:['Listings & Orders','Manage marketplace inventory and fulfillment'],
-  discovery:['Discover','Scout Amazon first, then compare selected products with eBay'],
-  ebayDiscovery:['Discover','Start from sold eBay products, then compare with Amazon'],
+  discovery:['Discover','Recent comparison decisions, search, scout, and queue controls'],
+  ebayDiscovery:['Discover','Recent comparison decisions, search, scout, and queue controls'],
   settings:['Settings','Connections, credentials, thresholds, and safety rules']
 };
 var BADGE={
@@ -1920,7 +1932,7 @@ function ebaySearchBlob(c){
 }
 function statusMatches(actual,filter){
   if(filter==='ALL')return true;
-  if(filter==='QUEUED')return actual==='NOT_COMPARED'||actual==='ERROR';
+  if(filter==='QUEUED')return actual==='NOT_COMPARED';
   return actual===filter;
 }
 function filterEbayRows(rows,options){
@@ -1995,13 +2007,17 @@ function renderDiscoverSelectionStyles(){
   });
 }
 function selectDiscoverItem(type,key,event){
-  if(event&&event.target&&event.target.closest&&event.target.closest('a,button,input,label,select,textarea'))return;
+  if(event&&event.target&&event.target.closest){
+    var interactive=event.target.closest('a,input,label,select,textarea');
+    var button=event.target.closest('button');
+    if(interactive||(button&&button!==event.currentTarget))return;
+  }
   state.discoverSelection={type:type,key:key};
   renderDiscoverInspector();
   renderDiscoverSelectionStyles();
 }
 function discoverRowsForMode(mode){
-  mode=mode||state.discoverMode||'ebay';
+  mode=mode||state.discoverMode||'queue';
   if(mode==='amazon')return state.amazonScoutCandidates.concat(state.amazonScoutReview,state.amazonScoutRejected);
   if(mode==='queue')return filteredAmazonComparisonRows();
   return state.ebayDiscoveryCandidates.concat(state.ebayDiscoveryReview,state.ebayDiscoveryRejected);
@@ -2149,9 +2165,52 @@ function renderDiscoverInspector(){
   }
   renderDiscoverSelectionStyles();
 }
+function ebayComparisonResultRank(c){
+  var status=ebayCandidateStatus(c);
+  if(status==='OPPORTUNITY'||status==='MANUAL_REVIEW'||status==='REJECTED'||status==='ERROR')return 0;
+  if(status==='COMPARING')return 1;
+  if(status==='NOT_COMPARED')return 2;
+  return 3;
+}
+function ebayComparisonTimeValue(c){
+  var comparison=ebayComparison(c);
+  var value=(comparison&&comparison.comparedAt)||c.updatedAt||c.createdAt;
+  var time=new Date(value||0).getTime();
+  return isNaN(time)?0:time;
+}
+function latestComparisonSort(a,b){
+  return ebayComparisonResultRank(a)-ebayComparisonResultRank(b)||ebayComparisonTimeValue(b)-ebayComparisonTimeValue(a)||ebayCandidateScore(b)-ebayCandidateScore(a);
+}
+function queueDecisionLabel(c){
+  var status=ebayCandidateStatus(c);
+  if(status==='OPPORTUNITY')return 'Passed';
+  if(status==='MANUAL_REVIEW')return 'Review';
+  if(status==='REJECTED')return 'Rejected';
+  if(status==='ERROR')return 'Error';
+  if(status==='COMPARING')return 'Running';
+  if(status==='NOT_COMPARED')return 'Queued';
+  return 'Status';
+}
+function queueDecisionReason(c){
+  var status=ebayCandidateStatus(c);
+  var comparison=ebayComparison(c);
+  var reasons=[];
+  if(isRejectedEbayCandidate(c)||isManualReviewEbayCandidate(c)||status==='ERROR')addStrings(reasons,ebayCandidateReasons(c));
+  if(!reasons.length&&comparison)addStrings(reasons,comparison.reasons);
+  if(!reasons.length&&status==='OPPORTUNITY')addStrings(reasons,ebayPositiveReasons(c));
+  reasons=unique(reasons);
+  if(reasons.length)return reasons[0];
+  if(status==='OPPORTUNITY')return 'Passed the Amazon price, margin, ROI, and match checks.';
+  if(status==='MANUAL_REVIEW')return 'Promising result, but one rule needs a human check.';
+  if(status==='REJECTED')return 'Did not pass the Amazon comparison gates.';
+  if(status==='ERROR')return 'Comparison failed and can be retried.';
+  if(status==='COMPARING')return 'Amazon matching is currently running.';
+  if(status==='NOT_COMPARED')return 'Waiting for Amazon comparison.';
+  return 'No decision reason captured yet.';
+}
 function filteredAmazonComparisonRows(){
   var allRows=currentAllEbayRows().slice().sort(function(a,b){
-    return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
+    return latestComparisonSort(a,b);
   });
   return filterEbayRows(allRows,{
     text:inputValue('ebayCompareSearch'),
@@ -2160,22 +2219,24 @@ function filteredAmazonComparisonRows(){
   });
 }
 function setDiscoverMode(mode){
-  state.discoverMode=mode||'ebay';
+  state.discoverMode=mode||'queue';
   state.discoverSelection=null;
   renderDiscoverMode();
 }
 function renderDiscoverMode(){
-  var mode=state.discoverMode||'ebay';
+  var mode=state.discoverMode||'queue';
   document.querySelectorAll('[data-discover-mode]').forEach(function(btn){btn.classList.toggle('active',btn.getAttribute('data-discover-mode')===mode)});
   document.querySelectorAll('[data-discover-command]').forEach(function(panel){panel.classList.toggle('active',panel.getAttribute('data-discover-command')===mode)});
   document.querySelectorAll('[data-discover-panel]').forEach(function(panel){panel.classList.toggle('active',panel.getAttribute('data-discover-panel')===mode)});
   var title=document.getElementById('discoverQueueTitle');
   var hint=document.getElementById('discoverModeHint');
+  var controlsSummary=document.getElementById('discoverControlsSummary');
   var ebaySummary=document.getElementById('ebayDiscoverySummary');
   var amazonSummary=document.getElementById('amazonScoutSummary');
   var queueSummary=document.getElementById('ebayAmazonComparisonSummary');
-  if(title)title.textContent=mode==='amazon'?'Amazon Candidates':(mode==='queue'?'Amazon Comparison Queue':'Sold Product Shortlist');
-  if(hint)hint.textContent=mode==='amazon'?'Start from Amazon source products, then check eBay demand.':(mode==='queue'?'Work through queued sold eBay products against Amazon source matches.':'Start from sold eBay demand, then compare with Amazon.');
+  if(title)title.textContent=mode==='amazon'?'Amazon Candidates':(mode==='queue'?'Latest Comparison Results':'Sold Product Shortlist');
+  if(hint)hint.textContent=mode==='amazon'?'Amazon candidates first, then eBay demand checks.':(mode==='queue'?'Recent Amazon comparison decisions first.':'Sold eBay demand first, then Amazon source checks.');
+  if(controlsSummary)controlsSummary.textContent=mode==='amazon'?'Run or filter Amazon Scout':(mode==='queue'?'Filter or run comparisons':'Run or filter eBay search');
   if(ebaySummary)ebaySummary.classList.toggle('hidden',mode!=='ebay');
   if(amazonSummary)amazonSummary.classList.toggle('hidden',mode!=='amazon');
   if(queueSummary)queueSummary.classList.toggle('hidden',mode!=='queue');
@@ -2262,7 +2323,7 @@ function renderEbayAmazonComparisonRows(candidates){
   var summary=document.getElementById('ebayAmazonComparisonSummary');
   if(!el)return;
   var allRows=(candidates||[]).slice().sort(function(a,b){
-    return comparisonSortWeight(a)-comparisonSortWeight(b)||ebayCandidateScore(b)-ebayCandidateScore(a)||new Date(b.updatedAt||0)-new Date(a.updatedAt||0);
+    return latestComparisonSort(a,b);
   });
   var jobBuckets=comparisonJobBuckets();
   var rows=filterEbayRows(allRows,{
@@ -2273,12 +2334,14 @@ function renderEbayAmazonComparisonRows(candidates){
   state.ebayComparePage=clampPage(state.ebayComparePage,rows.length);
   var start=(state.ebayComparePage-1)*pageSize;
   var pageRows=rows.slice(start,start+pageSize);
-  var pending=rows.filter(function(c){var s=ebayCandidateStatus(c);return s==='NOT_COMPARED'||s==='ERROR'}).length;
+  var queued=rows.filter(function(c){return ebayCandidateStatus(c)==='NOT_COMPARED'}).length;
+  var errors=rows.filter(function(c){return ebayCandidateStatus(c)==='ERROR'}).length;
+  var completed=rows.filter(function(c){var s=ebayCandidateStatus(c);return s==='OPPORTUNITY'||s==='MANUAL_REVIEW'||s==='REJECTED'}).length;
   var rc=(state.data&&state.data.ruleConfig)||{};
   renderEbayCompareTimerInfo(rc);
   renderComparisonJobStatus(jobBuckets);
   var timer=rc.ebayAmazonCompareAutoRunEnabled?'timer on · '+(rc.ebayAmazonCompareAutoRunIntervalMinutes||1)+' min · '+(rc.ebayAmazonCompareAutoRunLimit||1)+'/run':'timer off';
-  if(summary)summary.textContent=pending+' queued · '+rows.length+' of '+allRows.length+' rows · '+timer+' · highest score first';
+  if(summary)summary.textContent=completed+' outcomes · '+errors+' errors · '+queued+' queued · '+rows.length+' of '+allRows.length+' rows · '+timer+' · newest decisions first';
   if(!rows.length){
     el.innerHTML='<div class="empty">No comparison rows yet.</div>';
     renderPager('ebayComparePager',state.ebayComparePage,0,'setEbayComparePage');
@@ -2288,6 +2351,7 @@ function renderEbayAmazonComparisonRows(candidates){
   el.innerHTML=pageRows.map(function(c){
     var score=ebayCandidateScore(c);
     var market=ebayCandidateMarket(c);
+    var status=ebayCandidateStatus(c);
     var comparison=ebayComparison(c);
     var best=(comparison&&comparison.best)||{};
     var sourcePrice=best.buyBoxPrice!==undefined?best.buyBoxPrice:best.currentPrice;
@@ -2296,10 +2360,11 @@ function renderEbayAmazonComparisonRows(candidates){
     var cost=sourcePrice!==undefined?marketMoney(sourcePrice,market):'—';
     var match=best.matchConfidence!==undefined?pct(Number(best.matchConfidence)*100):'—';
     var discoverId=discoverKey('ebay',c);
+    var completedAt=ebayComparisonResultRank(c)===0&&ebayComparisonTimeValue(c)?'Updated '+when(ebayComparisonTimeValue(c)):'';
     return '<button type="button" class="queue-row" data-discover-type="ebay" data-discover-key="'+esc(discoverId)+'" onclick="selectDiscoverItem(\\'ebay\\','+jsString(discoverId)+',event)">'+
       '<span class="'+scoreClass(score)+'">'+score+'</span>'+
-      '<span class="queue-copy"><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span></span>'+
-      '<span class="queue-stats">'+badge(ebayCandidateStatus(c))+'</span>'+
+      '<span class="queue-copy"><span class="queue-title">'+esc(ebayCandidateTitle(c))+'</span><span class="queue-meta">eBay '+marketMoney(ebayCandidatePrice(c),market)+' · Cost '+cost+' · Profit '+profit+' · ROI '+roi+' · Match '+match+'</span><span class="queue-reason"><span>'+esc(queueDecisionLabel(c))+'</span>'+esc(queueDecisionReason(c))+'</span></span>'+
+      '<span class="queue-stats">'+badge(status)+(completedAt?'<span class="queue-time">'+esc(completedAt)+'</span>':'')+'</span>'+
       '</button>';
   }).join('');
   renderPager('ebayComparePager',state.ebayComparePage,rows.length,'setEbayComparePage');
@@ -2568,7 +2633,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
 
   function navigate(view){
     if(view==='discovery'){
-      state.discoverMode='amazon';
+      state.discoverMode='queue';
     }
     var navView=activeNavView(view);
     var previousActive=document.querySelector('.view.active');

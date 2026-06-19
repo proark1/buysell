@@ -309,7 +309,7 @@ export async function getDashboardDiscoveryCandidates(db: PrismaClient, take = d
   const [allEbayDiscoveryCandidates, total] = await Promise.all([
     db.ebayDiscoveryCandidate.findMany({
       select: ebayDiscoveryCandidateSelect,
-      orderBy: [{ createdAt: 'desc' }, { ebayScore: 'desc' }],
+      orderBy: [{ updatedAt: 'desc' }, { ebayScore: 'desc' }],
       take: limit
     }),
     db.ebayDiscoveryCandidate.count()

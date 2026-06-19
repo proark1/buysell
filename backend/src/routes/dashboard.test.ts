@@ -41,6 +41,8 @@ try {
   const dashboard = await app.inject({ method: 'GET', url: '/', headers: { cookie: cookieHeader } });
   assertEqual(dashboard.body.includes('Setup Checklist'), true, 'dashboard includes setup checklist');
   assertEqual(dashboard.body.includes('/api/dashboard/discovery-candidates'), true, 'dashboard includes lazy discovery endpoint');
+  assertEqual(dashboard.body.includes('Comparison Results'), true, 'dashboard discover defaults to comparison results tab');
+  assertEqual(dashboard.body.includes('Latest Comparison Results'), true, 'dashboard discover leads with latest comparison results');
 
   const credentials = await app.inject({ method: 'GET', url: '/api/credentials', headers: { cookie: cookieHeader } });
   assertEqual(credentials.statusCode, 200, 'dashboard session can read protected routes');
