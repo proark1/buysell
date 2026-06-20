@@ -23,6 +23,7 @@ import { scoreOpportunity } from './opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity, extractEbayIdentityFingerprint } from './productIdentityMatcher.js';
 import { notFound } from '../security/httpErrors.js';
 import { profitInputsFromRuleConfig } from './profitInputs.js';
+import { resolveLearningFactor } from './learningSignals.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from './marketMetrics.js';
 import { productFamilyKeyForEbayCandidate } from './productFamily.js';
@@ -1011,6 +1012,7 @@ export function analyzeEbayAmazonComparison(
     amazonMatchLimit?: number;
     soldMarketCandidates?: EbayCandidateInput[];
     activeMarketCandidates?: EbayCandidateInput[];
+    learningFactor?: number;
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -1068,7 +1070,7 @@ export function analyzeEbayAmazonComparison(
       ...(opportunity.safety?.riskFlags ?? []),
       ...opportunity.decision.riskFlags,
       ...marketMetrics.riskFlags
-    ])]);
+    ])], context.learningFactor ?? 1);
     if (opportunity.decision.decision !== 'REJECT' && opportunity.identityMatch?.status !== 'REVIEW' && opportunity.score.total < ruleConfig.minimumOpportunityScore) {
       opportunity.decision = {
         decision: 'REJECT',
@@ -1272,11 +1274,13 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
           activeMarketWarning = 'Live eBay market check was skipped because SerpAPI is currently unavailable or out of quota.';
         }
       }
+      const learningFactor = await resolveLearningFactor(options.db, ebay, options.ruleConfig.learningAdjustmentEnabled);
       const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, reportQuery, {
         market,
         amazonMatchLimit,
         soldMarketCandidates,
-        activeMarketCandidates
+        activeMarketCandidates,
+        learningFactor
       });
       if (activeMarketWarning) comparison.report.reasons = uniqueReasons([...comparison.report.reasons, activeMarketWarning]);
       reports.push(comparison.report);

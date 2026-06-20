@@ -38,6 +38,10 @@ export interface ActiveRuleConfig {
   ebayOrderSyncLookbackHours: number;
   maxAutomationAttempts: number;
   verificationTtlMinutes: number;
+  repricingEnabled: boolean;
+  repriceMaxIncreasePercent: number;
+  inventorySyncEnabled: boolean;
+  learningAdjustmentEnabled: boolean;
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
@@ -79,7 +83,11 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   ebayOrderSyncIntervalMinutes: 15,
   ebayOrderSyncLookbackHours: 48,
   maxAutomationAttempts: 3,
-  verificationTtlMinutes: 0
+  verificationTtlMinutes: 0,
+  repricingEnabled: false,
+  repriceMaxIncreasePercent: 0.15,
+  inventorySyncEnabled: false,
+  learningAdjustmentEnabled: false
 };
 
 const numberValue = (value: unknown, fallback: number): number => {
@@ -141,6 +149,10 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     ebayOrderSyncIntervalMinutes: numberValue(config.ebayOrderSyncIntervalMinutes, defaultRuleConfig.ebayOrderSyncIntervalMinutes),
     ebayOrderSyncLookbackHours: numberValue(config.ebayOrderSyncLookbackHours, defaultRuleConfig.ebayOrderSyncLookbackHours),
     maxAutomationAttempts: numberValue(config.maxAutomationAttempts, defaultRuleConfig.maxAutomationAttempts),
-    verificationTtlMinutes: numberValue(config.verificationTtlMinutes, defaultRuleConfig.verificationTtlMinutes)
+    verificationTtlMinutes: numberValue(config.verificationTtlMinutes, defaultRuleConfig.verificationTtlMinutes),
+    repricingEnabled: typeof config.repricingEnabled === 'boolean' ? config.repricingEnabled : defaultRuleConfig.repricingEnabled,
+    repriceMaxIncreasePercent: numberValue(config.repriceMaxIncreasePercent, defaultRuleConfig.repriceMaxIncreasePercent),
+    inventorySyncEnabled: typeof config.inventorySyncEnabled === 'boolean' ? config.inventorySyncEnabled : defaultRuleConfig.inventorySyncEnabled,
+    learningAdjustmentEnabled: typeof config.learningAdjustmentEnabled === 'boolean' ? config.learningAdjustmentEnabled : defaultRuleConfig.learningAdjustmentEnabled
   };
 }

@@ -20,7 +20,15 @@
   - **Verification-freshness TTL** — opt-in (`verificationTtlMinutes`, default off) gate blocking LIST/BUY whose latest passed verification is stale.
   - **Fresh price re-check at purchase** — on order sync, re-pull live Amazon buy-box/availability, refresh `maxPrice`, record a `PriceObservation`, and flag + alert when the source went out of stock or rose beyond tolerance.
 
-**Remaining (not yet implemented):** the larger P1 items (automation-run lease/heartbeat + sweeper, identity-first best match, GTIN check digits, Keepa batching/caching + token pre-checks on manual routes, route tests for executor/orders/credentials, API-usage tracking table); some P2 (batch dashboard counts, rejection groupBy, dedup/uniqueness, settings guardrails); and the remaining growth features (**automated repricing / auto-resume engine**, **inventory/stock-availability sync**, **closing the learning loop + threshold backtesting**, reuse-persisted-payloads-on-recompare). Tables below are the full backlog.
+- **Growth features (migration `0020`, branch `growth-features-2026-06`):**
+  - **Repricing & auto-resume engine** — the Amazon price monitor now scans ACTIVE (and, when repricing is on, PAUSED) listings, recomputes profit from the live Amazon cost, and emits **REPRICE** (raise price to restore margin, capped by `repriceMaxIncreasePercent`) or profitability-based **PAUSE** through the approval pipeline; recovered PAUSED listings surface a resume REVIEW action.
+  - **Inventory / stock sync** — refreshes `SourceInventoryRecord` from Keepa availability and pauses ACTIVE listings on out-of-stock (gated by `inventorySyncEnabled`).
+  - **Learning-loop read-back + backtesting** — product-family reject/list/realized-profit history feeds the scorer as a [0.8,1.2] multiplier (gated by `learningAdjustmentEnabled`); new `GET /api/backtest/score` tunes `minimumOpportunityScore` against realized ledger outcomes.
+  - **Minor items:** automation-run sweeper (orphaned RUNNING runs), GTIN/ISBN check-digit validation, batched dashboard counts, short-TTL Keepa product cache, `ApiUsage` tracking + manual-compare token pre-check, identity-first best-match selection.
+
+**Still deferred (low-value polish):** route tests for executor/orders/credentials (need a mock-prisma test harness), shared spec/token module refactor, reuse-persisted-payloads on force re-compare, `ebayItemId` unique constraint (deploy risk on existing data).
+
+**Remaining (superseded — see above):** the larger P1 items (automation-run lease/heartbeat + sweeper, identity-first best match, GTIN check digits, Keepa batching/caching + token pre-checks on manual routes, route tests for executor/orders/credentials, API-usage tracking table); some P2 (batch dashboard counts, rejection groupBy, dedup/uniqueness, settings guardrails); and the remaining growth features (**automated repricing / auto-resume engine**, **inventory/stock-availability sync**, **closing the learning loop + threshold backtesting**, reuse-persisted-payloads-on-recompare). Tables below are the full backlog.
 
 ---
 

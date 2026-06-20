@@ -324,21 +324,52 @@ export async function getDashboardData(db: PrismaClient): Promise<unknown> {
   const amazonDiscoveryCandidates = amazonDiscoveryRuns[0]?.candidates ?? [];
   const ebayDiscoveryCandidates = ebayDiscoveryRuns[0]?.candidates ?? [];
 
+  // Run the summary counts concurrently instead of 13 serial round-trips.
+  const [
+    productCandidatesCount,
+    amazonMatchesCount,
+    ebayListingsCount,
+    ordersCount,
+    actionsCount,
+    purchasesCount,
+    discoveryScansCount,
+    amazonScoutsCount,
+    ebayDiscoveriesCount,
+    ebayAmazonComparisonsCount,
+    automationRunsCount,
+    automationNeedsConfirmationCount,
+    automationFailuresCount
+  ] = await Promise.all([
+    db.productCandidate.count(),
+    db.amazonMatch.count(),
+    db.ebayListing.count(),
+    db.order.count(),
+    db.actionItem.count(),
+    db.amazonPurchase.count(),
+    db.discoveryScanRun.count(),
+    db.amazonDiscoveryRun.count(),
+    db.ebayDiscoveryRun.count(),
+    dashboardDb.ebayAmazonComparisonRun.count(),
+    db.automationRun.count(),
+    db.automationRun.count({ where: { status: 'NEEDS_HUMAN_CONFIRMATION' } }),
+    db.automationRun.count({ where: { status: { in: ['FAILED', 'REVIEW_REQUIRED'] } } })
+  ]);
+
   return {
     counts: {
-      productCandidates: await db.productCandidate.count(),
-      amazonMatches: await db.amazonMatch.count(),
-      ebayListings: await db.ebayListing.count(),
-      orders: await db.order.count(),
-      actions: await db.actionItem.count(),
-      purchases: await db.amazonPurchase.count(),
-      discoveryScans: await db.discoveryScanRun.count(),
-      amazonScouts: await db.amazonDiscoveryRun.count(),
-      ebayDiscoveries: await db.ebayDiscoveryRun.count(),
-      ebayAmazonComparisons: await dashboardDb.ebayAmazonComparisonRun.count(),
-      automationRuns: await db.automationRun.count(),
-      automationNeedsConfirmation: await db.automationRun.count({ where: { status: 'NEEDS_HUMAN_CONFIRMATION' } }),
-      automationFailures: await db.automationRun.count({ where: { status: { in: ['FAILED', 'REVIEW_REQUIRED'] } } })
+      productCandidates: productCandidatesCount,
+      amazonMatches: amazonMatchesCount,
+      ebayListings: ebayListingsCount,
+      orders: ordersCount,
+      actions: actionsCount,
+      purchases: purchasesCount,
+      discoveryScans: discoveryScansCount,
+      amazonScouts: amazonScoutsCount,
+      ebayDiscoveries: ebayDiscoveriesCount,
+      ebayAmazonComparisons: ebayAmazonComparisonsCount,
+      automationRuns: automationRunsCount,
+      automationNeedsConfirmation: automationNeedsConfirmationCount,
+      automationFailures: automationFailuresCount
     },
     productCandidates,
     amazonMatches,

@@ -337,6 +337,26 @@ export async function finishAutomationRun(db: PrismaClient, input: FinishAutomat
   return run;
 }
 
+/**
+ * Mark RUNNING automation runs that have gone silent past the stale window as FAILED, so a
+ * crashed/abandoned agent doesn't leave a run (and its action) stuck forever. The action
+ * returns to the pollable set and re-enters the retry/dead-letter flow. NEEDS_HUMAN_CONFIRMATION
+ * is deliberately left alone — it can legitimately wait for a human indefinitely.
+ */
+export async function sweepStaleAutomationRuns(db: PrismaClient, staleMs = 30 * 60 * 1000): Promise<number> {
+  const cutoff = new Date(Date.now() - staleMs);
+  const result = await db.automationRun.updateMany({
+    where: { status: 'RUNNING', updatedAt: { lt: cutoff } },
+    data: {
+      status: 'FAILED',
+      phase: 'FAILED',
+      error: 'Run exceeded the stale timeout and was swept (likely a crashed or abandoned agent).',
+      completedAt: new Date()
+    }
+  });
+  return result.count;
+}
+
 export async function listAutomationRuns(db: PrismaClient, take = 50): Promise<unknown[]> {
   return db.automationRun.findMany({
     orderBy: [{ startedAt: 'desc' }],

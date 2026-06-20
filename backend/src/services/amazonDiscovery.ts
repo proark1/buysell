@@ -17,6 +17,7 @@ import { scoreAmazonMatch } from './matchScorer.js';
 import { scoreOpportunity } from './opportunityScorer.js';
 import { applyIdentityDecision, evaluateProductIdentity } from './productIdentityMatcher.js';
 import { profitInputsFromRuleConfig } from './profitInputs.js';
+import { resolveLearningFactor } from './learningSignals.js';
 import { buildOpportunityEvidence } from './opportunityEvidence.js';
 import { calculateEbayMarketMetrics } from './marketMetrics.js';
 import { filterEbaySourceCandidates, type EbaySourceDropStats } from './ebaySourceFilters.js';
@@ -590,6 +591,7 @@ export function analyzeAmazonEbayComparison(
     comparisonSettings?: EbayComparisonSettings;
     activeEbayCandidates?: EbayCandidateInput[];
     sourceDrops?: EbaySourceDropStats;
+    learningFactor?: number;
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -666,7 +668,7 @@ export function analyzeAmazonEbayComparison(
       ...(opportunity.safety?.riskFlags ?? []),
       ...opportunity.decision.riskFlags,
       ...marketMetrics.riskFlags
-    ])]);
+    ])], context.learningFactor ?? 1);
     if (opportunity.decision.decision !== 'REJECT' && opportunity.identityMatch?.status !== 'REVIEW' && opportunity.score.total < ruleConfig.minimumOpportunityScore) {
       opportunity.decision = {
         decision: 'REJECT',
@@ -1003,11 +1005,15 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         postalCode: comparisonSettings.postalCode
       });
       const activeEbaySource = filterEbaySourceCandidates(rawActiveEbayCandidates, { sourceQuery: query, requireSoldPrice: false });
+      const learningFactor = ebaySource.candidates[0]
+        ? await resolveLearningFactor(options.db, ebaySource.candidates[0], options.ruleConfig.learningAdjustmentEnabled)
+        : 1;
       const comparison = analyzeAmazonEbayComparison(amazon, ebaySource.candidates, options.ruleConfig, query, {
         market,
         comparisonSettings,
         activeEbayCandidates: activeEbaySource.candidates,
-        sourceDrops: ebaySource.dropped
+        sourceDrops: ebaySource.dropped,
+        learningFactor
       });
       reports.push(comparison.report);
       const best = comparison.best;

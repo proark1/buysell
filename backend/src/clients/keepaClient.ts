@@ -230,8 +230,23 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
   return products.slice(0, limit).map((product) => keepaProductToAmazonMatch(product, domain));
 }
 
+interface CachedProduct {
+  value: AmazonMatchInput | undefined;
+  expiresAt: number;
+}
+
+// Short-TTL cache so repeated single-ASIN lookups within a monitor/sync pass (and across the
+// price monitor + buy re-check) don't each spend Keepa tokens for the same product.
+const productCache = new Map<string, CachedProduct>();
+const PRODUCT_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function getAmazonProductByAsin(options: KeepaProductOptions): Promise<AmazonMatchInput | undefined> {
   const domain = options.domain ?? 1;
+  const cacheKey = `${domain}:${options.asin}`;
+  const now = Date.now();
+  const cached = productCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
   const params = new URLSearchParams({
     key: options.apiKey,
     domain: String(domain),
@@ -248,5 +263,8 @@ export async function getAmazonProductByAsin(options: KeepaProductOptions): Prom
 
   const payload = keepaResponseSchema.parse(await response.json());
   const product = payload.products?.find((item: KeepaProduct) => item.asin === options.asin) ?? payload.products?.[0];
-  return product ? keepaProductToAmazonMatch(product, domain) : undefined;
+  const value = product ? keepaProductToAmazonMatch(product, domain) : undefined;
+  if (productCache.size > 5_000) productCache.clear();
+  productCache.set(cacheKey, { value, expiresAt: now + PRODUCT_CACHE_TTL_MS });
+  return value;
 }

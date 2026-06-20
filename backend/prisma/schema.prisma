@@ -400,8 +400,24 @@ model RuleConfig {
   ebayOrderSyncLookbackHours      Int      @default(48)
   maxAutomationAttempts           Int      @default(3)
   verificationTtlMinutes          Int      @default(0)
+  repricingEnabled                Boolean  @default(false)
+  repriceMaxIncreasePercent       Decimal  @default(0.1500) @db.Decimal(5, 4)
+  inventorySyncEnabled            Boolean  @default(false)
+  learningAdjustmentEnabled       Boolean  @default(false)
   createdAt                       DateTime @default(now())
   updatedAt                       DateTime @updatedAt
+}
+
+model ApiUsage {
+  id              String   @id @default(cuid())
+  provider        String
+  endpoint        String
+  tokensConsumed  Int      @default(0)
+  tokensLeft      Int?
+  context         String?
+  createdAt       DateTime @default(now())
+
+  @@index([provider, createdAt])
 }
 
 model DiscoveryScanRun {

@@ -82,15 +82,27 @@ export async function buildOpportunities(options: BuildOpportunitiesOptions): Pr
       limit: 3
     });
 
+    // Evaluate identity for every candidate and prefer a shared-identifier (EXACT, then
+    // STRONG) match over the highest lexical title overlap, so a coincidental title match
+    // can't outrank a confirmed UPC/EAN/model identity.
+    const identityRank = (status: string | undefined): number => (status === 'EXACT' ? 2 : status === 'STRONG' ? 1 : 0);
     const scoredMatches = amazonMatches
-      .map((amazon) => ({ ...amazon, matchConfidence: scoreAmazonMatch(ebay, amazon) }))
-      .sort((a, b) => b.matchConfidence - a.matchConfidence);
+      .map((amazon) => {
+        const candidate = { ...amazon, matchConfidence: scoreAmazonMatch(ebay, amazon) };
+        return { candidate, identity: evaluateProductIdentity(ebay, candidate) };
+      })
+      .sort((a, b) => {
+        const rankDelta = identityRank(b.identity?.status) - identityRank(a.identity?.status);
+        if (rankDelta !== 0) return rankDelta;
+        return b.candidate.matchConfidence - a.candidate.matchConfidence;
+      });
 
-    const bestMatch = scoredMatches[0];
-    if (!bestMatch) continue;
+    const best = scoredMatches[0];
+    if (!best) continue;
+    const bestMatch = best.candidate;
 
     const safety = evaluateProductSafety(ebay, bestMatch, policy);
-    const identityMatch = evaluateProductIdentity(ebay, bestMatch);
+    const identityMatch = best.identity;
 
     const amazonCost = bestMatch.buyBoxPrice ?? bestMatch.currentPrice;
     if (!ebay.soldPrice || !amazonCost) {

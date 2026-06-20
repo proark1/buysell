@@ -31,6 +31,7 @@ import {
   type EbayComparisonSettings
 } from '../services/marketplaces.js';
 import { getSecret } from '../services/secrets.js';
+import { recordApiUsage } from '../services/apiUsage.js';
 import { withSchedulerLock } from '../services/schedulerLocks.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import type { ProductOpportunity } from '../domain/products.js';
@@ -946,6 +947,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       try {
         const requestedTokens = estimatedEbayDiscoveryTokens(parsed.data);
         const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+        await recordApiUsage(prisma, { provider: 'keepa', endpoint: 'token', tokensLeft: tokenStatus.tokensLeft, context: 'ebay-discovery-run-autocompare' });
         if (tokenStatus.tokensLeft < requestedTokens) {
           const lowTokenResponse = lowKeepaTokenResponse(tokenStatus, requestedTokens);
           return reply.status(lowTokenResponse.statusCode).send(lowTokenResponse.body);
@@ -1054,6 +1056,23 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
       return reply.status(503).send({ error: 'KEEPA_API_KEY is required for Amazon comparison' });
     }
     const serpApiKey = await getSecret(prisma, 'SERPAPI_API_KEY');
+
+    // Token-budget pre-check (the scheduler does this; the manual route previously skipped it).
+    try {
+      const requestedTokens = estimatedEbayDiscoveryTokens({ compareLimit: parsed.data.limit, amazonMatchLimit: parsed.data.amazonMatchLimit });
+      const tokenStatus = await getKeepaTokenStatus(keepaApiKey);
+      await recordApiUsage(prisma, { provider: 'keepa', endpoint: 'token', tokensLeft: tokenStatus.tokensLeft, context: 'ebay-discovery-compare' });
+      if (tokenStatus.tokensLeft < requestedTokens) {
+        const lowTokenResponse = lowKeepaTokenResponse(tokenStatus, requestedTokens);
+        return reply.status(lowTokenResponse.statusCode).send(lowTokenResponse.body);
+      }
+    } catch (error) {
+      if (error instanceof KeepaApiError) {
+        const keepaError = keepaErrorResponse(error);
+        return reply.status(keepaError.statusCode).send(keepaError.body);
+      }
+      throw error;
+    }
 
     const ruleConfig = await getActiveRuleConfig(prisma);
     const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);

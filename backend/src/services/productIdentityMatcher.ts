@@ -375,10 +375,38 @@ const identityIdentifierKeys = new Set([
   ...ignoredMarketplaceIdentifierKeys
 ]);
 
+function gtinCheckDigitValid(value: string): boolean {
+  const digits = value.split('').map(Number);
+  const body = digits.slice(0, -1);
+  const check = digits[digits.length - 1];
+  let sum = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    const fromRight = body.length - 1 - i;
+    sum += body[i] * (fromRight % 2 === 0 ? 3 : 1);
+  }
+  return (10 - (sum % 10)) % 10 === check;
+}
+
+function isbn10CheckDigitValid(value: string): boolean {
+  if (value.length !== 10) return false;
+  let sum = 0;
+  for (let i = 0; i < 10; i += 1) {
+    const char = value[i];
+    const digit = char === 'X' ? 10 : Number(char);
+    if (Number.isNaN(digit)) return false;
+    sum += (10 - i) * digit;
+  }
+  return sum % 11 === 0;
+}
+
+// Validate the check digit so a coincidental run of digits can't pass as an EXACT
+// barcode identity match. X is only valid as the ISBN-10 check position.
 function isPlausibleBarcodeIdentifier(value: string): boolean {
   if (!/^[0-9X]+$/.test(value)) return false;
-  if (value.endsWith('X')) return value.length === 10;
-  return [8, 10, 12, 13, 14].includes(value.length);
+  if (value.includes('X')) return value.length === 10 && value.indexOf('X') === 9 && isbn10CheckDigitValid(value);
+  if (value.length === 10) return isbn10CheckDigitValid(value);
+  if ([8, 12, 13, 14].includes(value.length)) return gtinCheckDigitValid(value);
+  return false;
 }
 
 function isPlausiblePartIdentifier(value: string): boolean {

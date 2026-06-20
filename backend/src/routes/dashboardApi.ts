@@ -5,6 +5,7 @@ import { getDashboardData, getDashboardDiscoveryCandidates, getPipelineSummary }
 import { defaultRuleConfig, getActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import { runLockedAmazonPriceMonitor } from '../services/amazonPriceMonitorScheduler.js';
+import { runScoreBacktest } from '../services/backtesting.js';
 import { runScheduledEbayAmazonComparison, runScheduledEbayDiscovery } from '../services/ebayDiscoveryScheduler.js';
 
 const settingsSchema = z.object({
@@ -43,7 +44,11 @@ const settingsSchema = z.object({
   ebayOrderSyncIntervalMinutes: z.number().int().positive().max(1440).optional(),
   ebayOrderSyncLookbackHours: z.number().int().positive().max(720).optional(),
   maxAutomationAttempts: z.number().int().min(1).max(20).optional(),
-  verificationTtlMinutes: z.number().int().min(0).max(10080).optional()
+  verificationTtlMinutes: z.number().int().min(0).max(10080).optional(),
+  repricingEnabled: z.boolean().optional(),
+  repriceMaxIncreasePercent: z.number().min(0).max(1).optional(),
+  inventorySyncEnabled: z.boolean().optional(),
+  learningAdjustmentEnabled: z.boolean().optional()
 });
 
 const discoveryCandidatesQuerySchema = z.object({
@@ -301,6 +306,11 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     return { entries: page, nextCursor: hasMore ? page[page.length - 1]?.id : null };
   });
 
+  app.get('/api/backtest/score', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return runScoreBacktest(prisma);
+  });
+
   app.get('/api/settings', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     return getActiveRuleConfig(prisma);
@@ -329,7 +339,8 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
       'minimumSellThroughRate',
       'maximumCompetitionRatio',
       'maxDailyPurchaseAmountUsd',
-      'maxAmazonCostUsd'
+      'maxAmazonCostUsd',
+      'repriceMaxIncreasePercent'
     ]);
     const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value])) as RuleConfigPatch;
     const ruleConfig = await patchRuleConfig(data);
