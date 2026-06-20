@@ -46,6 +46,7 @@ export interface EbayDiscoveryScore {
   metadata: number;
   category: number;
   diversity: number;
+  sourceability: number;
   riskPenalty: number;
   reasons: string[];
 }
@@ -310,7 +311,7 @@ function evaluateEbayCandidateSafety(ebay: EbayCandidateInput, policy: SafetyPol
   return { status, riskFlags, reasons };
 }
 
-function scoreEbayDiscoveryCandidate(
+export function scoreEbayDiscoveryCandidate(
   ebay: EbayCandidateInput,
   options: {
     minSoldPrice: number;
@@ -382,13 +383,40 @@ function scoreEbayDiscoveryCandidate(
     return penalty + 4;
   }, 0);
 
+  // Sourceability: how identifiable the product is, which predicts whether it can map to a single
+  // Amazon ASIN at all (and thus whether arbitrage is even possible). Branded / model-bearing /
+  // barcode listings rank above unidentifiable generic commodities — the previous score rewarded
+  // only generic listing quality (price/condition/metadata) that every commodity shares equally,
+  // so the queue never ranked on what actually predicts a match.
+  // This is an additive boost (0–24), never a penalty: brand inference only knows a fixed brand
+  // list, so an unrecognized-but-real brand (e.g. BENFEI) must not be pushed BELOW the score gate
+  // and dropped. Identifiable items rise; generic ones stay at their base and are filtered instead
+  // by the higher minEbayScore on the branded-value profile.
+  const fingerprint = extractEbayIdentityFingerprint(ebay);
+  let sourceability = 0;
+  if (fingerprint.brand) sourceability += 7;
+  if (fingerprint.modelTokens.length > 0) sourceability += 7;
+  if (fingerprint.identifiers.length > 0) sourceability += 10;
+  sourceability = Math.min(sourceability, 24);
+  if (sourceability > 0) {
+    const signals = [
+      fingerprint.brand ? `brand ${fingerprint.brand}` : undefined,
+      fingerprint.modelTokens.length ? `model ${fingerprint.modelTokens.slice(0, 2).join('/')}` : undefined,
+      fingerprint.identifiers.length ? 'barcode/MPN' : undefined
+    ].filter(Boolean);
+    reasons.push(`Identifiable for Amazon matching (${signals.join(', ')}); prioritized in the compare queue.`);
+  } else {
+    reasons.push('No brand, model, or barcode detected — harder to match to a specific Amazon ASIN.');
+  }
+
   return {
-    total: round(clamp(price + condition + metadata + category + diversity - riskPenalty, 0, 100)),
+    total: round(clamp(price + condition + metadata + category + diversity + sourceability - riskPenalty, 0, 100)),
     price: round(price),
     condition: round(condition),
     metadata: round(metadata),
     category: round(category),
     diversity: round(diversity),
+    sourceability: round(sourceability),
     riskPenalty,
     reasons
   };

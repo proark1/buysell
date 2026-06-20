@@ -19,7 +19,25 @@ const stopWords = new Set([
   'bluetooth',
   'usb',
   'black',
-  'white'
+  'white',
+  // German grammar + accessory-noise words (titles are normalized to ASCII first, so "für" →
+  // "fur"). These previously stayed in the token set and depressed Jaccard overlap on genuine
+  // same-product matches between English Amazon and German eBay titles.
+  'fur',
+  'und',
+  'mit',
+  'oder',
+  'von',
+  'der',
+  'die',
+  'das',
+  'den',
+  'ein',
+  'eine',
+  'kompatibel',
+  'ersatz',
+  'passend',
+  'zubehor'
 ]);
 
 const normalizeText = (value: string): string => value

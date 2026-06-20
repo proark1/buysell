@@ -7,10 +7,12 @@ export interface OpportunityThresholds {
   minimumMatchConfidence: number;
 }
 
+// Breakeven defaults (mirrors defaultRuleConfig): non-negative spread, no fee floor. The
+// product-identity matcher remains the guard against matching the wrong product.
 const defaultThresholds: OpportunityThresholds = {
-  minimumProfitUsd: 10,
-  minimumRoiPercent: 25,
-  minimumMatchConfidence: 0.75
+  minimumProfitUsd: 0,
+  minimumRoiPercent: 0,
+  minimumMatchConfidence: 0.55
 };
 
 const availabilityRiskFlag = (status: string | undefined): string | undefined => {
