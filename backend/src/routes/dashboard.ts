@@ -4,6 +4,7 @@ import { prisma } from '../db/prisma.js';
 import {
   clearDashboardSessionHeaders,
   createDashboardSessionHeaders,
+  revokeDashboardSessionRequest,
   setCookieHeaders,
   verifyDashboardSessionRequest
 } from '../security/dashboardSession.js';
@@ -3338,7 +3339,8 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
     setCookieHeaders(reply, cookies);
     return { ok: true };
   });
-  app.post('/dashboard/logout', async (_request, reply) => {
+  app.post('/dashboard/logout', async (request, reply) => {
+    await revokeDashboardSessionRequest(prisma, request);
     setCookieHeaders(reply, clearDashboardSessionHeaders());
     return { ok: true };
   });

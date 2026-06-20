@@ -20,14 +20,26 @@ export interface AmazonDiscoveryScore {
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const round = (value: number): number => Math.round(value);
 
+// Sales-rank scales vary enormously by category (a 50k rank is excellent in a small
+// category but mediocre in Books/Electronics). Divide the raw rank by a per-category factor
+// so the rank buckets below are roughly comparable across categories.
+const categoryRankDivisor = (rootCategory: string | undefined): number => {
+  const key = (rootCategory ?? '').toLowerCase();
+  if (/book|kindle|magazine/.test(key)) return 12;
+  if (/electronic|cell phone|computer|camera/.test(key)) return 6;
+  if (/clothing|shoe|apparel|home|kitchen|toy|sports|beauty|grocery/.test(key)) return 3;
+  return 1;
+};
+
 function demandScore(product: AmazonMatchInput): number {
   let score = 0;
   const salesRank = product.salesRank;
   if (salesRank) {
-    if (salesRank <= 10_000) score += 22;
-    else if (salesRank <= 50_000) score += 18;
-    else if (salesRank <= 150_000) score += 13;
-    else if (salesRank <= 500_000) score += 7;
+    const normalizedRank = salesRank / categoryRankDivisor(product.rootCategory);
+    if (normalizedRank <= 10_000) score += 22;
+    else if (normalizedRank <= 50_000) score += 18;
+    else if (normalizedRank <= 150_000) score += 13;
+    else if (normalizedRank <= 500_000) score += 7;
     else score += 2;
   }
   if (product.reviewCount) score += clamp(product.reviewCount / 80, 0, 5);

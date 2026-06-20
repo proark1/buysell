@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { getAmazonProductByAsin, keepaDomainIdFromAmazonUrl } from '../clients/keepaClient.js';
+import { getAmazonProductByAsin, getAmazonProductsByAsins, keepaDomainIdFromAmazonUrl } from '../clients/keepaClient.js';
 import { getSecret } from './secrets.js';
 import { getActiveRuleConfig, type ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { profitInputsFromRuleConfig } from './profitInputs.js';
@@ -109,6 +109,25 @@ export async function runAmazonPriceMonitor(db: PrismaClient): Promise<unknown> 
     where: { listingStatus: { in: statuses } },
     include: { amazonMatch: true, productCandidate: true }
   }) as unknown as MonitoredListing[];
+
+  // Batch-prime the Keepa product cache (one call per ~100 ASINs) so the per-listing lookups
+  // below hit the cache instead of each spending a token-metered call.
+  const asinsByDomain = new Map<number, Set<string>>();
+  for (const listing of listings) {
+    const asin = listing.amazonMatch?.asin;
+    if (!asin) continue;
+    const domain = keepaDomainIdFromAmazonUrl(listing.amazonMatch?.amazonUrl ?? undefined) ?? 1;
+    const set = asinsByDomain.get(domain) ?? new Set<string>();
+    set.add(asin);
+    asinsByDomain.set(domain, set);
+  }
+  for (const [domain, asins] of asinsByDomain) {
+    try {
+      await getAmazonProductsByAsins({ apiKey: keepaApiKey, asins: [...asins], domain });
+    } catch {
+      // Fall back to per-listing lookups below if the batch call fails.
+    }
+  }
 
   const profitAt = (ebayPrice: number, amazonCost: number): { profit: number; roi: number } => {
     const result = calculateProfit({ ebaySalePrice: ebayPrice, amazonItemCost: amazonCost, ...inputs });

@@ -59,7 +59,9 @@ function clientKey(request: FastifyRequest): string {
 function limitFor(request: FastifyRequest): number {
   const method = requestMethod(request).toUpperCase();
   const path = requestUrl(request).split('?')[0] || '/';
-  if (path === '/health' || path === '/api/health/db' || path === '/favicon.ico') return 0;
+  if (path === '/health' || path === '/favicon.ico') return 0;
+  // /api/health/db runs a DB query, so it must be rate-limited (it was previously exempt).
+  if (path === '/api/health/db') return 30;
   if (path === '/' || path === '/dashboard/login') return 60;
   if (expensivePathPattern.test(path)) return 30;
   if (method === 'GET') return 240;

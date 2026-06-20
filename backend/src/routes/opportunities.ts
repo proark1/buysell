@@ -428,17 +428,18 @@ const COMPARISON_LOCK_NAME = 'ebay-amazon-comparison-auto-run';
 const COMPARISON_LOCK_TTL_MS = 6 * 60 * 1000;
 
 export async function registerOpportunityRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/opportunities/profiles', async () => ({ profiles: discoveryProfiles }));
-  app.get('/amazon-discovery/profiles', async () => ({
-    profiles: amazonDiscoveryProfiles,
-    markets: amazonDiscoveryMarkets,
-    ebayComparisonPresets
-  }));
-  app.get('/ebay-discovery/profiles', async () => ({
-    profiles: ebayDiscoveryProfiles,
-    markets: amazonDiscoveryMarkets,
-    comparisonPresets: ebayComparisonPresets
-  }));
+  app.get('/opportunities/profiles', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return { profiles: discoveryProfiles };
+  });
+  app.get('/amazon-discovery/profiles', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return { profiles: amazonDiscoveryProfiles, markets: amazonDiscoveryMarkets, ebayComparisonPresets };
+  });
+  app.get('/ebay-discovery/profiles', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
+    return { profiles: ebayDiscoveryProfiles, markets: amazonDiscoveryMarkets, comparisonPresets: ebayComparisonPresets };
+  });
   app.get('/amazon-discovery/token-status', async (request, reply) => {
     if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
 

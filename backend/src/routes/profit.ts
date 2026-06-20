@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { calculateProfit } from '../services/profitCalculator.js';
+import { prisma } from '../db/prisma.js';
+import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 
 const profitRequestSchema = z.object({
   ebaySalePrice: z.number().positive(),
@@ -31,6 +33,7 @@ const profitRequestSchema = z.object({
 
 export async function registerProfitRoutes(app: FastifyInstance): Promise<void> {
   app.post('/profit/calculate', async (request, reply) => {
+    if (!(await verifyLocalAgentRequest(prisma, request, reply))) return;
     const parsed = profitRequestSchema.safeParse(request.body);
 
     if (!parsed.success) {

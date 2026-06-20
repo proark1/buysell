@@ -344,6 +344,16 @@ export async function registerDashboardApiRoutes(app: FastifyInstance): Promise<
     ]);
     const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, typeof value === 'number' && decimalKeys.has(key) ? String(value) : value])) as RuleConfigPatch;
     const ruleConfig = await patchRuleConfig(data);
+    // Audit operationally-sensitive settings changes (which fields changed, by whom).
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'RuleConfig',
+        entityId: 'default',
+        action: 'RULECONFIG_UPDATED',
+        actor: 'dashboard',
+        afterJson: { changedKeys: Object.keys(parsed.data), values: parsed.data }
+      }
+    }).catch(() => undefined);
     return { ruleConfig };
   });
 

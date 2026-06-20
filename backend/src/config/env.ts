@@ -19,6 +19,9 @@ const rawEnvSchema = z.object({
   OPENAI_API_KEY: envValue(z.string().min(1).optional()),
   LOCAL_AGENT_SHARED_SECRET: envValue(z.string().min(1).optional()),
   BUYSELL_ENCRYPTION_KEY: envValue(z.string().min(32).optional()),
+  // Optional previous key, kept valid for decrypt only, so the active key can be rotated
+  // without losing access to data encrypted under the old key.
+  BUYSELL_ENCRYPTION_KEY_PREVIOUS: envValue(z.string().min(32).optional()),
   // Fastify trustProxy: 'true'/'false', a trusted-hop count, or an IP/CIDR allow-list.
   // Leave unset to derive client IPs from the socket only (no X-Forwarded-For trust).
   TRUST_PROXY: envValue(z.string().min(1).optional()),

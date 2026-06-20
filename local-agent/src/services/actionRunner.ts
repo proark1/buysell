@@ -191,6 +191,25 @@ const observedPurchasePrice = (result: ComputerUseAutomationResult): number | un
     ?? numberValue(recordValue(evidence, 'orderTotal'));
 };
 
+// Whether the operator's reported final URL is within the allowed domains. Enforced before
+// ANY auto-execution (not just autopilot) so an operator that landed on an unexpected site
+// can't trigger a backend action. A missing URL is permitted only for the explicit
+// autoComplete opt-in path (autopilot separately requires evidence.finalUrl).
+function finalUrlAllowed(job: ComputerUseAutomationJob, result: ComputerUseAutomationResult): boolean {
+  const evidence = result.evidence ?? {};
+  const finalUrl = stringValue(recordValue(evidence, 'finalUrl')) ?? stringValue(recordValue(evidence, 'url'));
+  if (!finalUrl) return true;
+  try {
+    const host = new URL(finalUrl).hostname.toLowerCase().replace(/^www\./, '');
+    return job.guardrails.allowedDomains.some((domain) => {
+      const normalized = domain.toLowerCase().replace(/^www\./, '');
+      return host === normalized || host.endsWith(`.${normalized}`);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export function autopilotEvidenceFailures(job: ComputerUseAutomationJob, result: ComputerUseAutomationResult): string[] {
   if (job.mode !== 'AUTOPILOT' || result.actionCompleted !== true) return [];
 
@@ -403,7 +422,7 @@ async function runOperatorMode(options: BackendClientOptions, action: ActionItem
   // Only AUTOPILOT (after passing the evidence gate) or an explicit operator opt-in may
   // auto-execute. A non-autopilot operator self-reporting actionCompleted can no longer
   // bypass the DRAFT/ASSISTED human-confirmation gate.
-  if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions)) {
+  if (status === 'COMPLETED' && (mode === 'AUTOPILOT' || options.autoCompleteManualActions) && finalUrlAllowed(job, result)) {
     await executeAction(options, action.id, result as Record<string, unknown>);
   }
 }

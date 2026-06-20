@@ -143,7 +143,9 @@ async function persistOpportunityRows(
       totalLandedCost: money(opportunity.profit.totalLandedCost) ?? '0.00',
       expectedProfit: money(opportunity.profit.expectedProfit) ?? '0.00',
       roiPercent: decimal(opportunity.profit.roiPercent),
-      marginPercent: decimal(opportunity.profit.marginPercent)
+      marginPercent: decimal(opportunity.profit.marginPercent),
+      // Persist the full computed breakdown so stored components reconcile to totalLandedCost.
+      breakdownJson: jsonReady(opportunity.profit)
     }
   });
 
@@ -200,11 +202,18 @@ export async function persistOpportunity(
   opportunity: ProductOpportunity,
   context: PersistOpportunityContext = {}
 ): Promise<PersistedOpportunityIds> {
-  const transactionalDb = db as unknown as { $transaction?: <T>(fn: (tx: PrismaClient) => Promise<T>) => Promise<T> };
+  const transactionalDb = db as unknown as {
+    $transaction?: <T>(fn: (tx: PrismaClient) => Promise<T>, options?: { maxWait?: number; timeout?: number }) => Promise<T>;
+  };
   if (typeof transactionalDb.$transaction !== 'function') {
     return persistOpportunityRows(db, opportunity, context);
   }
-  return transactionalDb.$transaction((tx) => persistOpportunityRows(tx, opportunity, context));
+  // This persist does several dependent writes; give the interactive transaction explicit
+  // wait/run budgets so it fails fast under contention instead of hitting the 5s default.
+  return transactionalDb.$transaction(
+    (tx) => persistOpportunityRows(tx, opportunity, context),
+    { maxWait: 20_000, timeout: 30_000 }
+  );
 }
 
 export async function persistOpportunities(

@@ -464,7 +464,11 @@ export function selectEbayDiscoveryQueries(
       .split(/[\n,;]+/)
       .map((item) => item.trim())
       .filter(Boolean);
-    return manualQueries.length > 0 ? manualQueries : [trimmed];
+    // Each manual query fans out into its own SerpApi search; cap the pasted list so a huge
+    // paste can't trigger an unbounded number of paid searches in one run.
+    const MANUAL_QUERY_CEILING = 25;
+    const capped = manualQueries.slice(0, MANUAL_QUERY_CEILING);
+    return capped.length > 0 ? capped : [trimmed];
   }
 
   const seeds = category.seedQueries.length > 0 ? category.seedQueries : [profile.label];
@@ -1256,6 +1260,10 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
       let activeMarketWarning: string | undefined;
       if (options.serpApiKey) {
         try {
+          // Constrain the active-market sample to the sold comp's price band and category so
+          // the competition ratio is measured against a comparable population (not the whole
+          // unfiltered search), which previously biased the metric.
+          const soldBand = ebay.soldPrice;
           const rawActiveMarketCandidates = await searchEbayCandidates({
             query,
             apiKey: options.serpApiKey,
@@ -1266,6 +1274,9 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
             conditionIds: conditionIdsBySetting.NEW,
             preferredLocation: 'Domestic',
             postalCode: market.defaultPostalCode,
+            categoryId: ebay.categoryId ?? undefined,
+            minPrice: soldBand ? Math.max(0, Math.round(soldBand * 0.5 * 100) / 100) : undefined,
+            maxPrice: soldBand ? Math.round(soldBand * 1.5 * 100) / 100 : undefined,
             limit: 25
           });
           activeMarketCandidates = filterEbaySourceCandidates(rawActiveMarketCandidates, { sourceQuery: query, requireSoldPrice: false }).candidates;

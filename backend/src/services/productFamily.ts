@@ -81,7 +81,10 @@ export function productFamilyKeyForEbayCandidate(ebay: EbayCandidateInput): stri
   if (modelTokens.length > 0) {
     const firstModelIndex = tokens.findIndex((token) => token === modelTokens[0]);
     const brandCandidate = firstModelIndex > 0 ? tokens[firstModelIndex - 1] : tokens[0];
-    return [brandCandidate, ...modelTokens.slice(0, 3)].filter(Boolean).join(':').slice(0, 120);
+    // Sort + de-dupe the model tokens so the same product in a different title word order
+    // yields the same family key (prevents fragmenting learning/aggregation).
+    const stableModelTokens = [...new Set(modelTokens)].sort().slice(0, 3);
+    return [brandCandidate, ...stableModelTokens].filter(Boolean).join(':').slice(0, 120);
   }
   return tokens.slice(0, 7).join(':').slice(0, 120) || ebay.title.toLowerCase().slice(0, 120);
 }

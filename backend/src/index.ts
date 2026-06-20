@@ -6,6 +6,7 @@ import { startAmazonPriceMonitorScheduler } from './services/amazonPriceMonitorS
 import { startEbayAmazonComparisonScheduler, startEbayDiscoveryScheduler } from './services/ebayDiscoveryScheduler.js';
 import { startEbayOrderSyncScheduler } from './services/ebayOrderSyncScheduler.js';
 import { sweepStaleAutomationRuns } from './services/automation.js';
+import { deleteExpiredDashboardSessions } from './security/dashboardSession.js';
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -14,6 +15,11 @@ async function main(): Promise<void> {
   sweepStaleAutomationRuns(prismaClient)
     .then((count) => { if (count > 0) app.log.info({ count }, 'Swept stale automation runs on startup'); })
     .catch((error: unknown) => app.log.error({ error }, 'Stale automation-run sweep failed'));
+
+  // Bound DashboardSession growth by clearing expired rows.
+  deleteExpiredDashboardSessions(prismaClient)
+    .then((count) => { if (count > 0) app.log.info({ count }, 'Deleted expired dashboard sessions on startup'); })
+    .catch((error: unknown) => app.log.error({ error }, 'Dashboard session cleanup failed'));
 
   startAmazonPriceMonitorScheduler(app);
   startEbayDiscoveryScheduler(app);

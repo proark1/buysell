@@ -155,6 +155,7 @@ model ProfitSnapshot {
   roiPercent             Decimal          @db.Decimal(7, 3)
   marginPercent          Decimal          @db.Decimal(7, 3)
   calculationVersion     String           @default("v1")
+  breakdownJson          Json?
   createdAt              DateTime         @default(now())
   productCandidate       ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
   amazonMatch            AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Cascade)
@@ -586,6 +587,16 @@ model Credential {
   encryptedValue String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model DashboardSession {
+  id         String    @id
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  label      String?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
 }
 
 model SchedulerLock {

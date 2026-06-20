@@ -2,6 +2,30 @@ import { spawn } from 'node:child_process';
 import { z } from 'zod';
 
 const maxOutputChars = 1_000_000;
+const maxStderrRelayChars = 500;
+
+// Secrets that must not be inherited by the spawned computer-use command's environment.
+const sensitiveEnvKeys = new Set([
+  'LOCAL_AGENT_SHARED_SECRET',
+  'BUYSELL_ENCRYPTION_KEY',
+  'BUYSELL_ENCRYPTION_KEY_PREVIOUS',
+  'DATABASE_URL',
+  'OPENAI_API_KEY',
+  'KEEPA_API_KEY',
+  'SERPAPI_API_KEY',
+  'EBAY_CLIENT_ID',
+  'EBAY_CLIENT_SECRET',
+  'EBAY_REFRESH_TOKEN',
+  'NOTIFICATION_WEBHOOK_URL'
+]);
+
+const minimalChildEnv = (): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!sensitiveEnvKeys.has(key)) env[key] = value;
+  }
+  return env;
+};
 
 export function parseCommandLine(command: string): string[] {
   const args: string[] = [];
@@ -49,7 +73,7 @@ export async function runJsonCommand<T>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const [file, ...args] = parseCommandLine(command);
-    const child = spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'], env: minimalChildEnv() });
     let stdout = '';
     let stderr = '';
     let settled = false;
@@ -84,7 +108,10 @@ export async function runJsonCommand<T>(
       settled = true;
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`${label} exited with ${code ?? 'unknown'}: ${stderr.trim()}`));
+        // Truncate child stderr before relaying so a noisy/secret-bearing dump isn't
+        // forwarded verbatim to the backend.
+        const relayStderr = stderr.trim().slice(0, maxStderrRelayChars);
+        reject(new Error(`${label} exited with ${code ?? 'unknown'}: ${relayStderr}`));
         return;
       }
       try {

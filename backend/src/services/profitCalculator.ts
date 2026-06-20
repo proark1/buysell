@@ -21,6 +21,7 @@ export interface ProfitCalculatorInput {
   marketplaceRiskBuffer?: number;
   stockoutRiskBuffer?: number;
   estimatedSalesTaxRate?: number;
+  taxableSourceShipping?: boolean;
   returnRiskBuffer?: number;
   priceChangeBuffer?: number;
 }
@@ -83,7 +84,10 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
   const estimatedVariableFees = grossRevenue * (ebayFinalValueFeeRate + ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate);
   const currencyConversionReserve = grossRevenue * currencyConversionBufferRate;
   const estimatedFees = estimatedVariableFees + paymentFixedFee + insertionFee + listingUpgradeFees + promotedListingFixedFee;
-  const estimatedTax = input.amazonItemCost * estimatedSalesTaxRate;
+  // Source sales tax is charged on the item, and optionally on taxable source shipping
+  // (relevant in high-VAT markets where shipping is taxed).
+  const taxableBase = input.amazonItemCost + (input.taxableSourceShipping ? sourceShippingCost : 0);
+  const estimatedTax = taxableBase * estimatedSalesTaxRate;
   const returnReserve = grossRevenue * returnReserveRate;
   const returnShippingReserve = grossRevenue * returnShippingReserveRate;
   const cancellationReserve = grossRevenue * cancellationReserveRate;

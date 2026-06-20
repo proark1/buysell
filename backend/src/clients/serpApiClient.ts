@@ -207,6 +207,15 @@ function pageSizeForLimit(limit: number | undefined): 25 | 50 | 100 | 200 {
   return 200;
 }
 
+interface CachedSearch {
+  value: EbayCandidateInput[];
+  expiresAt: number;
+}
+// Short-TTL cache so the same eBay search within a discovery/compare pass doesn't re-spend
+// SerpApi credits. Keyed by the query parameters (excluding the API key).
+const searchCache = new Map<string, CachedSearch>();
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function searchEbayCandidates(options: SerpApiSearchOptions): Promise<EbayCandidateInput[]> {
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 200);
   const params = new URLSearchParams({
@@ -242,6 +251,13 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
   if (options.postalCode?.trim()) params.set('_stpos', options.postalCode.trim());
   if (options.exactQueryOnly) params.set('_blrs', 'spell_auto_correct');
 
+  const cacheKey = [...params.entries()].filter(([key]) => key !== 'api_key').map(([key, value]) => `${key}=${value}`).join('&');
+  const now = Date.now();
+  const cached = searchCache.get(cacheKey);
+  // The cache stores the full fetched set; each caller slices to its own limit, since two
+  // callers can share a cache key (same bucketed _ipg) yet want different result counts.
+  if (cached && cached.expiresAt > now) return cached.value.slice(0, limit);
+
   const response = await fetchWithRetry(`https://serpapi.com/search.json?${params.toString()}`);
   if (!response.ok) {
     throw new SerpApiError(response.status, await response.text());
@@ -255,7 +271,8 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
 
   const results = [...(payload.organic_results ?? []), ...(payload.shopping_results ?? [])];
 
-  return results.slice(0, limit).flatMap((result) => {
+  // Map the full fetched set (not sliced), cache it, then slice to this caller's limit.
+  const candidates = results.flatMap((result) => {
     const record = result as Record<string, unknown>;
     const title = parseText(result.title);
     if (!title) return [];
@@ -273,4 +290,8 @@ export async function searchEbayCandidates(options: SerpApiSearchOptions): Promi
       raw: result
     }];
   });
+
+  if (searchCache.size > 2_000) searchCache.clear();
+  searchCache.set(cacheKey, { value: candidates, expiresAt: now + SEARCH_CACHE_TTL_MS });
+  return candidates.slice(0, limit);
 }

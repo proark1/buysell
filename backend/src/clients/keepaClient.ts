@@ -268,3 +268,40 @@ export async function getAmazonProductByAsin(options: KeepaProductOptions): Prom
   productCache.set(cacheKey, { value, expiresAt: now + PRODUCT_CACHE_TTL_MS });
   return value;
 }
+
+export interface KeepaProductsBatchOptions {
+  asins: string[];
+  apiKey: string;
+  domain?: number;
+}
+
+const KEEPA_PRODUCT_BATCH_SIZE = 100;
+
+/**
+ * Fetch many ASINs in batched /product calls (Keepa accepts up to 100 ASINs per request)
+ * and prime the per-ASIN cache, so callers that then call getAmazonProductByAsin per item
+ * hit the cache instead of spending one token-metered call each. Returns a map by ASIN.
+ */
+export async function getAmazonProductsByAsins(options: KeepaProductsBatchOptions): Promise<Map<string, AmazonMatchInput>> {
+  const domain = options.domain ?? 1;
+  const unique = [...new Set(options.asins.filter((asin) => asin && asin.trim()))];
+  const out = new Map<string, AmazonMatchInput>();
+  const now = Date.now();
+
+  for (let i = 0; i < unique.length; i += KEEPA_PRODUCT_BATCH_SIZE) {
+    const chunk = unique.slice(i, i + KEEPA_PRODUCT_BATCH_SIZE);
+    const params = new URLSearchParams({ key: options.apiKey, domain: String(domain), asin: chunk.join(','), stats: '90', history: '0', update: '24' });
+    const response = await fetchWithRetry(`https://api.keepa.com/product?${params.toString()}`);
+    if (!response.ok) throw new KeepaApiError(response.status, await response.text());
+    const payload = keepaResponseSchema.parse(await response.json());
+    const products = payload.products ?? [];
+    for (const asin of chunk) {
+      const product = products.find((item: KeepaProduct) => item.asin === asin);
+      const value = product ? keepaProductToAmazonMatch(product, domain) : undefined;
+      if (productCache.size > 5_000) productCache.clear();
+      productCache.set(`${domain}:${asin}`, { value, expiresAt: now + PRODUCT_CACHE_TTL_MS });
+      if (value) out.set(asin, value);
+    }
+  }
+  return out;
+}
