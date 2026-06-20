@@ -430,6 +430,42 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
     ]
   },
   {
+    key: 'branded-value',
+    label: 'Branded & Model-Specific',
+    description: 'eBay-first scan biased toward brand-name, model-specific products that map cleanly to a single Amazon ASIN and carry real price spreads — instead of generic commodity accessories where Amazon is rarely cheaper. Higher sold-price floor and score gate. Tune the seed queries to brands you want to source.',
+    defaultLimit: 30,
+    compareLimit: 12,
+    minEbayScore: 60,
+    minSoldPrice: 40,
+    maxSoldPrice: 400,
+    categories: [
+      {
+        key: 'audio-brands',
+        label: 'Audio (Branded)',
+        description: 'Brand-name headphones, speakers, and audio gear with clear model numbers.',
+        seedQueries: ['sony wh-1000xm', 'bose quietcomfort', 'jbl charge', 'sennheiser momentum', 'anker soundcore', 'sonos one', 'marshall emberton', 'teufel kopfhoerer']
+      },
+      {
+        key: 'pc-peripherals-brands',
+        label: 'PC Peripherals (Branded)',
+        description: 'Brand-name keyboards, mice, docks, and storage with model identifiers.',
+        seedQueries: ['logitech mx master', 'keychron mechanical keyboard', 'elgato stream deck', 'samsung t7 ssd', 'sandisk extreme ssd', 'razer deathadder', 'logitech mx keys', 'caldigit dock']
+      },
+      {
+        key: 'power-tools-brands',
+        label: 'Power Tools (Branded)',
+        description: 'Brand-name cordless tools and kits whose model numbers map to a single ASIN.',
+        seedQueries: ['dewalt cordless drill', 'makita impact driver', 'bosch professional gsr', 'einhell power x-change', 'metabo akkuschrauber', 'milwaukee m18', 'bosch akkuschrauber']
+      },
+      {
+        key: 'smart-home-brands',
+        label: 'Smart Home (Branded)',
+        description: 'Brand-name smart-home hardware with clear product models.',
+        seedQueries: ['philips hue starter', 'tp-link tapo camera', 'aqara sensor', 'eufy robovac', 'tado thermostat', 'ring video doorbell', 'netatmo wetterstation']
+      }
+    ]
+  },
+  {
     key: 'custom',
     label: 'Custom eBay Discovery',
     description: 'Use your own sold-listing keywords with the same safety and score gates.',

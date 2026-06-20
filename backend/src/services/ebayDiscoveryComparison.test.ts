@@ -3,6 +3,7 @@ import {
   amazonSearchQueriesForEbayProduct,
   buildEbayDiscoveryCandidates,
   productFamilyKeyForEbayCandidate,
+  scoreEbayDiscoveryCandidate,
   selectEbayDiscoveryQueries
 } from './ebayDiscovery.js';
 import { getEbayDiscoveryCategory, getEbayDiscoveryProfile } from './discoveryPolicy.js';
@@ -177,6 +178,35 @@ const familyKey = productFamilyKeyForEbayCandidate({
   soldPrice: 75
 });
 assertEqual(familyKey, 'tera:x100', 'eBay discovery product family key');
+
+// Sourceability ranking: an identifiable branded/model-bearing listing must outrank an
+// unidentifiable generic commodity, so the compare queue prioritizes arbitrageable products.
+const scoreOpts = { minSoldPrice: 25, maxSoldPrice: 250 };
+const brandedScore = scoreEbayDiscoveryCandidate(
+  { title: 'Logitech G502 Hero Gaming Mouse', soldPrice: 60, condition: 'New', category: 'Consumer Electronics', itemId: '1', url: 'https://www.ebay.com/itm/1' },
+  scoreOpts,
+  []
+);
+const genericScore = scoreEbayDiscoveryCandidate(
+  { title: 'Wireless Gaming Mouse RGB 6 Button', soldPrice: 60, condition: 'New', category: 'Consumer Electronics', itemId: '2', url: 'https://www.ebay.com/itm/2' },
+  scoreOpts,
+  []
+);
+if (!(brandedScore.sourceability > genericScore.sourceability)) {
+  throw new Error(`expected branded sourceability above generic, got ${brandedScore.sourceability} vs ${genericScore.sourceability}`);
+}
+if (!(brandedScore.total > genericScore.total)) {
+  throw new Error(`expected branded total above generic, got ${brandedScore.total} vs ${genericScore.total}`);
+}
+// Boost only, never a penalty — an unrecognized-but-real brand must not be dropped below the gate.
+assertEqual(genericScore.sourceability, 0, 'unidentifiable generic listing gets no sourceability boost');
+assertEqual(brandedScore.sourceability >= 14, true, 'branded + model listing gets the sourceability boost');
+
+// The new sourcing profile targets branded, model-specific products with a higher price/score gate.
+const brandedProfile = getEbayDiscoveryProfile('branded-value');
+assertEqual(brandedProfile.key, 'branded-value', 'branded-value sourcing profile is retrievable');
+assertEqual(brandedProfile.minSoldPrice >= 40, true, 'branded-value uses a higher sold-price floor');
+assertEqual(brandedProfile.minEbayScore >= 60, true, 'branded-value uses a higher score gate');
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async () => new Response(JSON.stringify({
