@@ -1015,6 +1015,7 @@ export function analyzeEbayAmazonComparison(
     market?: DiscoveryMarket;
     amazonMatchLimit?: number;
     soldMarketCandidates?: EbayCandidateInput[];
+    familySoldAggregate?: { soldCount?: number; minSoldPrice?: number; medianSoldPrice?: number; maxSoldPrice?: number };
     activeMarketCandidates?: EbayCandidateInput[];
     learningFactor?: number;
   } = {}
@@ -1061,7 +1062,8 @@ export function analyzeEbayAmazonComparison(
     activeCandidates: context.activeMarketCandidates,
     targetPrice: ebay.soldPrice,
     minimumSellThroughRate: ruleConfig.minimumSellThroughRate,
-    maximumCompetitionRatio: ruleConfig.maximumCompetitionRatio
+    maximumCompetitionRatio: ruleConfig.maximumCompetitionRatio,
+    familySoldAggregate: context.familySoldAggregate
   });
   for (const opportunity of scored) {
     opportunity.marketMetrics = marketMetrics;
@@ -1286,12 +1288,32 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
         }
       }
       const learningFactor = await resolveLearningFactor(options.db, ebay, options.ruleConfig.learningAdjustmentEnabled);
+      // Feed this candidate's family sold aggregates (captured from all of its sold comps
+      // during discovery, not just the persisted row) into the market metrics.
+      const familyRow = candidate as {
+        familySoldCount?: number | null;
+        familyMinSoldPrice?: unknown;
+        familyMedianSoldPrice?: unknown;
+        familyMaxSoldPrice?: unknown;
+      };
+      const decToNum = (value: unknown): number | undefined => {
+        if (value === null || value === undefined) return undefined;
+        const n = Number(value);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      const familySoldAggregate = {
+        soldCount: familyRow.familySoldCount ?? undefined,
+        minSoldPrice: decToNum(familyRow.familyMinSoldPrice),
+        medianSoldPrice: decToNum(familyRow.familyMedianSoldPrice),
+        maxSoldPrice: decToNum(familyRow.familyMaxSoldPrice)
+      };
       const comparison = analyzeEbayAmazonComparison(ebay, amazonMatches, options.ruleConfig, reportQuery, {
         market,
         amazonMatchLimit,
         soldMarketCandidates,
         activeMarketCandidates,
-        learningFactor
+        learningFactor,
+        familySoldAggregate
       });
       if (activeMarketWarning) comparison.report.reasons = uniqueReasons([...comparison.report.reasons, activeMarketWarning]);
       reports.push(comparison.report);

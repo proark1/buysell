@@ -1,4 +1,5 @@
 import type { EbayCandidateInput } from '../domain/products.js';
+import { isSpecificationToken, tokenKey } from './tokenPatterns.js';
 
 const productFamilyStopWords = new Set([
   'new',
@@ -66,13 +67,10 @@ const normalizeFamilyText = (value: string): string[] => value
   .map((token) => token.trim())
   .filter((token) => token.length >= 2 && !productFamilyStopWords.has(token));
 
-const familyTokenKey = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-
 function isSpecificationModelToken(token: string): boolean {
-  const key = familyTokenKey(token);
-  return /^\d{2,6}(?:MAH|AH|WH|W|KW|V|A|KG|G|MM|CM|M|IN|INCH|HZ|KHZ|MHZ|GHZ|BIT|GB|TB|MB|DPI|P|K)$/.test(key)
-    || /^(?:STEREO|MONO|AUDIO|VIDEO)\d{2,6}$/.test(key)
-    || /^\d{2,6}(?:PCS|PC|PACK|CT|COUNT)$/.test(key);
+  const key = tokenKey(token);
+  // Shared spec patterns, plus the weight units (KG/G) this stage additionally treats as specs.
+  return isSpecificationToken(key) || /^\d{2,6}(?:KG|G)$/.test(key);
 }
 
 export function productFamilyKeyForEbayCandidate(ebay: EbayCandidateInput): string {

@@ -1,4 +1,5 @@
 import type { AmazonMatchInput, EbayCandidateInput, OpportunityDecision, ProductIdentityMatch } from '../domain/products.js';
+import { isSpecificationToken, modelTokenCandidates } from './tokenPatterns.js';
 
 const knownBrands = new Set([
   '3m',
@@ -186,7 +187,6 @@ const normalize = (value: string | undefined): string | undefined => {
   return normalized || undefined;
 };
 
-const tokenKey = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 function normalizeBrand(value: string | undefined): string | undefined {
   const normalized = normalize(value);
@@ -318,17 +318,8 @@ function amazonBrand(amazon: AmazonMatchInput): string | undefined {
 }
 
 function modelTokensFromText(value: string | undefined): string[] {
-  if (!value) return [];
-  const matches = value.match(/\b[A-Z]{1,6}[-_/ ]?\d{2,6}[A-Z0-9]{0,5}\b|\b\d{2,6}[-_/ ]?[A-Z]{1,5}\b/gi) ?? [];
-  return unique(matches.map(tokenKey))
+  return unique(modelTokenCandidates(value))
     .filter((token) => token.length >= 3 && !genericModelTokens.has(token) && !isSpecificationToken(token));
-}
-
-function isSpecificationToken(token: string): boolean {
-  if (/^\d{2,6}(?:MAH|AH|WH|W|KW|V|A|MM|CM|M|IN|INCH|HZ|KHZ|MHZ|GHZ|BIT|GB|TB|MB|DPI|P|K)$/.test(token)) return true;
-  if (/^(?:STEREO|MONO|AUDIO|VIDEO)\d{2,6}$/.test(token)) return true;
-  if (/^\d{2,6}(?:PCS|PC|PACK|CT|COUNT)$/.test(token)) return true;
-  return false;
 }
 
 function modelTokensFromRaw(raw: unknown): string[] {

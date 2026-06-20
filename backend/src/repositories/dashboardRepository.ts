@@ -85,12 +85,19 @@ const stringArray = (value: unknown): string[] => Array.isArray(value)
   ? value.filter((item): item is string => typeof item === 'string')
   : [];
 
-function countRejectedStage(rows: Array<{ riskFlags: unknown }>, stages: string[]): number {
-  const stageSet = new Set(stages);
-  return rows.filter((row) => {
-    const rowStages = stringArray(row.riskFlags).map(rejectionStageForFlag);
-    return rowStages.some((stage) => stageSet.has(stage));
-  }).length;
+// Compute all four rejection-stage buckets in a single pass over the sampled rows (was four
+// separate full filters). Semantics are unchanged: a candidate counts in every bucket whose
+// stage set its flags touch.
+function rejectionStageBuckets(rows: Array<{ riskFlags: unknown }>): { source: number; safety: number; matching: number; economics: number } {
+  const buckets = { source: 0, safety: 0, matching: 0, economics: 0 };
+  for (const row of rows) {
+    const stages = new Set(stringArray(row.riskFlags).map(rejectionStageForFlag));
+    if (stages.has('SOURCE_DATA') || stages.has('SOURCE_FORMAT')) buckets.source += 1;
+    if (stages.has('SAFETY') || stages.has('SOURCE_COST')) buckets.safety += 1;
+    if (stages.has('MATCHING')) buckets.matching += 1;
+    if (stages.has('ECONOMICS') || stages.has('SCORING')) buckets.economics += 1;
+  }
+  return buckets;
 }
 
 export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
@@ -158,6 +165,7 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
   ]);
 
   const plTrend = await getPlTrend(db);
+  const rejectionBuckets = rejectionStageBuckets(rejectedEbayRows as Array<{ riskFlags: unknown }>);
   return {
     plTrend,
     funnel: {
@@ -166,10 +174,10 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
       ebayOpportunities,
       ebayManualReview,
       ebayRejected,
-      ebaySourceRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['SOURCE_DATA', 'SOURCE_FORMAT']),
-      ebaySafetyRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['SAFETY', 'SOURCE_COST']),
-      ebayMatchingRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['MATCHING']),
-      ebayEconomicsRejected: countRejectedStage(rejectedEbayRows as Array<{ riskFlags: unknown }>, ['ECONOMICS', 'SCORING']),
+      ebaySourceRejected: rejectionBuckets.source,
+      ebaySafetyRejected: rejectionBuckets.safety,
+      ebayMatchingRejected: rejectionBuckets.matching,
+      ebayEconomicsRejected: rejectionBuckets.economics,
       ebayErrors,
       verifyActions,
       listingActions,

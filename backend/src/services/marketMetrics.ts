@@ -27,6 +27,10 @@ export function calculateEbayMarketMetrics(input: {
   targetPrice?: number;
   minimumSellThroughRate?: number;
   maximumCompetitionRatio?: number;
+  // Per-family sold aggregates captured during discovery from ALL of a family's sold comps,
+  // not just the single persisted candidate. When richer than the persisted sample, it drives
+  // the demand/competition/spread metrics so they reflect the real comp count.
+  familySoldAggregate?: { soldCount?: number; minSoldPrice?: number; medianSoldPrice?: number; maxSoldPrice?: number };
 }): OpportunityMarketMetrics {
   const soldPrices = input.soldCandidates
     .map((candidate) => candidate.soldPrice)
@@ -39,27 +43,39 @@ export function calculateEbayMarketMetrics(input: {
     : undefined;
   const lowSoldPrice = soldPrices.length ? Math.min(...soldPrices) : undefined;
   const highSoldPrice = soldPrices.length ? Math.max(...soldPrices) : undefined;
-  const priceSpreadPercent = medianSoldPrice && lowSoldPrice !== undefined && highSoldPrice !== undefined
-    ? ((highSoldPrice - lowSoldPrice) / medianSoldPrice) * 100
+
+  // Use the family aggregate when it represents more sold comps than the persisted sample.
+  const familySoldCount = input.familySoldAggregate?.soldCount ?? 0;
+  const effectiveSoldCount = Math.max(soldCount, familySoldCount);
+  const useFamilySpread = familySoldCount > soldCount
+    && input.familySoldAggregate?.minSoldPrice !== undefined
+    && input.familySoldAggregate?.maxSoldPrice !== undefined
+    && (input.familySoldAggregate?.medianSoldPrice ?? 0) > 0;
+  const effectiveLow = useFamilySpread ? input.familySoldAggregate?.minSoldPrice : lowSoldPrice;
+  const effectiveHigh = useFamilySpread ? input.familySoldAggregate?.maxSoldPrice : highSoldPrice;
+  const effectiveMedian = useFamilySpread ? input.familySoldAggregate?.medianSoldPrice : medianSoldPrice;
+
+  const priceSpreadPercent = effectiveMedian && effectiveLow !== undefined && effectiveHigh !== undefined
+    ? ((effectiveHigh - effectiveLow) / effectiveMedian) * 100
     : undefined;
   // With no sold sample, dividing by a floor of 1 fabricates a sell-through of 0 and a
   // competition ratio equal to the active count (e.g. a fake HIGH_COMPETITION). Leave both
   // undefined and let NO_SOLD_MARKET_SAMPLE carry the signal instead.
-  const sellThroughRate = activeCount !== undefined && soldCount > 0
-    ? soldCount / (soldCount + activeCount)
+  const sellThroughRate = activeCount !== undefined && effectiveSoldCount > 0
+    ? effectiveSoldCount / (effectiveSoldCount + activeCount)
     : undefined;
-  const competitionRatio = activeCount !== undefined && soldCount > 0
-    ? activeCount / soldCount
+  const competitionRatio = activeCount !== undefined && effectiveSoldCount > 0
+    ? activeCount / effectiveSoldCount
     : undefined;
   const targetPricePercentile = percentileRank(soldPrices, input.targetPrice);
   const riskFlags: string[] = [];
   const reasons: string[] = [];
 
-  if (soldCount === 0) {
+  if (effectiveSoldCount === 0) {
     riskFlags.push('NO_SOLD_MARKET_SAMPLE');
     reasons.push('No priced sold eBay results were available for market-quality scoring.');
   } else {
-    reasons.push(`${soldCount} priced sold eBay results support demand analysis.`);
+    reasons.push(`${effectiveSoldCount} priced sold eBay results support demand analysis.`);
   }
 
   if (priceSpreadPercent !== undefined && priceSpreadPercent > 80) {
@@ -90,19 +106,19 @@ export function calculateEbayMarketMetrics(input: {
     reasons.push('Recommended price is in the top 15% of observed sold comps.');
   }
 
-  const sampleScore = clamp((soldCount / 8) * 35, 0, 35);
+  const sampleScore = clamp((effectiveSoldCount / 8) * 35, 0, 35);
   const spreadScore = priceSpreadPercent === undefined ? 8 : clamp(25 - (priceSpreadPercent / 4), 0, 25);
   const sellThroughScore = sellThroughRate === undefined ? 12 : clamp(sellThroughRate * 100, 0, 25);
   const competitionScore = competitionRatio === undefined ? 8 : clamp(15 - competitionRatio, 0, 15);
   const demandScore = Math.round(clamp(sampleScore + spreadScore + sellThroughScore + competitionScore, 0, 100));
 
   return {
-    soldSampleSize: soldCount,
+    soldSampleSize: effectiveSoldCount,
     activeSampleSize: activeCount,
-    medianSoldPrice: medianSoldPrice === undefined ? undefined : roundMoney(medianSoldPrice),
+    medianSoldPrice: effectiveMedian === undefined ? undefined : roundMoney(effectiveMedian),
     averageSoldPrice: averageSoldPrice === undefined ? undefined : roundMoney(averageSoldPrice),
-    lowSoldPrice: lowSoldPrice === undefined ? undefined : roundMoney(lowSoldPrice),
-    highSoldPrice: highSoldPrice === undefined ? undefined : roundMoney(highSoldPrice),
+    lowSoldPrice: effectiveLow === undefined ? undefined : roundMoney(effectiveLow),
+    highSoldPrice: effectiveHigh === undefined ? undefined : roundMoney(effectiveHigh),
     priceSpreadPercent: priceSpreadPercent === undefined ? undefined : roundPercent(priceSpreadPercent),
     targetPricePercentile,
     sellThroughRate: sellThroughRate === undefined ? undefined : roundPercent(sellThroughRate),

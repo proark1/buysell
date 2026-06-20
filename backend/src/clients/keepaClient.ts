@@ -197,11 +197,26 @@ export async function getKeepaTokenStatus(apiKey: string): Promise<KeepaTokenSta
   };
 }
 
+interface CachedMatches {
+  value: AmazonMatchInput[];
+  expiresAt: number;
+}
+// Short-TTL cache of Keepa product searches so re-running a comparison within the window
+// (e.g. after tweaking thresholds) re-scores against the same market data without spending
+// tokens again. The eBay (SerpApi) search and per-ASIN lookups are cached the same way.
+const matchesCache = new Map<string, CachedMatches>();
+const MATCHES_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function findAmazonMatches(options: KeepaSearchOptions): Promise<AmazonMatchInput[]> {
   const limit = Math.min(Math.max(options.limit ?? KEEPA_SEARCH_PAGE_SIZE, 1), KEEPA_PRODUCT_SEARCH_MAX_RESULTS);
+  const domain = options.domain ?? 1;
+  const cacheKey = `${domain}:${limit}:${options.query.trim().toLowerCase()}`;
+  const cachedNow = Date.now();
+  const cachedMatches = matchesCache.get(cacheKey);
+  if (cachedMatches && cachedMatches.expiresAt > cachedNow) return cachedMatches.value;
+
   const pageCount = Math.min(Math.ceil(limit / KEEPA_SEARCH_PAGE_SIZE), 10);
   const products: KeepaProduct[] = [];
-  const domain = options.domain ?? 1;
 
   for (let page = 0; page < pageCount && products.length < limit; page += 1) {
     const params = new URLSearchParams({
@@ -227,7 +242,10 @@ export async function findAmazonMatches(options: KeepaSearchOptions): Promise<Am
     if (pageProducts.length < KEEPA_SEARCH_PAGE_SIZE) break;
   }
 
-  return products.slice(0, limit).map((product) => keepaProductToAmazonMatch(product, domain));
+  const matches = products.slice(0, limit).map((product) => keepaProductToAmazonMatch(product, domain));
+  if (matchesCache.size > 2_000) matchesCache.clear();
+  matchesCache.set(cacheKey, { value: matches, expiresAt: cachedNow + MATCHES_CACHE_TTL_MS });
+  return matches;
 }
 
 interface CachedProduct {

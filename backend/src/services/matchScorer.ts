@@ -1,4 +1,5 @@
 import type { AmazonMatchInput, EbayCandidateInput } from '../domain/products.js';
+import { isSpecificationToken, modelTokenCandidates } from './tokenPatterns.js';
 
 const stopWords = new Set([
   'the',
@@ -37,21 +38,11 @@ const normalizeWords = (value: string): Set<string> => new Set(
     .filter((word) => word.length >= 3 && !stopWords.has(word))
 );
 
-const tokenKey = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 const genericModelTokens = new Set(['1D', '2D', '2G', '3G', '4G', '5G', '24G', 'USB', 'LED', 'LCD', 'HD', '4K', '1080P', '220V', '110V', '32BIT', '64BIT']);
 const variantWords = new Set(['black', 'white', 'red', 'blue', 'green', 'yellow', 'gray', 'grey', 'pink', 'orange', 'purple', 'small', 'medium', 'large', 'xl', 'mini', 'pro', 'plus', 'max', 'ultra', 'lite']);
 
-const isSpecificationToken = (token: string): boolean => (
-  /^\d{2,6}(?:MAH|AH|WH|W|KW|V|A|MM|CM|M|IN|INCH|HZ|KHZ|MHZ|GHZ|BIT|GB|TB|MB|DPI|P|K)$/.test(token)
-  || /^(?:STEREO|MONO|AUDIO|VIDEO)\d{2,6}$/.test(token)
-  || /^\d{2,6}(?:PCS|PC|PACK|CT|COUNT)$/.test(token)
-);
-
-const modelTokens = (value: string | undefined): string[] => {
-  if (!value) return [];
-  const matches = value.match(/\b[A-Z]{1,6}[-_/ ]?\d{2,6}[A-Z0-9]{0,5}\b|\b\d{2,6}[-_/ ]?[A-Z]{1,5}\b/gi) ?? [];
-  return [...new Set(matches.map(tokenKey).filter((token) => token.length >= 3 && !genericModelTokens.has(token) && !isSpecificationToken(token)))];
-};
+const modelTokens = (value: string | undefined): string[] =>
+  [...new Set(modelTokenCandidates(value).filter((token) => token.length >= 3 && !genericModelTokens.has(token) && !isSpecificationToken(token)))];
 
 const packCount = (value: string | undefined): number | undefined => {
   if (!value) return undefined;
