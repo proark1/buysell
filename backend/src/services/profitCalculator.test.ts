@@ -1,6 +1,6 @@
 import { calculateProfit } from './profitCalculator.js';
 import { defaultRuleConfig } from '../repositories/ruleConfigRepository.js';
-import { profitInputsFromRuleConfig } from './profitInputs.js';
+import { profitInputsFromRuleConfig, costedProfitInputsFromRuleConfig } from './profitInputs.js';
 import { assertApprox } from './testHelpers.js';
 
 const result = calculateProfit({
@@ -89,11 +89,17 @@ assertApprox(withShipping.expectedProfit, 16.2, 'profit includes shipping revenu
 assertApprox(withShipping.roiPercent, 45, 'ROI denominator is cash invested incl. label cost');
 assertApprox(withShipping.marginPercent, 27, 'margin uses gross revenue incl. shipping');
 
-const germanInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'de');
-const usInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'us');
+// Costed model still wires up market fees correctly (the revert path when BREAKEVEN_MODE=false).
+const germanInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'de');
+const usInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'us');
 assertApprox(germanInputs.estimatedSalesTaxRate, 0.19, 'Germany default source tax');
 assertApprox(germanInputs.ebayPaymentFeeRate, 0.0235, 'Germany payment fee default');
 assertApprox(usInputs.estimatedSalesTaxRate, 0.08, 'US default source tax');
 assertApprox(usInputs.ebayFinalValueFeeRate, 0.1325, 'US final value fee default');
+
+// Active breakeven mode subtracts nothing: pure (eBay sale − Amazon cost) spread.
+const breakevenInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'us');
+assertApprox(breakevenInputs.ebayFinalValueFeeRate, 0, 'breakeven mode zeroes eBay final value fee');
+assertApprox(breakevenInputs.estimatedSalesTaxRate, 0, 'breakeven mode zeroes source tax');
 
 console.log('profitCalculator unit test passed');

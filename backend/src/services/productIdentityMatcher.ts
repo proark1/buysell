@@ -485,7 +485,13 @@ export function extractEbayIdentityFingerprint(ebay: EbayCandidateInput): EbayId
       compactQueryPart(identifier)
     ]),
     brand && modelTokens.length ? compactQueryPart([brand, ...modelTokens.slice(0, 2)].join(' ')) : undefined,
-    brand && variants.length ? compactQueryPart([brand, ...variants.slice(0, 2), ...modelTokens.slice(0, 1)].join(' ')) : undefined,
+    // Use variant words (color/size/spec) ONLY to refine a model-bearing query — never as the
+    // sole discriminator. A brand+variant query like "dymo white" matched the wrong product
+    // (DYMO tape, not the LetraTag printer) and the search short-circuits on the first hit, so
+    // the full-title fallback below was never reached. With no model token, skip straight to it.
+    brand && modelTokens.length && variants.length
+      ? compactQueryPart([brand, modelTokens[0], variants[0]].join(' '))
+      : undefined,
     titleFallback
   ]).slice(0, 3);
 

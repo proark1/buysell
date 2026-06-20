@@ -1,6 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
 import { defaultBlockedCategories, defaultBlockedKeywords } from '../services/discoveryPolicy.js';
 import type { OpportunityThresholds } from '../services/opportunityDecider.js';
+import { BREAKEVEN_MODE, BREAKEVEN_THRESHOLDS } from '../config/engineMode.js';
+
+const costedDefaultThresholds: OpportunityThresholds = {
+  minimumProfitUsd: 10,
+  minimumRoiPercent: 25,
+  minimumMatchConfidence: 0.75
+};
 
 export interface ActiveRuleConfig {
   thresholds: OpportunityThresholds;
@@ -45,11 +52,15 @@ export interface ActiveRuleConfig {
 }
 
 export const defaultRuleConfig: ActiveRuleConfig = {
-  thresholds: {
-    minimumProfitUsd: 10,
-    minimumRoiPercent: 25,
-    minimumMatchConfidence: 0.75
-  },
+  // Breakeven mode accepts any non-negative spread and a 0.55 match floor; otherwise the costed
+  // model's $10 / 25% / 0.75 gates apply. The active mode is the single BREAKEVEN_MODE switch.
+  thresholds: BREAKEVEN_MODE
+    ? {
+      minimumProfitUsd: BREAKEVEN_THRESHOLDS.minimumProfitUsd,
+      minimumRoiPercent: BREAKEVEN_THRESHOLDS.minimumRoiPercent,
+      minimumMatchConfidence: BREAKEVEN_THRESHOLDS.minimumMatchConfidence
+    }
+    : costedDefaultThresholds,
   estimatedSalesTaxRate: 0.08,
   returnRiskBuffer: 2,
   priceChangeBuffer: 2,
@@ -67,7 +78,9 @@ export const defaultRuleConfig: ActiveRuleConfig = {
   maxDailyPurchaseAmountUsd: 250,
   safeMode: true,
   maxAmazonCostUsd: 150,
-  minimumOpportunityScore: 65,
+  // At breakeven the profit/ROI score components are ~0, so the composite score is carried by
+  // match quality + Amazon demand; 20 still filters no-demand junk. Costed mode keeps 65.
+  minimumOpportunityScore: BREAKEVEN_MODE ? BREAKEVEN_THRESHOLDS.minimumOpportunityScore : 65,
   blockedBrands: [],
   blockedCategories: defaultBlockedCategories,
   blockedKeywords: defaultBlockedKeywords,
@@ -106,11 +119,31 @@ const stringArray = (value: unknown): string[] => Array.isArray(value)
   ? value.filter((item): item is string => typeof item === 'string')
   : [];
 
+// When BREAKEVEN_MODE is on, force the no-cost / breakeven gates regardless of what the saved
+// RuleConfig row holds, so production behaves consistently without a manual dashboard/DB edit.
+// (The saved $10 / 25% / 0.75 / 65 values would otherwise override the code defaults.)
+function withBreakevenOverrides(config: ActiveRuleConfig): ActiveRuleConfig {
+  if (!BREAKEVEN_MODE) return config;
+  return {
+    ...config,
+    thresholds: {
+      minimumProfitUsd: BREAKEVEN_THRESHOLDS.minimumProfitUsd,
+      minimumRoiPercent: BREAKEVEN_THRESHOLDS.minimumRoiPercent,
+      minimumMatchConfidence: BREAKEVEN_THRESHOLDS.minimumMatchConfidence
+    },
+    minimumOpportunityScore: BREAKEVEN_THRESHOLDS.minimumOpportunityScore,
+    returnRiskBuffer: 0,
+    priceChangeBuffer: 0,
+    marketplaceRiskBuffer: 0,
+    estimatedSalesTaxRate: 0
+  };
+}
+
 export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleConfig> {
   const config = await db.ruleConfig.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-  if (!config) return defaultRuleConfig;
+  if (!config) return withBreakevenOverrides(defaultRuleConfig);
 
-  return {
+  return withBreakevenOverrides({
     thresholds: {
       minimumProfitUsd: numberValue(config.minimumProfitUsd, defaultRuleConfig.thresholds.minimumProfitUsd),
       minimumRoiPercent: numberValue(config.minimumRoiPercent, defaultRuleConfig.thresholds.minimumRoiPercent),
@@ -154,5 +187,5 @@ export async function getActiveRuleConfig(db: PrismaClient): Promise<ActiveRuleC
     repriceMaxIncreasePercent: numberValue(config.repriceMaxIncreasePercent, defaultRuleConfig.repriceMaxIncreasePercent),
     inventorySyncEnabled: typeof config.inventorySyncEnabled === 'boolean' ? config.inventorySyncEnabled : defaultRuleConfig.inventorySyncEnabled,
     learningAdjustmentEnabled: typeof config.learningAdjustmentEnabled === 'boolean' ? config.learningAdjustmentEnabled : defaultRuleConfig.learningAdjustmentEnabled
-  };
+  });
 }

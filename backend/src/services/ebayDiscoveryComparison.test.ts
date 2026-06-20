@@ -24,11 +24,13 @@ const noResults = analyzeEbayAmazonComparison(ebay, [], defaultRuleConfig, 'Tera
 assertEqual(noResults.report.status, 'NO_AMAZON_RESULTS', 'eBay discovery no Amazon results status');
 assertEqual(noResults.report.reasons[0], 'No Amazon matches were found for this eBay sold listing.', 'eBay discovery no Amazon results reason');
 
+// Amazon costs MORE than the eBay sold price ($120), so even under the no-fee breakeven model
+// the spread is negative and the candidate must still be rejected (profit < 0).
 const expensiveAmazon: AmazonMatchInput = {
   asin: 'B000EXP',
   title: 'Tera Wireless Barcode Scanner',
-  buyBoxPrice: 115,
-  currentPrice: 115,
+  buyBoxPrice: 140,
+  currentPrice: 140,
   availabilityStatus: 'IN_STOCK',
   categoryTree: ['Office Products'],
   matchConfidence: 0
