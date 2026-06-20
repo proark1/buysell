@@ -1,5 +1,13 @@
-import { evaluateProductSafety } from './discoveryPolicy.js';
+import { evaluateProductSafety, primaryRejectionStage } from './discoveryPolicy.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
+
+// primaryRejectionStage attributes a rejection to its EARLIEST failed pipeline stage.
+assertEqual(primaryRejectionStage(['LOW_ROI', 'BRAND_MISMATCH']), 'MATCHING', 'matching precedes economics');
+assertEqual(primaryRejectionStage(['LOW_PROFIT', 'LOW_ROI']), 'ECONOMICS', 'profit/roi map to economics');
+assertEqual(primaryRejectionStage(['MISSING_EBAY_PRICE', 'BLOCKED_BRAND']), 'SOURCE_DATA', 'source precedes safety');
+assertEqual(primaryRejectionStage(['BLOCKED_CATEGORY']), 'SAFETY', 'blocked category is safety');
+assertEqual(primaryRejectionStage(['LOW_OPPORTUNITY_SCORE']), 'SCORING', 'unknown/low-score defaults to scoring');
+assertEqual(primaryRejectionStage([]), 'SCORING', 'no flags defaults to scoring');
 
 const basePolicy = {
   safeMode: true,

@@ -14,7 +14,9 @@ import {
   getEbayDiscoveryCategory,
   getEbayDiscoveryProfile,
   hardSafetyRejectFlags,
+  primaryRejectionStage,
   rejectionStageForFlag,
+  type RejectionStage,
   type SafetyPolicy
 } from './discoveryPolicy.js';
 import { scoreAmazonMatch } from './matchScorer.js';
@@ -68,6 +70,9 @@ export interface EbayDiscoveryCandidateResult {
     reasons: string[];
   };
   rejectionReasons: string[];
+  // Pre-resolved rejection stage for source drops (which fail before safety eval, so their
+  // riskFlags can't be relied on). Other rejects derive the stage from safety.riskFlags.
+  rejectionStage?: RejectionStage;
 }
 
 export type EbayDiscoveryQueryBreadth = 'FOCUSED' | 'BALANCED' | 'WIDE';
@@ -429,7 +434,10 @@ function sourceDropCandidateResult(
       : 'Dropped before scoring because the sold source row does not look like a new fixed-price listing.';
   return {
     ...base,
-    rejectionReasons: [...new Set([...ebayRejectionReasons(base, minimumEbayScore), fallbackReason])]
+    rejectionReasons: [...new Set([...ebayRejectionReasons(base, minimumEbayScore), fallbackReason])],
+    // Attribute from the actual drop reason — these fail before safety eval, so riskFlags
+    // may be empty. Missing price is a source-data issue; auction/non-new are source-format.
+    rejectionStage: reason === 'MISSING_SOLD_PRICE' ? 'SOURCE_DATA' : 'SOURCE_FORMAT'
   };
 }
 
@@ -723,6 +731,9 @@ export async function persistEbayDiscoveryRun(
           },
           selected: accepted && (options.mode ?? 'MANUAL') === 'AUTO',
           comparisonStatus: accepted ? 'NOT_COMPARED' : 'REJECTED',
+          // Stamp discovery-time rejections so they're counted via groupBy (not the legacy
+          // JS sample). Source drops carry an explicit stage; others derive from safety flags.
+          rejectionStage: accepted ? null : (candidate.rejectionStage ?? primaryRejectionStage(candidate.safety.riskFlags)),
           rawSerpapiJson: candidate.ebay.raw
         }
       });
@@ -1229,11 +1240,17 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
     if (sourceCheck.dropped.total > 0) {
       const report = skippedSourceReport(ebay, query, market, amazonMatchLimit, options.ruleConfig, sourceCheck.dropped);
       reports.push(report);
+      const sourceFlags = [
+        sourceCheck.dropped.missingSoldPrice > 0 ? 'MISSING_EBAY_PRICE' : undefined,
+        sourceCheck.dropped.auctionFormat > 0 ? 'EBAY_AUCTION_FORMAT' : undefined,
+        sourceCheck.dropped.nonNewCondition > 0 ? 'EBAY_NOT_NEW' : undefined
+      ].filter((flag): flag is string => Boolean(flag));
       await options.db.ebayDiscoveryCandidate.update({
         where: { id: candidate.id },
         data: {
           selected: true,
           comparisonStatus: 'REJECTED',
+          rejectionStage: primaryRejectionStage(sourceFlags),
           scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, report)
         }
       });
@@ -1323,6 +1340,8 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
           where: { id: candidate.id },
           data: {
             comparisonStatus: 'REJECTED',
+            // No qualifying Amazon match was found — a matching-stage rejection.
+            rejectionStage: 'MATCHING',
             scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
           }
         });
@@ -1343,10 +1362,18 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
       if (best.decision.decision === 'REJECT') {
         rejected.push(best);
         rejectedCount += 1;
+        // Attribute from the actual decision flags (identity/economics/score/safety) — these
+        // compare-time reasons were never written to candidate.riskFlags before.
+        const decisionFlags = [...new Set([
+          ...best.decision.riskFlags,
+          ...(best.safety?.riskFlags ?? []),
+          ...(best.marketMetrics?.riskFlags ?? [])
+        ])];
         await options.db.ebayDiscoveryCandidate.update({
           where: { id: candidate.id },
           data: {
             comparisonStatus: 'REJECTED',
+            rejectionStage: primaryRejectionStage(decisionFlags),
             scoreBreakdown: scoreBreakdownWithComparison(candidate.scoreBreakdown, comparison.report)
           }
         });

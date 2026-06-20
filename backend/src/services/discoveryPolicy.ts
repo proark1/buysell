@@ -111,6 +111,19 @@ export const defaultBlockedKeywords = [
   'lingerie'
 ];
 
+// Pipeline order, earliest failure first. A rejected candidate is attributed to the first
+// stage it failed, so the funnel buckets each candidate exactly once.
+const rejectionStageOrder: RejectionStage[] = ['SOURCE_DATA', 'SOURCE_FORMAT', 'SAFETY', 'SOURCE_COST', 'MATCHING', 'ECONOMICS', 'SCORING', 'REVIEW_NEEDED'];
+
+/** The earliest pipeline stage among a candidate's rejection flags (defaults to SCORING). */
+export function primaryRejectionStage(flags: string[]): RejectionStage {
+  const stages = new Set(flags.map(rejectionStageForFlag));
+  for (const stage of rejectionStageOrder) {
+    if (stages.has(stage)) return stage;
+  }
+  return 'SCORING';
+}
+
 export function rejectionStageForFlag(flag: string): RejectionStage {
   if (['MISSING_EBAY_PRICE', 'MISSING_AMAZON_PRICE'].includes(flag)) return 'SOURCE_DATA';
   if (['EBAY_AUCTION_FORMAT', 'EBAY_NOT_NEW', 'DAMAGED_OR_PARTS'].includes(flag)) return 'SOURCE_FORMAT';

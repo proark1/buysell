@@ -565,6 +565,7 @@ model EbayDiscoveryCandidate {
   scoreBreakdown     Json?
   selected           Boolean            @default(false)
   comparisonStatus   String             @default("NOT_COMPARED")
+  rejectionStage     String?
   productCandidateId String?
   amazonMatchId      String?
   rawSerpapiJson     Json?
@@ -579,6 +580,7 @@ model EbayDiscoveryCandidate {
   @@index([ebayItemId])
   @@index([productFamilyKey])
   @@index([comparisonStatus])
+  @@index([comparisonStatus, rejectionStage])
 }
 
 model Credential {

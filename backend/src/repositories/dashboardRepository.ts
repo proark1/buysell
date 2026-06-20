@@ -88,7 +88,9 @@ const stringArray = (value: unknown): string[] => Array.isArray(value)
 // Compute all four rejection-stage buckets in a single pass over the sampled rows (was four
 // separate full filters). Semantics are unchanged: a candidate counts in every bucket whose
 // stage set its flags touch.
-function rejectionStageBuckets(rows: Array<{ riskFlags: unknown }>): { source: number; safety: number; matching: number; economics: number } {
+interface RejectionBuckets { source: number; safety: number; matching: number; economics: number }
+
+function rejectionStageBuckets(rows: Array<{ riskFlags: unknown }>): RejectionBuckets {
   const buckets = { source: 0, safety: 0, matching: 0, economics: 0 };
   for (const row of rows) {
     const stages = new Set(stringArray(row.riskFlags).map(rejectionStageForFlag));
@@ -108,7 +110,7 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     ebayOpportunities,
     ebayManualReview,
     ebayRejected,
-    rejectedEbayRows,
+    legacyRejectedRows,
     ebayErrors,
     verifyActions,
     listingActions,
@@ -131,7 +133,9 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'MANUAL_REVIEW' } }),
     db.ebayDiscoveryCandidate.count({ where: { comparisonStatus: 'REJECTED' } }),
     db.ebayDiscoveryCandidate.findMany({
-      where: { comparisonStatus: 'REJECTED' },
+      // Legacy rows (rejected before the rejectionStage column existed) are still counted via
+      // the JS pass; rows with a stage are counted exactly via groupBy below.
+      where: { comparisonStatus: 'REJECTED', rejectionStage: null },
       select: { riskFlags: true },
       take: 5000
     }),
@@ -165,7 +169,26 @@ export async function getPipelineSummary(db: PrismaClient): Promise<unknown> {
   ]);
 
   const plTrend = await getPlTrend(db);
-  const rejectionBuckets = rejectionStageBuckets(rejectedEbayRows as Array<{ riskFlags: unknown }>);
+
+  // Exact, scalable stage counts via groupBy for rows that carry a rejectionStage, summed
+  // with the JS fallback for legacy (null-stage) rows. Stage -> funnel bucket mapping.
+  const stageBucketOf = (stage: string | null): keyof RejectionBuckets | undefined => {
+    if (stage === 'SOURCE_DATA' || stage === 'SOURCE_FORMAT') return 'source';
+    if (stage === 'SAFETY' || stage === 'SOURCE_COST') return 'safety';
+    if (stage === 'MATCHING') return 'matching';
+    if (stage === 'ECONOMICS' || stage === 'SCORING') return 'economics';
+    return undefined;
+  };
+  const rejectionStageGroups = await db.ebayDiscoveryCandidate.groupBy({
+    by: ['rejectionStage'],
+    where: { comparisonStatus: 'REJECTED', rejectionStage: { not: null } },
+    _count: { _all: true }
+  });
+  const rejectionBuckets = rejectionStageBuckets(legacyRejectedRows as Array<{ riskFlags: unknown }>);
+  for (const group of rejectionStageGroups as Array<{ rejectionStage: string | null; _count: { _all: number } }>) {
+    const bucket = stageBucketOf(group.rejectionStage);
+    if (bucket) rejectionBuckets[bucket] += group._count._all;
+  }
   return {
     plTrend,
     funnel: {
