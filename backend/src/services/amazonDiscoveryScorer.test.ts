@@ -1,4 +1,4 @@
-import { evaluateAmazonProductSafety, getAmazonDiscoveryCategory, getAmazonDiscoveryProfile } from './discoveryPolicy.js';
+import { applyDiscoverySafetyOverrides, evaluateAmazonProductSafety, getAmazonDiscoveryCategory, getAmazonDiscoveryProfile } from './discoveryPolicy.js';
 import { selectAmazonDiscoveryQueries } from './amazonDiscovery.js';
 import { scoreAmazonDiscoveryCandidate } from './amazonDiscoveryScorer.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
@@ -63,6 +63,20 @@ const blockedScore = scoreAmazonDiscoveryCandidate(blockedAmazon, {
 }, blockedReview.riskFlags);
 
 assertEqual(blockedScore.total, 0, 'blocked Amazon candidate score');
+
+const replenishmentProfile = getAmazonDiscoveryProfile('proven-replenishment');
+const replenishmentReview = evaluateAmazonProductSafety(
+  blockedAmazon,
+  applyDiscoverySafetyOverrides(policy, replenishmentProfile)
+);
+assertEqual(replenishmentReview.status, 'PASS', 'proven replenishment Amazon profile allows winner-pattern categories');
+
+const replenishmentScore = scoreAmazonDiscoveryCandidate(blockedAmazon, {
+  minPriceDropPercent: replenishmentProfile.minPriceDropPercent,
+  maxAmazonCostUsd: replenishmentProfile.maxAmazonCostUsd,
+  minimumAmazonScore: replenishmentProfile.minimumAmazonScore
+}, replenishmentReview.riskFlags);
+assertEqual(replenishmentScore.replenishmentFit > 0, true, 'replenishment Amazon score captures winner-pattern fit');
 
 const scoutProfile = getAmazonDiscoveryProfile('starter-safe');
 const scoutCategory = getAmazonDiscoveryCategory(scoutProfile, 'office-electronics');

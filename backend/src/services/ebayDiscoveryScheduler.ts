@@ -220,15 +220,18 @@ async function finishAmazonComparisonRun(
   });
 }
 
-const schedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProfiles.flatMap((profile) => (
-  profile.categories.flatMap((category) => (
-    category.seedQueries.map((query) => ({
-      profileKey: profile.key,
-      categoryKey: category.key,
-      query
-    }))
+const schedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProfiles
+  .filter((profile) => profile.autoRunEnabled ?? profile.key !== 'custom')
+  .flatMap((profile) => (
+    profile.categories.flatMap((category) => (
+      category.seedQueries.map((query) => ({
+        profileKey: profile.key,
+        categoryKey: category.key,
+        query
+      }))
+    ))
   ))
-)).filter((target) => target.profileKey !== 'custom' && target.query.trim().length > 0);
+  .filter((target) => target.query.trim().length > 0);
 
 async function nextSchedulerTarget(): Promise<EbayDiscoverySchedulerTarget | undefined> {
   const targets = schedulerTargets();

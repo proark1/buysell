@@ -13,12 +13,59 @@ export interface AmazonDiscoveryScore {
   quality: number;
   availability: number;
   costFit: number;
+  replenishmentFit: number;
   riskPenalty: number;
   reasons: string[];
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const round = (value: number): number => Math.round(value);
+
+const normalizeSignalText = (value: string): string => value
+  .toLowerCase()
+  .replace(/ä/g, 'ae')
+  .replace(/ö/g, 'oe')
+  .replace(/ü/g, 'ue')
+  .replace(/ß/g, 'ss')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function replenishmentFit(product: AmazonMatchInput): { score: number; reasons: string[] } {
+  const text = normalizeSignalText([
+    product.title,
+    product.brand,
+    product.rootCategory,
+    ...(product.categoryTree ?? [])
+  ].filter(Boolean).join(' '));
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (/\b\d+\s*(?:er|x|pack|packs|stueck|stk|tabletten|kapseln|count|ct|waschladungen)\b/.test(text)) {
+    score += 4;
+    reasons.push('Multipack/count signal matches proven replenishment winners.');
+  }
+  if (/\b(?:kapseln|tabletten|omega|zink|magnesium|bisglycinat|supplement|vitamin|rizinusoel|fish oil|fischoel|algenoel)\b/.test(text)) {
+    score += 7;
+    reasons.push('Wellness replenishment pattern matches proven winners.');
+  }
+  if (/\b(?:nachfueller|refill|air freshener|lufterfrischer|detergent|waschmittel|staubxpress|febreze|lenor|pronto|cleaner|reiniger)\b/.test(text)) {
+    score += 7;
+    reasons.push('Household cleaning/refill pattern matches proven winners.');
+  }
+  if (/\b(?:ant bait|ameisen|ameisenkoeder|ameisenfalle|koederdose|klebefalle)\b/.test(text)) {
+    score += 7;
+    reasons.push('Pest-control replenishment pattern matches proven winners.');
+  }
+  if (/\b(?:cat litter|pet food|katzenstreu|trockenfutter|katzenfutter|hundefutter|beaphar|floratorf|biscoff)\b/.test(text)) {
+    score += 5;
+    reasons.push('Pet, garden, or pantry replenishment pattern matches proven winners.');
+  }
+
+  return { score: clamp(score, 0, 10), reasons };
+}
 
 // Sales-rank scales vary enormously by category (a 50k rank is excellent in a small
 // category but mediocre in Books/Electronics). Divide the raw rank by a per-category factor
@@ -70,8 +117,9 @@ export function scoreAmazonDiscoveryCandidate(
   const quality = clamp((product.rating ?? 0) >= 4.2 ? 12 : (product.rating ?? 0) >= 3.8 ? 7 : product.rating ? 3 : 0, 0, 12);
   const availability = product.availabilityStatus === 'IN_STOCK' ? 12 : product.availabilityStatus ? 4 : 6;
   const costFit = amazonCost ? clamp((1 - Math.abs((amazonCost / options.maxAmazonCostUsd) - 0.45)) * 18, 0, 18) : 0;
+  const replenishment = replenishmentFit(product);
   const risk = riskPenalty(riskFlags);
-  const total = round(clamp(priceSignal + demand + quality + availability + costFit - risk, 0, 100));
+  const total = round(clamp(priceSignal + demand + quality + availability + costFit + replenishment.score - risk, 0, 100));
 
   const reasons: string[] = [];
   if (amazonCost) reasons.push(`Amazon price ${amazonCost.toFixed(2)} is within scan budget.`);
@@ -79,6 +127,7 @@ export function scoreAmazonDiscoveryCandidate(
   if (product.salesRank) reasons.push(`Keepa sales rank signal: ${product.salesRank}.`);
   if (product.reviewCount) reasons.push(`${product.reviewCount} reviews support demand confidence.`);
   if (product.availabilityStatus === 'IN_STOCK') reasons.push('Amazon shows in stock.');
+  if (replenishment.score > 0) reasons.push(...replenishment.reasons);
   if (risk > 0) reasons.push(`Risk penalty applied for ${riskFlags.join(', ')}.`);
 
   return {
@@ -88,6 +137,7 @@ export function scoreAmazonDiscoveryCandidate(
     quality: round(quality),
     availability: round(availability),
     costFit: round(costFit),
+    replenishmentFit: round(replenishment.score),
     riskPenalty: risk,
     reasons
   };

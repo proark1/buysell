@@ -208,6 +208,24 @@ assertEqual(brandedProfile.key, 'branded-value', 'branded-value sourcing profile
 assertEqual(brandedProfile.minSoldPrice >= 40, true, 'branded-value uses a higher sold-price floor');
 assertEqual(brandedProfile.minEbayScore >= 60, true, 'branded-value uses a higher score gate');
 
+const replenishmentProfile = getEbayDiscoveryProfile('proven-replenishment');
+assertEqual(replenishmentProfile.key, 'proven-replenishment', 'proven replenishment sourcing profile is retrievable');
+assertEqual(replenishmentProfile.minSoldPrice <= 6, true, 'proven replenishment accepts low-ticket sold winners');
+assertEqual(replenishmentProfile.safetyOverrides?.allowedBlockedCategories?.includes('Health'), true, 'proven replenishment allows the supplied winner categories');
+
+const replenishmentScore = scoreEbayDiscoveryCandidate(
+  { title: '8-er Set Ameisenkoederdose Ameisenfalle Ungiftige Klebefalle', soldPrice: 12.9, condition: 'New', category: 'Household', itemId: 'ant-1', url: 'https://www.ebay.de/itm/ant-1' },
+  { minSoldPrice: replenishmentProfile.minSoldPrice, maxSoldPrice: replenishmentProfile.maxSoldPrice },
+  []
+);
+const plainLowTicketScore = scoreEbayDiscoveryCandidate(
+  { title: 'Generic Plastic Organizer Box', soldPrice: 12.9, condition: 'New', category: 'Household', itemId: 'box-1', url: 'https://www.ebay.de/itm/box-1' },
+  { minSoldPrice: replenishmentProfile.minSoldPrice, maxSoldPrice: replenishmentProfile.maxSoldPrice },
+  []
+);
+assertEqual(replenishmentScore.replenishment > 0, true, 'winner-pattern listing receives replenishment boost');
+assertEqual(replenishmentScore.total > plainLowTicketScore.total, true, 'winner-pattern listing outranks generic low-ticket item');
+
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async () => new Response(JSON.stringify({
   organic_results: [

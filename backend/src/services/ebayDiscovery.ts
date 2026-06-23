@@ -9,6 +9,7 @@ import type { ActiveRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { calculateProfit } from './profitCalculator.js';
 import { decideOpportunity } from './opportunityDecider.js';
 import {
+  applyDiscoverySafetyOverrides,
   ebayFixedNewListingRisks,
   evaluateProductSafety,
   getEbayDiscoveryCategory,
@@ -47,6 +48,7 @@ export interface EbayDiscoveryScore {
   category: number;
   diversity: number;
   sourceability: number;
+  replenishment: number;
   riskPenalty: number;
   reasons: string[];
 }
@@ -193,6 +195,47 @@ const percent = (value: number | undefined): string => value === undefined ? 'un
 const dollars = (value: number | undefined): string => value === undefined ? 'unknown' : `$${value.toFixed(2)}`;
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const round = (value: number): number => Math.round(value);
+
+const normalizeSignalText = (value: string): string => value
+  .toLowerCase()
+  .replace(/ä/g, 'ae')
+  .replace(/ö/g, 'oe')
+  .replace(/ü/g, 'ue')
+  .replace(/ß/g, 'ss')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function replenishmentSignal(title: string): { score: number; reasons: string[] } {
+  const text = normalizeSignalText(title);
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (/\b\d+\s*(?:er|x|pack|packs|stueck|stk|tabletten|kapseln|waschladungen)\b/.test(text)) {
+    score += 4;
+    reasons.push('Multipack or count-based replenishment signal.');
+  }
+  if (/\b(?:kapseln|tabletten|omega|zink|magnesium|bisglycinat|nahrungsergaenzung|rizinusoel|fischol|fischoel|algenoel)\b/.test(text)) {
+    score += 7;
+    reasons.push('Capsule/tablet or wellness replenishment pattern from proven sales.');
+  }
+  if (/\b(?:nachfueller|refill|lufterfrischer|waschmittel|staubxpress|febreze|lenor|pronto|reiniger|keramikpaste|kuehlerdichter)\b/.test(text)) {
+    score += 7;
+    reasons.push('Household cleaning/refill pattern from proven sales.');
+  }
+  if (/\b(?:ameisen|ameisenkoeder|ameisenfalle|koederdose|klebefalle)\b/.test(text)) {
+    score += 7;
+    reasons.push('Pest-control replenishment pattern from proven sales.');
+  }
+  if (/\b(?:katzenstreu|trockenfutter|katzenfutter|hundefutter|beaphar|floratorf|biscoff)\b/.test(text)) {
+    score += 5;
+    reasons.push('Pet, garden, or pantry replenishment pattern from proven sales.');
+  }
+
+  return { score: clamp(score, 0, 12), reasons };
+}
 
 const numberValue = (value: unknown): number | undefined => {
   if (typeof value === 'number') return value;
@@ -409,14 +452,20 @@ export function scoreEbayDiscoveryCandidate(
     reasons.push('No brand, model, or barcode detected — harder to match to a specific Amazon ASIN.');
   }
 
+  const replenishment = replenishmentSignal(ebay.title);
+  if (replenishment.score > 0) {
+    reasons.push(...replenishment.reasons);
+  }
+
   return {
-    total: round(clamp(price + condition + metadata + category + diversity + sourceability - riskPenalty, 0, 100)),
+    total: round(clamp(price + condition + metadata + category + diversity + sourceability + replenishment.score - riskPenalty, 0, 100)),
     price: round(price),
     condition: round(condition),
     metadata: round(metadata),
     category: round(category),
     diversity: round(diversity),
     sourceability: round(sourceability),
+    replenishment: round(replenishment.score),
     riskPenalty,
     reasons
   };
@@ -578,7 +627,10 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
   const query = options.query?.trim();
   const queryBreadth = options.queryBreadth ?? 'BALANCED';
   const queries = selectEbayDiscoveryQueries(profile, category, query, limit, queryBreadth, options.queryOffset ?? 0);
-  const policy = safetyPolicy(options.ruleConfig, safeMode, options.ruleConfig.maxAmazonCostUsd);
+  const policy = applyDiscoverySafetyOverrides(
+    safetyPolicy(options.ruleConfig, safeMode, options.ruleConfig.maxAmazonCostUsd),
+    profile
+  );
   const itemCondition = options.itemCondition ?? 'NEW';
   const buyingFormat = options.buyingFormat ?? 'BIN';
   const preferredLocation = options.preferredLocation ?? 'Domestic';
@@ -994,7 +1046,8 @@ function scoreAmazonCandidateForEbay(
   ebay: EbayCandidateInput,
   amazon: AmazonMatchInput,
   ruleConfig: ActiveRuleConfig,
-  market?: DiscoveryMarket
+  market?: DiscoveryMarket,
+  safetyProfile?: { safetyOverrides?: ReturnType<typeof getEbayDiscoveryProfile>['safetyOverrides'] }
 ): ProductOpportunity {
   const matchConfidence = scoreAmazonMatch(ebay, amazon);
   const matchedAmazon = { ...amazon, matchConfidence };
@@ -1009,7 +1062,10 @@ function scoreAmazonCandidateForEbay(
       ...profitInputsFromRuleConfig(ruleConfig, market)
     })
     : emptyProfit;
-  const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
+  const policy = applyDiscoverySafetyOverrides(
+    safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd),
+    safetyProfile
+  );
   const safety = evaluateProductSafety(ebay, matchedAmazon, policy);
   const baseDecision = safety.status === 'REJECT'
     ? {
@@ -1057,6 +1113,7 @@ export function analyzeEbayAmazonComparison(
     familySoldAggregate?: { soldCount?: number; minSoldPrice?: number; medianSoldPrice?: number; maxSoldPrice?: number };
     activeMarketCandidates?: EbayCandidateInput[];
     learningFactor?: number;
+    safetyProfile?: { safetyOverrides?: ReturnType<typeof getEbayDiscoveryProfile>['safetyOverrides'] };
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -1093,7 +1150,7 @@ export function analyzeEbayAmazonComparison(
   }
 
   const scored = amazonMatches
-    .map((amazon) => scoreAmazonCandidateForEbay(ebay, amazon, ruleConfig, context.market))
+    .map((amazon) => scoreAmazonCandidateForEbay(ebay, amazon, ruleConfig, context.market, context.safetyProfile))
     .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
 
   const marketMetrics = calculateEbayMarketMetrics({
@@ -1237,6 +1294,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
       ...where,
       comparisonStatus: { in: allowedStatuses }
     },
+    include: { run: { select: { profileKey: true } } },
     orderBy: { ebayScore: 'desc' },
     take: options.limit ?? 25
   });
@@ -1263,6 +1321,7 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
 
   for (const candidate of candidates) {
     const ebay = ebayFromRecord(candidate as Record<string, unknown>);
+    const safetyProfile = getEbayDiscoveryProfile(candidate.run.profileKey);
     const query = searchQueryForEbayProduct(ebay);
     const sourceCheck = filterEbaySourceCandidates([ebay], { sourceQuery: query, requireSoldPrice: true });
     if (sourceCheck.dropped.total > 0) {
@@ -1358,7 +1417,8 @@ export async function compareEbayDiscoveryCandidates(options: CompareEbayCandida
         soldMarketCandidates,
         activeMarketCandidates,
         learningFactor,
-        familySoldAggregate
+        familySoldAggregate,
+        safetyProfile
       });
       if (activeMarketWarning) comparison.report.reasons = uniqueReasons([...comparison.report.reasons, activeMarketWarning]);
       reports.push(comparison.report);

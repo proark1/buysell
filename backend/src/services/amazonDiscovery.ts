@@ -5,6 +5,7 @@ import { searchEbayCandidates, SerpApiError } from '../clients/serpApiClient.js'
 import { calculateProfit } from './profitCalculator.js';
 import { decideOpportunity } from './opportunityDecider.js';
 import {
+  applyDiscoverySafetyOverrides,
   evaluateAmazonProductSafety,
   evaluateProductSafety,
   getAmazonDiscoveryCategory,
@@ -252,7 +253,10 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
   const minPriceDropPercent = options.minPriceDropPercent ?? profile.minPriceDropPercent;
   const query = options.query?.trim();
   const queries = selectAmazonDiscoveryQueries(profile, category, query, limit);
-  const policy = safetyPolicy(options.ruleConfig, safeMode, maxAmazonCostUsd);
+  const policy = applyDiscoverySafetyOverrides(
+    safetyPolicy(options.ruleConfig, safeMode, maxAmazonCostUsd),
+    profile
+  );
   const market = getAmazonDiscoveryMarket(options.marketKey);
 
   const byAsin = new Map<string, AmazonMatchInput>();
@@ -531,7 +535,8 @@ function scoreEbayCandidateAgainstAmazon(
   amazon: AmazonMatchInput,
   ebay: EbayCandidateInput,
   ruleConfig: ActiveRuleConfig,
-  market?: DiscoveryMarket
+  market?: DiscoveryMarket,
+  safetyProfile?: { safetyOverrides?: ReturnType<typeof getAmazonDiscoveryProfile>['safetyOverrides'] }
 ): ProductOpportunity | undefined {
   const matchConfidence = scoreAmazonMatch(ebay, amazon);
   const matchedAmazon = { ...amazon, matchConfidence };
@@ -545,7 +550,10 @@ function scoreEbayCandidateAgainstAmazon(
     amazonItemCost: amazonCost,
     ...profitInputsFromRuleConfig(ruleConfig, market)
   });
-  const policy = safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd);
+  const policy = applyDiscoverySafetyOverrides(
+    safetyPolicy(ruleConfig, ruleConfig.safeMode, ruleConfig.maxAmazonCostUsd),
+    safetyProfile
+  );
   const safety = evaluateProductSafety(ebay, matchedAmazon, policy);
   const baseDecision = safety.status === 'REJECT'
     ? {
@@ -592,6 +600,7 @@ export function analyzeAmazonEbayComparison(
     activeEbayCandidates?: EbayCandidateInput[];
     sourceDrops?: EbaySourceDropStats;
     learningFactor?: number;
+    safetyProfile?: { safetyOverrides?: ReturnType<typeof getAmazonDiscoveryProfile>['safetyOverrides'] };
   } = {}
 ): {
   best?: ProductOpportunity;
@@ -645,7 +654,7 @@ export function analyzeAmazonEbayComparison(
 
   const scored = ebayCandidates
     .flatMap((ebay) => {
-      const opportunity = scoreEbayCandidateAgainstAmazon(amazon, ebay, ruleConfig, context.market);
+      const opportunity = scoreEbayCandidateAgainstAmazon(amazon, ebay, ruleConfig, context.market, context.safetyProfile);
       return opportunity ? [opportunity] : [];
     })
     .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
@@ -964,6 +973,7 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
       ...where,
       comparisonStatus: { in: allowedStatuses }
     },
+    include: { run: { select: { profileKey: true } } },
     orderBy: { amazonScore: 'desc' },
     take: options.limit ?? 25
   });
@@ -976,6 +986,7 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
 
   for (const candidate of candidates) {
     const amazon = amazonFromRecord(candidate as Record<string, unknown>);
+    const safetyProfile = getAmazonDiscoveryProfile(candidate.run.profileKey);
     await options.db.amazonDiscoveryCandidate.update({ where: { id: candidate.id }, data: { selected: true, comparisonStatus: 'COMPARING' } });
     try {
       const query = searchQueryForAmazonProduct(amazon);
@@ -1013,7 +1024,8 @@ export async function compareAmazonDiscoveryCandidates(options: CompareAmazonCan
         comparisonSettings,
         activeEbayCandidates: activeEbaySource.candidates,
         sourceDrops: ebaySource.dropped,
-        learningFactor
+        learningFactor,
+        safetyProfile
       });
       reports.push(comparison.report);
       const best = comparison.best;

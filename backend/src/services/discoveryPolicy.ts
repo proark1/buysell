@@ -29,6 +29,7 @@ export interface AmazonDiscoveryProfile {
   maxAmazonCostUsd: number;
   minimumAmazonScore: number;
   minPriceDropPercent: number;
+  safetyOverrides?: DiscoverySafetyOverrides;
 }
 
 export interface EbayDiscoveryCategory {
@@ -49,6 +50,8 @@ export interface EbayDiscoveryProfile {
   minEbayScore: number;
   minSoldPrice: number;
   maxSoldPrice: number;
+  autoRunEnabled?: boolean;
+  safetyOverrides?: DiscoverySafetyOverrides;
 }
 
 export interface SafetyPolicy {
@@ -57,6 +60,11 @@ export interface SafetyPolicy {
   blockedCategories: string[];
   blockedKeywords: string[];
   maxAmazonCostUsd: number;
+}
+
+export interface DiscoverySafetyOverrides {
+  allowedBlockedCategories?: string[];
+  allowedBlockedKeywords?: string[];
 }
 
 export interface SafetyReview {
@@ -110,6 +118,34 @@ export const defaultBlockedKeywords = [
   'adult',
   'lingerie'
 ];
+
+const provenReplenishmentSafetyOverrides: DiscoverySafetyOverrides = {
+  // This profile is intentionally based on the user's proven sold list: low-cost
+  // replenishment goods where Amazon was cheaper than eBay sold comps. Keep truly high-risk
+  // terms such as medicine, prescription, pesticide, baby formula, weapons, and adult items
+  // blocked globally.
+  allowedBlockedCategories: ['Food', 'Grocery', 'Beauty', 'Health'],
+  allowedBlockedKeywords: ['food', 'snack', 'coffee', 'tea', 'supplement', 'vitamin', 'cosmetic', 'lotion', 'shampoo', 'perfume']
+};
+
+const normalizedPolicyTerm = (value: string): string => value.trim().toLowerCase();
+
+const withoutAllowedTerms = (blocked: string[], allowed: string[] | undefined): string[] => {
+  const allowedSet = new Set((allowed ?? []).map(normalizedPolicyTerm));
+  return blocked.filter((item) => !allowedSet.has(normalizedPolicyTerm(item)));
+};
+
+export function applyDiscoverySafetyOverrides<T extends SafetyPolicy>(
+  policy: T,
+  profile?: { safetyOverrides?: DiscoverySafetyOverrides }
+): T {
+  if (!profile?.safetyOverrides) return policy;
+  return {
+    ...policy,
+    blockedCategories: withoutAllowedTerms(policy.blockedCategories, profile.safetyOverrides.allowedBlockedCategories),
+    blockedKeywords: withoutAllowedTerms(policy.blockedKeywords, profile.safetyOverrides.allowedBlockedKeywords)
+  };
+}
 
 // Pipeline order, earliest failure first. A rejected candidate is attributed to the first
 // stage it failed, so the funnel buckets each candidate exactly once.
@@ -295,6 +331,43 @@ export const amazonDiscoveryProfiles: AmazonDiscoveryProfile[] = [
     ]
   },
   {
+    key: 'proven-replenishment',
+    label: 'Proven Replenishment',
+    description: 'Amazon-first scout based on the provided sold winners: low-cost repeat goods, multipacks, household consumables, supplements, pet supplies, and personal-care items where Amazon can undercut eBay sold prices.',
+    defaultLimit: 50,
+    compareLimit: 15,
+    maxAmazonCostUsd: 70,
+    minimumAmazonScore: 54,
+    minPriceDropPercent: 0,
+    safetyOverrides: provenReplenishmentSafetyOverrides,
+    categories: [
+      {
+        key: 'household-pest-cleaning',
+        label: 'Household / Pest / Cleaning',
+        description: 'Ant traps, air fresheners, refills, detergents, cleaning products, and compact home consumables.',
+        seedQueries: ['ameisenkoederdose 8er set', 'febreze bad lufterfrischer 5 stueck', 'pronto staubxpress nachfueller', 'lenor aprilfrisch lufterfrischer', 'waschmittel 10l kanister']
+      },
+      {
+        key: 'supplements-wellness',
+        label: 'Supplements & Wellness',
+        description: 'Capsules, tablets, oils, and wellness replenishment products from the sold winner pattern.',
+        seedQueries: ['omega 3 kapseln hochdosiert 240', 'zink bisglycinat 400 tabletten', 'magnesium bisglycinat kapseln', 'sunday natural magnesium komplex', 'rizinusoel kaltgepresst bio']
+      },
+      {
+        key: 'pet-garden-pantry',
+        label: 'Pet / Garden / Pantry',
+        description: 'Pet supplies, garden replenishment goods, and bulk pantry products with repeat sold demand.',
+        seedQueries: ['cats best katzenstreu 20l', 'sanabelle sensitive katzenfutter 10kg', 'beaphar multi vitamin paste katzen', 'floratorf 25l ungeduengt', 'lotus biscoff 300er pack']
+      },
+      {
+        key: 'personal-care',
+        label: 'Personal Care',
+        description: 'Grooming, creams, shampoos, and care products that appeared in the proven sales list.',
+        seedQueries: ['philips oneblade intimate', 'veet men intim haarentfernungs set', 'brooklyn soap company bartshampoo', 'hanfcreme arnika 300ml', 'bienengiftsalbe hochdosiert']
+      }
+    ]
+  },
+  {
     key: 'custom',
     label: 'Custom Amazon Scout',
     description: 'Use your own Amazon search terms with the same safety and score gates.',
@@ -466,6 +539,44 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
     ]
   },
   {
+    key: 'proven-replenishment',
+    label: 'Proven Replenishment',
+    description: 'eBay-first scan based on the supplied 3-month winners: low-cost repeat products, multipacks, and consumable replenishment goods that sold on eBay while Amazon was cheaper.',
+    defaultLimit: 35,
+    compareLimit: 15,
+    minEbayScore: 48,
+    minSoldPrice: 6,
+    maxSoldPrice: 80,
+    autoRunEnabled: true,
+    safetyOverrides: provenReplenishmentSafetyOverrides,
+    categories: [
+      {
+        key: 'pest-cleaning-refills',
+        label: 'Pest / Cleaning / Refills',
+        description: 'Ant traps, air fresheners, dust refills, detergents, and cleaning consumables from the winner pattern.',
+        seedQueries: ['ameisenkoederdose ameisenfalle', 'febreze bad lufterfrischer 5 stueck', 'pronto staubxpress nachfueller', 'lenor aprilfrisch lufterfrischer', 'universal waschmittel 10l kanister', 'liqui moly keramikpaste 50g']
+      },
+      {
+        key: 'supplements-capsules',
+        label: 'Supplements / Capsules',
+        description: 'Capsules, tablets, oils, and wellness replenishment items with repeat sales in the CSV.',
+        seedQueries: ['omega 3 kapseln 240 hochdosiert', 'zink bisglycinat 400 tabletten', 'magnesium bisglycinat kapseln', 'doppelherz omega 3 vegan', 'sunday natural magnesium komplex', 'rizinusoel kaltgepresst bio']
+      },
+      {
+        key: 'pet-garden',
+        label: 'Pet & Garden',
+        description: 'Pet food, litter, pet vitamins, and garden replenishment products that showed eBay demand.',
+        seedQueries: ['cats best katzenstreu 20l', 'sanabelle sensitive katzenfutter 10kg', 'beaphar multi vitamin paste katzen', 'eukanuba trockenfutter 12kg', 'floratorf 25l ungeduengt']
+      },
+      {
+        key: 'personal-care-pantry',
+        label: 'Personal Care & Pantry',
+        description: 'Personal-care goods and selected bulk pantry products from the proven sales mix.',
+        seedQueries: ['philips oneblade intimate', 'veet men intim haarentfernungs set', 'brooklyn soap company bartshampoo', 'hanfcreme arnika 300ml', 'lotus biscoff 300er pack']
+      }
+    ]
+  },
+  {
     key: 'custom',
     label: 'Custom eBay Discovery',
     description: 'Use your own sold-listing keywords with the same safety and score gates.',
@@ -474,6 +585,7 @@ export const ebayDiscoveryProfiles: EbayDiscoveryProfile[] = [
     minEbayScore: 45,
     minSoldPrice: 10,
     maxSoldPrice: 300,
+    autoRunEnabled: false,
     categories: [
       {
         key: 'custom',

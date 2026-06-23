@@ -1,4 +1,4 @@
-import { evaluateProductSafety, primaryRejectionStage } from './discoveryPolicy.js';
+import { applyDiscoverySafetyOverrides, evaluateProductSafety, getEbayDiscoveryProfile, primaryRejectionStage } from './discoveryPolicy.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
 
 // primaryRejectionStage attributes a rejection to its EARLIEST failed pipeline stage.
@@ -12,7 +12,7 @@ assertEqual(primaryRejectionStage([]), 'SCORING', 'no flags defaults to scoring'
 const basePolicy = {
   safeMode: true,
   blockedBrands: [],
-  blockedCategories: ['Food', 'Clothing'],
+  blockedCategories: ['Food', 'Clothing', 'Health'],
   blockedKeywords: ['supplement', 'shirt'],
   maxAmazonCostUsd: 100
 };
@@ -26,6 +26,29 @@ const blocked = evaluateProductSafety(
 assertEqual(blocked.status, 'REJECT', 'blocked consumable product status');
 assertIncludes(blocked.riskFlags, 'BLOCKED_CATEGORY', 'blocked consumable product flags');
 assertIncludes(blocked.riskFlags, 'BLOCKED_KEYWORD', 'blocked consumable keyword flags');
+
+const replenishmentProfile = getEbayDiscoveryProfile('proven-replenishment');
+const replenishmentPolicy = applyDiscoverySafetyOverrides(basePolicy, replenishmentProfile);
+const provenReplenishment = evaluateProductSafety(
+  { title: 'WeightWorld Zink Bisglycinat 400 Tabletten', soldPrice: 14.99, category: 'Health' },
+  { asin: 'B000ZINK', title: 'WeightWorld Zink Bisglycinat 400 Tabletten supplement', currentPrice: 7.99, availabilityStatus: 'IN_STOCK', matchConfidence: 0.9, categoryTree: ['Health'] },
+  replenishmentPolicy
+);
+
+assertEqual(provenReplenishment.status, 'PASS', 'proven replenishment profile allows supplied winner categories');
+
+const stillBlockedMedical = evaluateProductSafety(
+  { title: 'Medicine tablets', soldPrice: 14.99, category: 'Medical' },
+  { asin: 'B000MED', title: 'Medicine tablets', currentPrice: 7.99, availabilityStatus: 'IN_STOCK', matchConfidence: 0.9, categoryTree: ['Medical'] },
+  applyDiscoverySafetyOverrides({
+    ...basePolicy,
+    blockedCategories: ['Medical'],
+    blockedKeywords: ['medicine']
+  }, replenishmentProfile)
+);
+
+assertEqual(stillBlockedMedical.status, 'REJECT', 'proven replenishment profile keeps medical products blocked');
+assertIncludes(stillBlockedMedical.riskFlags, 'BLOCKED_CATEGORY', 'medical category remains blocked');
 
 const safe = evaluateProductSafety(
   { title: 'Wireless barcode scanner', soldPrice: 79.99, category: 'Office Products' },
