@@ -10,6 +10,7 @@ import { getEbayDiscoveryCategory, getEbayDiscoveryProfile } from './discoveryPo
 import { defaultRuleConfig } from '../repositories/ruleConfigRepository.js';
 import { assertEqual } from './testHelpers.js';
 import type { AmazonMatchInput, EbayCandidateInput } from '../domain/products.js';
+import { buildWinnerSignalIndexFromRows } from './soldWinnerSeeds.js';
 
 const ebay: EbayCandidateInput = {
   itemId: '123',
@@ -225,6 +226,24 @@ const plainLowTicketScore = scoreEbayDiscoveryCandidate(
 );
 assertEqual(replenishmentScore.replenishment > 0, true, 'winner-pattern listing receives replenishment boost');
 assertEqual(replenishmentScore.total > plainLowTicketScore.total, true, 'winner-pattern listing outranks generic low-ticket item');
+
+const importedWinnerSignals = buildWinnerSignalIndexFromRows([
+  {
+    familyKey: productFamilyKeyForEbayCandidate({ title: 'Pronto StaubXpress Nachfüller Staubfänger 1er Pack 5 Stück Reinigungszubehör' }),
+    title: 'Pronto StaubXpress Nachfüller Staubfänger 1er Pack 5 Stück Reinigungszubehör',
+    quantitySold: 6,
+    sellingPrice: 11.88,
+    itemCost: 4.84,
+    netProfit: 42.11,
+    soldAt: new Date('2026-05-09T00:00:00Z')
+  }
+]);
+const importedWinnerScore = scoreEbayDiscoveryCandidate(
+  { title: 'Pronto StaubXpress Nachfueller Staubfaenger 5 Stueck', soldPrice: 11.88, condition: 'New', category: 'Household', itemId: 'pronto-1', url: 'https://www.ebay.de/itm/pronto-1' },
+  { minSoldPrice: replenishmentProfile.minSoldPrice, maxSoldPrice: replenishmentProfile.maxSoldPrice, winnerSignals: importedWinnerSignals },
+  []
+);
+assertEqual(importedWinnerScore.winnerSimilarity > 0, true, 'imported sold winners boost eBay discovery score');
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async () => new Response(JSON.stringify({

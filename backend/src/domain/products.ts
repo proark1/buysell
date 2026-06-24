@@ -62,6 +62,7 @@ export interface ProductOpportunity {
     priceSignal: number;
     market?: number;
     match: number;
+    confidence?: number;
     riskPenalty: number;
     reasons: string[];
   };

@@ -17,6 +17,8 @@ The Prisma schema in `backend/prisma/schema.prisma` defines the MVP persistence 
 - `AutomationEvent`: append-only event stream for an automation run.
 - `RuleConfig`: active safety/business rules for opportunity scoring, buffers, blocklists, and daily limits.
 - `Order.actionItems`: links eBay orders to generated `BUY` action items for local-agent purchase review.
+- `SoldWinnerSeed`: imported historical eBay sales rows used as positive replenishment evidence.
+- `ReplenishmentWatchItem`: grouped sold-winner families with sale counts, target buy/sell prices, priority, and test-buy metadata.
 
 ## Evidence And Market Metrics
 
@@ -25,3 +27,4 @@ The Prisma schema in `backend/prisma/schema.prisma` defines the MVP persistence 
 - `AmazonMatch.evidenceJson`: Amazon-side identity evidence attached to the chosen match.
 - `ProfitSnapshot` now stores the major landed-cost components separately: source shipping, packaging, payment fixed fee, return reserve, cancellation reserve, marketplace risk buffer, and total landed cost.
 - `RuleConfig` includes the matching defaults for landed-cost and market-quality thresholds so operators can tune economics without code changes.
+- `SoldWinnerSeed` rows feed a winner-similarity index used by Amazon Scout and eBay Discovery. Matching candidates receive a `winnerSimilarity` score reason, and scheduled discovery uses `ReplenishmentWatchItem` titles as rotating scan targets.

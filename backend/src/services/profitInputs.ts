@@ -16,6 +16,9 @@ export interface ProfitRateInputs {
   packagingCost: number;
   shippingLabelCost: number;
   paymentFixedFee: number;
+  paymentFixedFeeThreshold?: number;
+  paymentFixedFeeBelowThreshold?: number;
+  paymentFixedFeeAboveThreshold?: number;
   promotedListingFeeRate: number;
   returnReserveRate: number;
   cancellationReserveRate: number;
@@ -32,6 +35,9 @@ const ZERO_COST_INPUTS: ProfitRateInputs = {
   packagingCost: 0,
   shippingLabelCost: 0,
   paymentFixedFee: 0,
+  paymentFixedFeeThreshold: undefined,
+  paymentFixedFeeBelowThreshold: undefined,
+  paymentFixedFeeAboveThreshold: undefined,
   promotedListingFeeRate: 0,
   returnReserveRate: 0,
   cancellationReserveRate: 0,
@@ -67,6 +73,9 @@ export function costedProfitInputsFromRuleConfig(ruleConfig: ActiveRuleConfig, m
       defaultRuleConfig.paymentFixedFee,
       marketDefaults.paymentFixedFee
     ),
+    paymentFixedFeeThreshold: marketDefaults.paymentFixedFeeThreshold,
+    paymentFixedFeeBelowThreshold: marketDefaults.paymentFixedFeeBelowThreshold,
+    paymentFixedFeeAboveThreshold: marketDefaults.paymentFixedFeeAboveThreshold,
     promotedListingFeeRate: ruleConfig.defaultPromotedListingFeeRate,
     returnReserveRate: ruleConfig.returnReserveRate,
     cancellationReserveRate: ruleConfig.cancellationReserveRate,

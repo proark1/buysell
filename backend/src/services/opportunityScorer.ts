@@ -14,6 +14,7 @@ export interface OpportunityScore {
   priceSignal: number;
   market: number;
   match: number;
+  confidence: number;
   riskPenalty: number;
   reasons: string[];
 }
@@ -80,6 +81,8 @@ export function scoreOpportunity(opportunity: ProductOpportunity, thresholds: Sc
   const risk = riskPenalty(combinedRiskFlags);
   const rawTotal = (profit + roi + demand + priceSignal + market + match - risk) * (Number.isFinite(learningFactor) ? learningFactor : 1);
   const total = round(clamp(Number.isFinite(rawTotal) ? rawTotal : 0, 0, 100));
+  const rawConfidence = ((match / 23) * 38) + ((demand / 18) * 22) + ((market / 12) * 20) + ((priceSignal / 17) * 20) - Math.min(risk, 60) * 0.45;
+  const confidence = round(clamp(Number.isFinite(rawConfidence) ? rawConfidence : 0, 0, 100));
 
   const reasons: string[] = [];
   if (opportunity.profit.expectedProfit >= thresholds.minimumProfitUsd) reasons.push(`Profit ${opportunity.profit.expectedProfit.toFixed(2)} clears minimum.`);
@@ -99,6 +102,7 @@ export function scoreOpportunity(opportunity: ProductOpportunity, thresholds: Sc
     priceSignal: round(priceSignal),
     market: round(market),
     match: round(match),
+    confidence,
     riskPenalty: risk,
     reasons
   };

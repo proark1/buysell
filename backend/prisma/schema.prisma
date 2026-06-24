@@ -723,6 +723,62 @@ model SourceInventoryRecord {
   @@index([status])
 }
 
+model SoldWinnerSeed {
+  id              String   @id @default(cuid())
+  sourceFile      String   @default("unknown")
+  sourceRow       Int
+  soldAt          DateTime?
+  ebayItemId      String?
+  orderNo         String?
+  title           String
+  listingType     String?
+  quantitySold    Int      @default(1)
+  itemCost        Decimal? @db.Decimal(10, 2)
+  sellingPrice    Decimal? @db.Decimal(10, 2)
+  ebayFees        Decimal? @db.Decimal(10, 2)
+  shippingCost    Decimal? @db.Decimal(10, 2)
+  discount        Decimal? @db.Decimal(10, 2)
+  addFee          Decimal? @db.Decimal(10, 2)
+  totalSaleAmount Decimal? @db.Decimal(12, 2)
+  netProfit       Decimal? @db.Decimal(12, 2)
+  totalCost       Decimal? @db.Decimal(12, 2)
+  familyKey       String
+  normalizedTitle String
+  rawJson         Json?
+  importedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sourceFile, sourceRow])
+  @@index([familyKey])
+  @@index([ebayItemId])
+  @@index([netProfit])
+  @@index([soldAt])
+}
+
+model ReplenishmentWatchItem {
+  id                  String   @id @default(cuid())
+  familyKey           String   @unique
+  title               String
+  ebayItemId          String?
+  source              String   @default("sold-winner")
+  saleCount           Int      @default(0)
+  totalQuantitySold   Int      @default(0)
+  averageSellingPrice Decimal? @db.Decimal(10, 2)
+  averageUnitCost     Decimal? @db.Decimal(10, 2)
+  totalNetProfit      Decimal  @default(0.00) @db.Decimal(12, 2)
+  lastSoldAt          DateTime?
+  targetBuyPrice      Decimal? @db.Decimal(10, 2)
+  targetSellPrice     Decimal? @db.Decimal(10, 2)
+  status              String   @default("WATCHING")
+  priority            Int      @default(100)
+  metadataJson        Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status, priority])
+  @@index([lastSoldAt])
+}
+
 model ProfitLedgerEntry {
   id                 String            @id @default(cuid())
   productCandidateId String?

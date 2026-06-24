@@ -8,6 +8,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerDashboardApiRoutes } from './routes/dashboardApi.js';
 import { registerCredentialRoutes } from './routes/credentials.js';
 import { registerAutomationRoutes } from './routes/automation.js';
+import { registerSoldWinnerRoutes } from './routes/soldWinners.js';
 import { registerErrorHandler } from './security/errorHandler.js';
 import { registerRateLimit } from './security/rateLimit.js';
 import { env } from './config/env.js';
@@ -44,6 +45,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerDashboardApiRoutes(app);
   await registerCredentialRoutes(app);
   await registerAutomationRoutes(app);
+  await registerSoldWinnerRoutes(app);
   await registerHealthRoutes(app);
   await registerProfitRoutes(app);
   await registerOpportunityRoutes(app);

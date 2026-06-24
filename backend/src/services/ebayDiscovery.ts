@@ -37,6 +37,7 @@ import {
   type EbaySourceDropReason,
   type EbaySourceDropStats
 } from './ebaySourceFilters.js';
+import { scoreWinnerSignalForText, type WinnerSignalIndex } from './soldWinnerSeeds.js';
 
 export { productFamilyKeyForEbayCandidate } from './productFamily.js';
 
@@ -49,6 +50,7 @@ export interface EbayDiscoveryScore {
   diversity: number;
   sourceability: number;
   replenishment: number;
+  winnerSimilarity: number;
   riskPenalty: number;
   reasons: string[];
 }
@@ -105,6 +107,7 @@ export interface EbayDiscoveryRunOptions {
   skipExistingProducts?: boolean;
   existingProductFamilyKeys?: Iterable<string>;
   existingEbayItemIds?: Iterable<string>;
+  winnerSignals?: WinnerSignalIndex;
 }
 
 export interface CompareEbayCandidatesOptions {
@@ -360,6 +363,7 @@ export function scoreEbayDiscoveryCandidate(
     minSoldPrice: number;
     maxSoldPrice: number;
     family?: EbayDiscoveryFamilySummary;
+    winnerSignals?: WinnerSignalIndex;
   },
   riskFlags: string[]
 ): EbayDiscoveryScore {
@@ -456,9 +460,13 @@ export function scoreEbayDiscoveryCandidate(
   if (replenishment.score > 0) {
     reasons.push(...replenishment.reasons);
   }
+  const winnerSimilarity = scoreWinnerSignalForText(ebay.title, productFamilyKeyForEbayCandidate(ebay), options.winnerSignals);
+  if (winnerSimilarity.score > 0) {
+    reasons.push(...winnerSimilarity.reasons);
+  }
 
   return {
-    total: round(clamp(price + condition + metadata + category + diversity + sourceability + replenishment.score - riskPenalty, 0, 100)),
+    total: round(clamp(price + condition + metadata + category + diversity + sourceability + replenishment.score + winnerSimilarity.score - riskPenalty, 0, 100)),
     price: round(price),
     condition: round(condition),
     metadata: round(metadata),
@@ -466,6 +474,7 @@ export function scoreEbayDiscoveryCandidate(
     diversity: round(diversity),
     sourceability: round(sourceability),
     replenishment: round(replenishment.score),
+    winnerSimilarity: round(winnerSimilarity.score),
     riskPenalty,
     reasons
   };
@@ -709,7 +718,7 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
 
     const familyReviewed = familyItems.map((item) => {
       const safety = evaluateEbayCandidateSafety(item.ebay, policy);
-      const score = scoreEbayDiscoveryCandidate(item.ebay, { minSoldPrice, maxSoldPrice, family }, safety.riskFlags);
+      const score = scoreEbayDiscoveryCandidate(item.ebay, { minSoldPrice, maxSoldPrice, family, winnerSignals: options.winnerSignals }, safety.riskFlags);
       const base = { ebay: item.ebay, family: { ...family, sourceQuery: item.sourceQuery }, score, safety };
       return { ...base, rejectionReasons: ebayRejectionReasons(base, minimumEbayScore) };
     }).sort((a, b) => b.score.total - a.score.total);
@@ -753,7 +762,8 @@ export async function buildEbayDiscoveryCandidates(options: EbayDiscoveryRunOpti
       skipExistingProducts,
       skippedExisting,
       sourceDropCandidateCount: sourceDropCandidates.length,
-      sourceDrops
+      sourceDrops,
+      soldWinnerSeedFamilies: options.winnerSignals?.byFamilyKey.size ?? 0
     }
   };
 }

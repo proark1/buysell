@@ -12,6 +12,7 @@ import {
   loadExistingEbayDiscoveryKeys,
   persistEbayDiscoveryRun
 } from './ebayDiscovery.js';
+import { listReplenishmentTargets, loadWinnerSignalIndex } from './soldWinnerSeeds.js';
 
 const minutesToMs = (minutes: number): number => Math.max(1, minutes) * 60_000;
 const schedulerRetryMinutes = 1;
@@ -22,7 +23,7 @@ const errorRetryCooldownMinutes = 15;
 
 interface EbayDiscoverySchedulerTarget {
   profileKey: string;
-  categoryKey: string;
+  categoryKey?: string;
   query: string;
 }
 
@@ -220,7 +221,7 @@ async function finishAmazonComparisonRun(
   });
 }
 
-const schedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProfiles
+const staticSchedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProfiles
   .filter((profile) => profile.autoRunEnabled ?? profile.key !== 'custom')
   .flatMap((profile) => (
     profile.categories.flatMap((category) => (
@@ -234,7 +235,8 @@ const schedulerTargets = (): EbayDiscoverySchedulerTarget[] => ebayDiscoveryProf
   .filter((target) => target.query.trim().length > 0);
 
 async function nextSchedulerTarget(): Promise<EbayDiscoverySchedulerTarget | undefined> {
-  const targets = schedulerTargets();
+  const importedTargets = await listReplenishmentTargets(prisma, 75);
+  const targets = [...importedTargets, ...staticSchedulerTargets()];
   if (!targets.length) return undefined;
   const completedRuns = await prisma.ebayDiscoveryRun.count();
   return targets[completedRuns % targets.length];
@@ -275,6 +277,7 @@ async function runScheduledEbayDiscoveryUnlocked(): Promise<ScheduledEbayDiscove
   }
 
   const existingKeys = await loadExistingEbayDiscoveryKeys(prisma);
+  const winnerSignals = await loadWinnerSignalIndex(prisma);
   const runOptions = {
     serpApiKey,
     ruleConfig,
@@ -287,7 +290,8 @@ async function runScheduledEbayDiscoveryUnlocked(): Promise<ScheduledEbayDiscove
     queryBreadth: 'FOCUSED' as const,
     skipExistingProducts: true,
     existingProductFamilyKeys: existingKeys.productFamilyKeys,
-    existingEbayItemIds: existingKeys.ebayItemIds
+    existingEbayItemIds: existingKeys.ebayItemIds,
+    winnerSignals
   };
   let result: Awaited<ReturnType<typeof buildEbayDiscoveryCandidates>>;
   try {

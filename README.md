@@ -114,6 +114,14 @@ curl -X POST http://localhost:3000/ebay-discovery/compare \
 
 eBay Discovery is the reverse of Amazon Scout. It starts with sold/completed eBay listings through SerpApi, applies eBay-side category, price, condition, location, and safety filters, then uses Keepa to find Amazon source matches. Profitable matches are persisted through the same opportunity/action pipeline; uncertain high-upside matches stay in manual review.
 
+Sold-winner import:
+
+```bash
+npm run sold-winners:import -w backend -- "/absolute/path/to/ebay_3months_merged - Original Uebersicht.csv"
+```
+
+The import stores historical sold rows in `SoldWinnerSeed`, groups them into `ReplenishmentWatchItem` records, and feeds those winner families into Amazon Scout and eBay Discovery scoring. Imported products receive a `winnerSimilarity` score boost when future candidates match the same product family or closely resemble prior profitable sales. Scheduled eBay discovery also rotates through the replenishment watchlist as scan targets.
+
 Automatic opportunities require exact-product evidence. Shared UPC/EAN/MPN/model data or exact brand-plus-model agreement can pass; brand, model, pack-count, or variant conflicts are rejected; brand-only or title-only similarity stays in manual review.
 
 Listing opportunities are not queued directly as `LIST` actions. A profitable `LIST` decision first creates a `VERIFY` action and `PriceVerification` record. The verifier must open the Amazon and eBay product links on a real browser, confirm current price, new condition, fixed-price eBay format, and brand, then submit the observed values. Only a passed verification creates the actual `LIST` action.

@@ -15,6 +15,9 @@ export interface ProfitCalculatorInput {
   shippingLabelCost?: number;
   packagingCost?: number;
   paymentFixedFee?: number;
+  paymentFixedFeeThreshold?: number;
+  paymentFixedFeeBelowThreshold?: number;
+  paymentFixedFeeAboveThreshold?: number;
   returnReserveRate?: number;
   returnShippingReserveRate?: number;
   cancellationReserveRate?: number;
@@ -66,7 +69,19 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
   const sourceShippingCost = input.sourceShippingCost ?? input.amazonShippingCost ?? 0;
   const shippingLabelCost = input.shippingLabelCost ?? 0;
   const packagingCost = input.packagingCost ?? 0;
-  const paymentFixedFee = input.paymentFixedFee ?? 0;
+  const grossRevenue = input.ebaySalePrice + (input.ebayShippingPrice ?? 0);
+  const thresholdPaymentFixedFee = (
+    input.paymentFixedFeeThreshold !== undefined &&
+    input.paymentFixedFeeBelowThreshold !== undefined &&
+    input.paymentFixedFeeAboveThreshold !== undefined
+      ? grossRevenue <= input.paymentFixedFeeThreshold
+        ? input.paymentFixedFeeBelowThreshold
+        : input.paymentFixedFeeAboveThreshold
+      : undefined
+  );
+  const paymentFixedFee = input.paymentFixedFee && input.paymentFixedFee > 0
+    ? input.paymentFixedFee
+    : thresholdPaymentFixedFee ?? input.paymentFixedFee ?? 0;
   const returnReserveRate = input.returnReserveRate ?? 0;
   const returnShippingReserveRate = input.returnShippingReserveRate ?? 0;
   const cancellationReserveRate = input.cancellationReserveRate ?? 0;
@@ -75,12 +90,6 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
   const estimatedSalesTaxRate = input.estimatedSalesTaxRate ?? 0;
   const returnRiskBuffer = input.returnRiskBuffer ?? 0;
   const priceChangeBuffer = input.priceChangeBuffer ?? 0;
-  const ebayShippingPrice = input.ebayShippingPrice ?? 0;
-
-  // eBay charges its final-value fee on the full buyer payment (item + shipping), and the
-  // buyer-paid shipping is also revenue to the seller.
-  const grossRevenue = input.ebaySalePrice + ebayShippingPrice;
-
   const estimatedVariableFees = grossRevenue * (ebayFinalValueFeeRate + ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate);
   const currencyConversionReserve = grossRevenue * currencyConversionBufferRate;
   const estimatedFees = estimatedVariableFees + paymentFixedFee + insertionFee + listingUpgradeFees + promotedListingFixedFee;

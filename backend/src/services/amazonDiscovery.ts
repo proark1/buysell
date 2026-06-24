@@ -34,6 +34,7 @@ import {
   type EbayComparisonSettings
 } from './marketplaces.js';
 import { notFound } from '../security/httpErrors.js';
+import type { WinnerSignalIndex } from './soldWinnerSeeds.js';
 
 export interface AmazonDiscoveryCandidateResult {
   amazon: AmazonMatchInput;
@@ -59,6 +60,7 @@ export interface AmazonDiscoveryRunOptions {
   minimumAmazonScore?: number;
   maxAmazonCostUsd?: number;
   minPriceDropPercent?: number;
+  winnerSignals?: WinnerSignalIndex;
 }
 
 export interface CompareAmazonCandidatesOptions {
@@ -277,7 +279,8 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
     const score = scoreAmazonDiscoveryCandidate(amazon, {
       minPriceDropPercent,
       maxAmazonCostUsd,
-      minimumAmazonScore
+      minimumAmazonScore,
+      winnerSignals: options.winnerSignals
     }, safety.riskFlags);
     const base = { amazon, score, safety };
     return { ...base, rejectionReasons: amazonRejectionReasons(base, minimumAmazonScore) };
@@ -304,7 +307,8 @@ export async function buildAmazonDiscoveryCandidates(options: AmazonDiscoveryRun
       safeMode,
       minimumAmazonScore,
       maxAmazonCostUsd,
-      minPriceDropPercent
+      minPriceDropPercent,
+      soldWinnerSeedFamilies: options.winnerSignals?.byFamilyKey.size ?? 0
     }
   };
 }

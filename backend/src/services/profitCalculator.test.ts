@@ -93,9 +93,35 @@ assertApprox(withShipping.marginPercent, 27, 'margin uses gross revenue incl. sh
 const germanInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'de');
 const usInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'us');
 assertApprox(germanInputs.estimatedSalesTaxRate, 0.19, 'Germany default source tax');
-assertApprox(germanInputs.ebayPaymentFeeRate, 0.0235, 'Germany payment fee default');
+assertApprox(germanInputs.ebayPaymentFeeRate, 0, 'Germany payment fee is included in final value fee model');
+assertApprox(germanInputs.paymentFixedFeeThreshold ?? 0, 10, 'Germany fixed fee threshold');
+assertApprox(germanInputs.paymentFixedFeeBelowThreshold ?? 0, 0.35, 'Germany lower fixed fee');
+assertApprox(germanInputs.paymentFixedFeeAboveThreshold ?? 0, 0.45, 'Germany higher fixed fee');
 assertApprox(usInputs.estimatedSalesTaxRate, 0.08, 'US default source tax');
 assertApprox(usInputs.ebayFinalValueFeeRate, 0.1325, 'US final value fee default');
+
+const germanLowOrder = calculateProfit({
+  ebaySalePrice: 9.99,
+  amazonItemCost: 5,
+  ebayFinalValueFeeRate: germanInputs.ebayFinalValueFeeRate,
+  ebayPaymentFeeRate: germanInputs.ebayPaymentFeeRate,
+  estimatedSalesTaxRate: 0,
+  paymentFixedFeeThreshold: germanInputs.paymentFixedFeeThreshold,
+  paymentFixedFeeBelowThreshold: germanInputs.paymentFixedFeeBelowThreshold,
+  paymentFixedFeeAboveThreshold: germanInputs.paymentFixedFeeAboveThreshold
+});
+const germanHighOrder = calculateProfit({
+  ebaySalePrice: 10.01,
+  amazonItemCost: 5,
+  ebayFinalValueFeeRate: germanInputs.ebayFinalValueFeeRate,
+  ebayPaymentFeeRate: germanInputs.ebayPaymentFeeRate,
+  estimatedSalesTaxRate: 0,
+  paymentFixedFeeThreshold: germanInputs.paymentFixedFeeThreshold,
+  paymentFixedFeeBelowThreshold: germanInputs.paymentFixedFeeBelowThreshold,
+  paymentFixedFeeAboveThreshold: germanInputs.paymentFixedFeeAboveThreshold
+});
+assertApprox((germanLowOrder.paymentFixedFee ?? 0), 0.35, 'Germany low order fixed fee applied');
+assertApprox((germanHighOrder.paymentFixedFee ?? 0), 0.45, 'Germany high order fixed fee applied');
 
 // Active breakeven mode subtracts nothing: pure (eBay sale − Amazon cost) spread.
 const breakevenInputs = profitInputsFromRuleConfig(defaultRuleConfig, 'us');

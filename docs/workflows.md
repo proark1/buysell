@@ -49,6 +49,12 @@ Both eBay-first and Amazon-first comparison now require product identity evidenc
 
 Both flows also persist an evidence ledger and market-quality metrics. The scorer uses sold-comps sample size, price spread, sell-through/competition metrics when available, landed-cost economics, identity confidence, and safety flags before an automatic listing can be queued.
 
+## Sold-Winner Replenishment Loop
+
+Historical eBay sales can be imported with `npm run sold-winners:import -w backend -- "/absolute/path/to/file.csv"` or `POST /sold-winners/import`. The parser detects the real CSV header row, stores rows in `SoldWinnerSeed`, groups positive-profit rows by product family, and updates `ReplenishmentWatchItem` with sale count, quantity sold, average selling price, average unit cost, target buy/sell prices, priority, and a recommended test-buy quantity.
+
+Amazon Scout and eBay Discovery load the sold-winner index on each database-backed run. Exact product-family matches and close title-token matches receive a `winnerSimilarity` score component with an explanation, so scans are biased toward products like the items that already sold profitably. The eBay discovery scheduler also rotates imported watchlist titles into its scan targets, turning prior winners into a daily replenishment queue instead of a static keyword list.
+
 ## Persisting Opportunities
 
 The opportunity search request accepts `"persist": true`. When enabled, the backend requires `DATABASE_URL` and writes each returned opportunity into `ProductCandidate`, `AmazonMatch`, `ProfitSnapshot`, `AiDecision`, and `AuditLog` records. This keeps the first API safe by making persistence explicit while still supporting a dry-run mode for API/parser testing.

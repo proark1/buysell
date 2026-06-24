@@ -46,6 +46,9 @@ export interface MarketplaceProfitDefaults {
   ebayPaymentFeeRate: number;
   estimatedSalesTaxRate: number;
   paymentFixedFee: number;
+  paymentFixedFeeThreshold?: number;
+  paymentFixedFeeBelowThreshold?: number;
+  paymentFixedFeeAboveThreshold?: number;
 }
 
 export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
@@ -126,9 +129,12 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
 const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
   de: {
     ebayFinalValueFeeRate: 0.11,
-    ebayPaymentFeeRate: 0.0235,
+    ebayPaymentFeeRate: 0,
     estimatedSalesTaxRate: 0.19,
-    paymentFixedFee: 0.35
+    paymentFixedFee: 0.35,
+    paymentFixedFeeThreshold: 10,
+    paymentFixedFeeBelowThreshold: 0.35,
+    paymentFixedFeeAboveThreshold: 0.45
   },
   us: {
     ebayFinalValueFeeRate: 0.1325,
@@ -144,7 +150,7 @@ const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
   },
   fr: {
     ebayFinalValueFeeRate: 0.11,
-    ebayPaymentFeeRate: 0.0235,
+    ebayPaymentFeeRate: 0,
     estimatedSalesTaxRate: 0.2,
     paymentFixedFee: 0.35
   },
@@ -156,13 +162,13 @@ const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
   },
   it: {
     ebayFinalValueFeeRate: 0.11,
-    ebayPaymentFeeRate: 0.0235,
+    ebayPaymentFeeRate: 0,
     estimatedSalesTaxRate: 0.22,
     paymentFixedFee: 0.35
   },
   es: {
     ebayFinalValueFeeRate: 0.11,
-    ebayPaymentFeeRate: 0.0235,
+    ebayPaymentFeeRate: 0,
     estimatedSalesTaxRate: 0.21,
     paymentFixedFee: 0.35
   }

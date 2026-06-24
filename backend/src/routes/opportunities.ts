@@ -35,6 +35,7 @@ import { recordApiUsage } from '../services/apiUsage.js';
 import { withSchedulerLock } from '../services/schedulerLocks.js';
 import { verifyLocalAgentRequest } from '../security/localAgentAuth.js';
 import type { ProductOpportunity } from '../domain/products.js';
+import { loadWinnerSignalIndex } from '../services/soldWinnerSeeds.js';
 
 const opportunityRequestSchema = z.object({
   query: z.string().min(2),
@@ -673,6 +674,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     const ebayComparisonSettings = normalizeEbayComparisonSettings(parsed.data.ebayComparison);
     const comparisonRuleConfig = ruleConfigWithEbaySettings(ruleConfig, ebayComparisonSettings);
     const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
+    const winnerSignals = await loadWinnerSignalIndex(prisma);
     let result: Awaited<ReturnType<typeof buildAmazonDiscoveryCandidates>>;
     let persistedRun: Awaited<ReturnType<typeof persistAmazonDiscoveryRun>>;
     try {
@@ -695,7 +697,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         safeMode: parsed.data.safeMode,
         minimumAmazonScore: parsed.data.minAmazonScore,
         maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
-        minPriceDropPercent: parsed.data.minPriceDropPercent
+        minPriceDropPercent: parsed.data.minPriceDropPercent,
+        winnerSignals
       });
       persistedRun = await persistAmazonDiscoveryRun(prisma, {
         keepaApiKey,
@@ -709,7 +712,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         safeMode: parsed.data.safeMode,
         minimumAmazonScore: parsed.data.minAmazonScore,
         maxAmazonCostUsd: parsed.data.maxAmazonCostUsd,
-        minPriceDropPercent: parsed.data.minPriceDropPercent
+        minPriceDropPercent: parsed.data.minPriceDropPercent,
+        winnerSignals
       }, result);
     } catch (error) {
       if (error instanceof KeepaApiError) {
@@ -873,6 +877,7 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
     const ruleConfig = await getActiveRuleConfig(prisma);
     const comparisonRuleConfig = ruleConfigWithComparisonThresholds(ruleConfig, parsed.data.comparison);
     const effectiveMode = parsed.data.autoCompare ? 'AUTO' : parsed.data.mode;
+    const winnerSignals = await loadWinnerSignalIndex(prisma);
     const existingKeys = parsed.data.skipExistingProducts
       ? await loadExistingEbayDiscoveryKeys(prisma)
       : { productFamilyKeys: [], ebayItemIds: [] };
@@ -902,7 +907,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         queryBreadth: parsed.data.queryBreadth,
         skipExistingProducts: parsed.data.skipExistingProducts,
         existingProductFamilyKeys: existingKeys.productFamilyKeys,
-        existingEbayItemIds: existingKeys.ebayItemIds
+        existingEbayItemIds: existingKeys.ebayItemIds,
+        winnerSignals
       });
       persistedRun = await persistEbayDiscoveryRun(prisma, {
         serpApiKey,
@@ -925,7 +931,8 @@ export async function registerOpportunityRoutes(app: FastifyInstance): Promise<v
         preferredLocation: parsed.data.preferredLocation,
         postalCode: parsed.data.postalCode,
         queryBreadth: parsed.data.queryBreadth,
-        skipExistingProducts: parsed.data.skipExistingProducts
+        skipExistingProducts: parsed.data.skipExistingProducts,
+        winnerSignals
       }, result);
     } catch (error) {
       if (error instanceof SerpApiError) {

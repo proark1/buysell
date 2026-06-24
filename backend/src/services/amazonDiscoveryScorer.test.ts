@@ -2,6 +2,7 @@ import { applyDiscoverySafetyOverrides, evaluateAmazonProductSafety, getAmazonDi
 import { selectAmazonDiscoveryQueries } from './amazonDiscovery.js';
 import { scoreAmazonDiscoveryCandidate } from './amazonDiscoveryScorer.js';
 import { assertEqual, assertIncludes } from './testHelpers.js';
+import { buildWinnerSignalIndexFromRows } from './soldWinnerSeeds.js';
 
 const policy = {
   safeMode: true,
@@ -77,6 +78,31 @@ const replenishmentScore = scoreAmazonDiscoveryCandidate(blockedAmazon, {
   minimumAmazonScore: replenishmentProfile.minimumAmazonScore
 }, replenishmentReview.riskFlags);
 assertEqual(replenishmentScore.replenishmentFit > 0, true, 'replenishment Amazon score captures winner-pattern fit');
+
+const importedWinnerSignals = buildWinnerSignalIndexFromRows([
+  {
+    familyKey: 'pronto:staubxpress:nachfueller',
+    title: 'Pronto StaubXpress Nachfüller Staubfänger 1er Pack 5 Stück Reinigungszubehör',
+    quantitySold: 6,
+    sellingPrice: 11.88,
+    itemCost: 4.84,
+    netProfit: 42.11,
+    soldAt: new Date('2026-05-09T00:00:00Z')
+  }
+]);
+const importedWinnerScore = scoreAmazonDiscoveryCandidate({
+  asin: 'B000PRONTO',
+  title: 'Pronto StaubXpress Nachfueller Staubfaenger 5 Stueck',
+  buyBoxPrice: 4.84,
+  availabilityStatus: 'IN_STOCK',
+  matchConfidence: 0
+}, {
+  minPriceDropPercent: replenishmentProfile.minPriceDropPercent,
+  maxAmazonCostUsd: replenishmentProfile.maxAmazonCostUsd,
+  minimumAmazonScore: replenishmentProfile.minimumAmazonScore,
+  winnerSignals: importedWinnerSignals
+}, []);
+assertEqual(importedWinnerScore.winnerSimilarity > 0, true, 'imported sold winners boost Amazon Scout score');
 
 const scoutProfile = getAmazonDiscoveryProfile('starter-safe');
 const scoutCategory = getAmazonDiscoveryCategory(scoutProfile, 'office-electronics');

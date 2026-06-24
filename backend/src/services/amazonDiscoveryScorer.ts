@@ -1,9 +1,11 @@
 import type { AmazonMatchInput } from '../domain/products.js';
+import { scoreWinnerSignalForText, type WinnerSignalIndex } from './soldWinnerSeeds.js';
 
 export interface AmazonDiscoveryScoreOptions {
   minPriceDropPercent: number;
   maxAmazonCostUsd: number;
   minimumAmazonScore: number;
+  winnerSignals?: WinnerSignalIndex;
 }
 
 export interface AmazonDiscoveryScore {
@@ -14,6 +16,7 @@ export interface AmazonDiscoveryScore {
   availability: number;
   costFit: number;
   replenishmentFit: number;
+  winnerSimilarity: number;
   riskPenalty: number;
   reasons: string[];
 }
@@ -118,8 +121,9 @@ export function scoreAmazonDiscoveryCandidate(
   const availability = product.availabilityStatus === 'IN_STOCK' ? 12 : product.availabilityStatus ? 4 : 6;
   const costFit = amazonCost ? clamp((1 - Math.abs((amazonCost / options.maxAmazonCostUsd) - 0.45)) * 18, 0, 18) : 0;
   const replenishment = replenishmentFit(product);
+  const winnerSimilarity = scoreWinnerSignalForText(product.title, undefined, options.winnerSignals);
   const risk = riskPenalty(riskFlags);
-  const total = round(clamp(priceSignal + demand + quality + availability + costFit + replenishment.score - risk, 0, 100));
+  const total = round(clamp(priceSignal + demand + quality + availability + costFit + replenishment.score + winnerSimilarity.score - risk, 0, 100));
 
   const reasons: string[] = [];
   if (amazonCost) reasons.push(`Amazon price ${amazonCost.toFixed(2)} is within scan budget.`);
@@ -128,6 +132,7 @@ export function scoreAmazonDiscoveryCandidate(
   if (product.reviewCount) reasons.push(`${product.reviewCount} reviews support demand confidence.`);
   if (product.availabilityStatus === 'IN_STOCK') reasons.push('Amazon shows in stock.');
   if (replenishment.score > 0) reasons.push(...replenishment.reasons);
+  if (winnerSimilarity.score > 0) reasons.push(...winnerSimilarity.reasons);
   if (risk > 0) reasons.push(`Risk penalty applied for ${riskFlags.join(', ')}.`);
 
   return {
@@ -138,6 +143,7 @@ export function scoreAmazonDiscoveryCandidate(
     availability: round(availability),
     costFit: round(costFit),
     replenishmentFit: round(replenishment.score),
+    winnerSimilarity: round(winnerSimilarity.score),
     riskPenalty: risk,
     reasons
   };
