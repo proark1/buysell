@@ -4,7 +4,7 @@
 > Compiled June 2026 from reseller blogs, eBay/Amazon policy pages, the eBay
 > seller community, and practitioner guidance circulating on Reddit (r/Flipping,
 > r/FulfillmentByAmazon) and YouTube reseller channels. Every claim is cited at
-> the bottom. Treat marketplace‑policy points as the highest‑confidence items
+> the bottom. Treat marketplace-policy points as the highest-confidence items
 > and "best product" lists as directional, not guarantees.
 
 ---
@@ -16,21 +16,21 @@
    an item and, only after it sells, ordering it from Amazon/Walmart/Target to
    ship straight to the eBay buyer. That exact pattern is what gets accounts
    restricted or suspended, and Amazon also cancels/locks the buyer side when it
-   detects you're shipping its inventory to third‑party addresses. What *is*
+   detects you're shipping its inventory to third-party addresses. What *is*
    allowed is buying discounted stock, **taking possession of it**, then listing
-   and shipping it yourself. Buysell's `BUY`‑after‑`SELL` order‑sync flow is the
+   and shipping it yourself. Buysell's `BUY`-after-`SELL` order-sync flow is the
    risky pattern unless the operator actually holds inventory; the
    `VERIFY → LIST` gate and "hold then ship" model is the compliant one.
 2. **Velocity beats margin.** Across both platforms the consistent advice is to
-   rank on *sell‑through / sales‑rank stability first*, then profit. A 40% ROI
+   rank on *sell-through / sales-rank stability first*, then profit. A 40% ROI
    item that sits for 6 months is worse than a 20% item that turns in 2 weeks.
 3. **Best categories are boring, branded, replenishable consumables and
-   accessories** — not trendy one‑offs. This matches the repo's recent commits
+   accessories** — not trendy one-offs. This matches the repo's recent commits
    ("Focus discovery on proven replenishment products", "Bias sourcing toward
    identifiable, branded products").
-4. **Sourcing edge comes from breadth of scanning + sold‑comp truth.** The pros
+4. **Sourcing edge comes from breadth of scanning + sold-comp truth.** The pros
    scan 1,000+ stores (Tactical Arbitrage), gate on Keepa history, and price
-   against eBay *sold* comps — exactly the Amazon‑Scout (Keepa) → eBay‑sold‑comp
+   against eBay *sold* comps — exactly the Amazon-Scout (Keepa) → eBay-sold-comp
    pipeline Buysell already implements.
 
 ---
@@ -49,44 +49,44 @@
 - **Why people still do Amazon→eBay anyway:** eBay buyers will pay a premium for
   convenience/findability, and Amazon's catalog + discounts create the spread.
   But the margin is thin and the account risk is real, which is why several 2026
-  write‑ups bluntly call pure Amazon→eBay arbitrage "dead" as a dropship play and
+  write-ups bluntly call pure Amazon→eBay arbitrage "dead" as a dropship play and
   push toward held inventory or wholesale. [loveregards, dropified]
 - **Tooling is now table stakes.** Manual sourcing doesn't scale; serious sellers
-  since ~2025 rely on AI/product‑research tools (Tactical Arbitrage, Seller
-  Assistant, ZIK, SmartScout, Keepa) to pre‑filter sales history, competition,
+  since ~2025 rely on AI/product-research tools (Tactical Arbitrage, Seller
+  Assistant, ZIK, SmartScout, Keepa) to pre-filter sales history, competition,
   and margins before committing capital. [sellbery, threecolts]
-- **The 90‑day rule:** only buy what you can realistically sell in ~90 days —
-  avoids dead capital (and, on the Amazon side, long‑term storage fees).
+- **The 90-day rule:** only buy what you can realistically sell in ~90 days —
+  avoids dead capital (and, on the Amazon side, long-term storage fees).
   [goaura, easync-oa]
 
 ### Profit & fee math to gate on
-- **eBay take is ~13–15%** of the sale once final‑value fees + payment processing
+- **eBay take is ~13–15%** of the sale once final-value fees + payment processing
   are included; budget that plus shipping, packaging, and return risk before
   calling anything profitable. [closo, frooition]
 - **Common practitioner floors:** many sellers won't touch a deal under **~$3
-  net profit or ~30% ROI**; set a per‑category BSR cutoff too. [goaura]
-- **Net margins by category:** roughly **30–50% in higher‑margin niches**
+  net profit or ~30% ROI**; set a per-category BSR cutoff too. [goaura]
+- **Net margins by category:** roughly **30–50% in higher-margin niches**
   (vintage, specialty) vs **15–25% in commodity electronics**. A healthy mixed
   book targets ~3–5× cost basis on average, with a few 10× winners and some
   ~1.5× items sold just to free up capital. [closo]
 
 > Buysell already encodes this as the deterministic profit calculator + landed
-> cost + return/price‑change buffers. The research validates keeping a **hard ROI
+> cost + return/price-change buffers. The research validates keeping a **hard ROI
 > AND velocity gate**, not margin alone.
 
 ---
 
 ## 2. What products work best
 
-**Winning traits (the through‑line across every source):** branded &
+**Winning traits (the through-line across every source):** branded &
 identifiable (clean UPC/EAN/MPN match), small/light (cheap shipping, high
-value‑to‑weight), consumable or replenishable (repeat demand), year‑round (not
-fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
+value-to-weight), consumable or replenishable (repeat demand), year-round (not
+fad-dependent), and not IP-restricted. [closo, flowlister, linnworks]
 
 **Categories repeatedly cited as strong on eBay (2025–2026):**
 - **Auto parts & accessories** — frequently called the top eBay category;
-  year‑round demand, good margins, lower competition on niche fitments. [closo, resellersource]
-- **Game controllers / gaming gear** — sell‑through commonly **50–70%**. [closo]
+  year-round demand, good margins, lower competition on niche fitments. [closo, resellersource]
+- **Game controllers / gaming gear** — sell-through commonly **50–70%**. [closo]
 - **Electronics accessories** (cables, chargers, adapters, small peripherals) —
   high velocity, though commodity margins (15–25%). [linnworks, flowlister]
 - **Collectibles & trading cards** — very high gross dollars (Collectible Card
@@ -94,17 +94,17 @@ fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
 - **Tools & office / home small goods** — steady, identifiable, replenishable —
   matches Buysell's existing "Tools & Office" and "Home / Small Goods" profiles. [linnworks]
 - **Specialty apparel with brand pull** (e.g. Patagonia outdoor) — 50%+
-  sell‑through, *but* brand/IP and condition risk (see VeRO below). [closo]
+  sell-through, *but* brand/IP and condition risk (see VeRO below). [closo]
 
-**Sell‑through benchmarks to target:**
-- **>50% STR = strong, fast‑turning demand.** Top niches hit **50–70%**.
-- **<20% STR = slow mover**, capital risk — avoid or deep‑discount. [closo]
+**Sell-through benchmarks to target:**
+- **>50% STR = strong, fast-turning demand.** Top niches hit **50–70%**.
+- **<20% STR = slow mover**, capital risk — avoid or deep-discount. [closo]
 
 **On the Amazon (Keepa) side, what a good candidate looks like:**
 - **BSR consistently under ~100k** in its category, with frequent, *steady* sales
-  (lots of rank "drops"), not one‑off spikes. [smartscout, fulltimefba]
-- **Stable Buy Box / price history** — use Keepa's "90‑day drop %" filter (e.g.
-  −20 to +20) to find price‑stable products and avoid "trap" deals that look
+  (lots of rank "drops"), not one-off spikes. [smartscout, fulltimefba]
+- **Stable Buy Box / price history** — use Keepa's "90-day drop %" filter (e.g.
+  −20 to +20) to find price-stable products and avoid "trap" deals that look
   cheap because the price is collapsing. [talloak, easync-oa]
 - **Manageable competition** — many sellers (>15) on the Buy Box signals a price
   war; ~80% of Amazon sales go through the Buy Box, so heavy competition crushes
@@ -116,38 +116,38 @@ fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
 
 ## 3. Where to source good offers
 
-**Retail / clearance (buy‑and‑hold, the compliant path):**
+**Retail / clearance (buy-and-hold, the compliant path):**
 - **Walmart** — perennial #1 for cheapest clearance; **Target** strong on toys,
   detergents, baking, towels; **Home Depot/Lowe's**, **Sears** clearance on
   discontinued lines. [oabeans-stores, linnworks-retail]
-- **BrickSeek** — surfaces in‑store/online clearance prices at Walmart, Target,
+- **BrickSeek** — surfaces in-store/online clearance prices at Walmart, Target,
   Lowe's for arbitrage. [linnworks-retail]
 
 **Liquidation / overstock (lots & pallets):**
-- **B‑Stock** (official liquidation auctions from Walmart/Target/Amazon),
+- **B-Stock** (official liquidation auctions from Walmart/Target/Amazon),
   **Liquidation.com**, **Direct Liquidation**, **888 Lots** (small lots, good for
   beginners), **BlueLots** (no membership fee). [entreresource, sourcemogul]
 
-**Online‑arbitrage scanning tools (find the spread at scale):**
+**Online-arbitrage scanning tools (find the spread at scale):**
 - **Tactical Arbitrage** — scans 1,000+ (cited "1,500") stores, ~24M product
   matches/day; the standard for breadth. [oabeans-sites]
-- **Seller Assistant / SmartScout / OAXRAY / ZIK Analytics** — pre‑filter sales
-  history, competition, profitability; ZIK is eBay‑centric. [sellbery, threecolts]
-- **Keepa** — the price/rank/Buy‑Box history backbone for the Amazon side
+- **Seller Assistant / SmartScout / OAXRAY / ZIK Analytics** — pre-filter sales
+  history, competition, profitability; ZIK is eBay-centric. [sellbery, threecolts]
+- **Keepa** — the price/rank/Buy-Box history backbone for the Amazon side
   (Product Finder filters for BSR, drop count, seller count, price stability). [smartscout, talloak]
-- **Sold‑comp data for the eBay side** — eBay "sold listings" search, and APIs
-  (SerpApi eBay search, third‑party sold‑listing scrapers) to get *realized*
+- **Sold-comp data for the eBay side** — eBay "sold listings" search, and APIs
+  (SerpApi eBay search, third-party sold-listing scrapers) to get *realized*
   prices, not asking prices. [resellbot, underpriced]
 
 > This is exactly Buysell's architecture: **Keepa for Amazon discovery →
 > SerpApi/eBay sold comps for realized price → deterministic profit gate.** The
-> research suggests the highest‑leverage additions are (a) a real **sell‑through
-> estimate** (sold ÷ (sold+active) over a window) as a first‑class score input,
-> and (b) **price‑stability filters** (90‑day drop %) to reject collapsing deals.
+> research suggests the highest-leverage additions are (a) a real **sell-through
+> estimate** (sold ÷ (sold+active) over a window) as a first-class score input,
+> and (b) **price-stability filters** (90-day drop %) to reject collapsing deals.
 
 ---
 
-## 4. Account risk & red flags (highest‑confidence section)
+## 4. Account risk & red flags (highest-confidence section)
 
 - **eBay retail dropshipping ban** — sourcing from another *retailer* (Amazon,
   Walmart, Target) and shipping directly to the buyer is prohibited. Triggers:
@@ -155,46 +155,46 @@ fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
   that traces to Amazon, etc. Consequence: listing removal, reduced visibility,
   suspension. Compliant alternative is wholesale/manufacturer dropship **or** held
   inventory. [edesk, doba, super-ds, zik-policy]
-- **Amazon buyer‑side enforcement** — Amazon flags accounts buying to ship to
-  third‑party addresses (gift‑ship at scale), risking order cancellations and
+- **Amazon buyer-side enforcement** — Amazon flags accounts buying to ship to
+  third-party addresses (gift-ship at scale), risking order cancellations and
   account locks; gated brands/categories block sourcing entirely. [edesk]
 - **eBay VeRO (IP) program** — thousands of brands actively monitor and can have
   listings pulled even on *authentic* goods. **Apple** is one of the most active;
   others frequently cited: **Nike** (restricts resale beyond just photos),
-  Harley‑Davidson, H&M, plus many luxury/tech names. A single VeRO strike can mean
+  Harley-Davidson, H&M, plus many luxury/tech names. A single VeRO strike can mean
   removal → restriction → permanent suspension. Don't use brand logos/copyrighted
   photos or "inspired by"/"-style" wording. Check the **VeRO Participant List**
   before listing a brand. [ebay-vero, super-ds-vero, yaballe]
-- **Safe‑mode exclusions** (already in Buysell, and corroborated): avoid
+- **Safe-mode exclusions** (already in Buysell, and corroborated): avoid
   clothing/shoes (sizing returns + IP), food/supplements/cosmetics/medical
-  (gated, liability), weapons, adult, and any high‑return‑rate or
-  authenticity‑sensitive category. [repricerexpress, autods-suspension]
+  (gated, liability), weapons, adult, and any high-return-rate or
+  authenticity-sensitive category. [repricerexpress, autods-suspension]
 - **Trap deals** — a low Amazon price caused by a *falling* price trend (not a
-  real discount); catch with Keepa price‑history/drop‑% filters. [talloak]
+  real discount); catch with Keepa price-history/drop-% filters. [talloak]
 
 ---
 
 ## 5. Concrete recommendations for Buysell
 
-1. **Make velocity a first‑class, hard gate, not a tiebreaker.** Add/strengthen a
-   computed eBay sell‑through estimate and an Amazon BSR‑stability check; reject
-   `<~20%` STR and erratic/seasonal‑only rank even when raw margin passes. (The
-   repo already has market‑metrics scaffolding to extend.)
-2. **Add a price‑stability gate** using Keepa 90‑day drop % to filter "trap"
+1. **Make velocity a first-class, hard gate, not a tiebreaker.** Add/strengthen a
+   computed eBay sell-through estimate and an Amazon BSR-stability check; reject
+   `<~20%` STR and erratic/seasonal-only rank even when raw margin passes. (The
+   repo already has market-metrics scaffolding to extend.)
+2. **Add a price-stability gate** using Keepa 90-day drop % to filter "trap"
    deals before they reach the profit calculator.
-3. **Keep the `VERIFY → LIST` discipline and hold‑inventory framing front‑and‑
-   center** in operator docs — and reconsider/flag the auto‑`BUY`‑after‑eBay‑sale
-   path, which is the textbook *retail‑dropshipping* pattern eBay bans unless the
+3. **Keep the `VERIFY → LIST` discipline and hold-inventory framing front-and-
+   center** in operator docs — and reconsider/flag the auto-`BUY`-after-eBay-sale
+   path, which is the textbook *retail-dropshipping* pattern eBay bans unless the
    operator genuinely holds stock.
-4. **Bake a VeRO/brand‑risk check into discovery** — maintain a configurable
-   blocklist of high‑risk brands (Apple, Nike, luxury) and flag them as manual‑
-   review, mirroring the existing safe‑mode keyword exclusions.
+4. **Bake a VeRO/brand-risk check into discovery** — maintain a configurable
+   blocklist of high-risk brands (Apple, Nike, luxury) and flag them as manual-
+   review, mirroring the existing safe-mode keyword exclusions.
 5. **Bias profiles toward the proven winners:** branded auto parts/accessories,
    gaming peripherals, electronics accessories, tools/office, replenishable home
-   small goods — small, light, identifiable, year‑round.
+   small goods — small, light, identifiable, year-round.
 6. **Treat eBay *sold* comps (not active asks) as the price source of truth**,
    and prefer a sample of ≥N recent solds before accepting an opportunity (the
-   repo's market‑metrics "sold sample size" already points this way).
+   repo's market-metrics "sold sample size" already points this way).
 
 ---
 
@@ -214,17 +214,17 @@ fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
 
 **Best products / categories / sell-through**
 - CLOSO — 15 eBay Best Sellers in 2025: https://closo.co/blogs/inventory-logistics-management/15-ebay-best-sellers-in-2025-and-how-to-find-winning-products-yourself
-- Flowlister — Best things to sell on eBay (high‑value low‑weight): https://flowlister.com/blog/best-things-to-sell-on-ebay/
+- Flowlister — Best things to sell on eBay (high-value low-weight): https://flowlister.com/blog/best-things-to-sell-on-ebay/
 - Linnworks — How to resell on eBay in 2026 (50 items): https://www.linnworks.com/blog/ebay-reselling/
 - Reseller Source — Top selling items on eBay 2025: https://resellersource.com/blog/top-selling-items-ebay/
 - Resellbot — Top categories on eBay by sold revenue: https://resellbot.com/top-categories-on-ebay/
 
-**Keepa / Amazon‑side sourcing signals**
+**Keepa / Amazon-side sourcing signals**
 - SmartScout — How to use Keepa for online arbitrage: https://www.smartscout.com/blog/how-to-use-keepa-for-online-arbitrage
-- Full‑Time FBA — How to read & understand Keepa graphs: https://www.fulltimefba.com/read-understand-keepa-graphs/
+- Full-Time FBA — How to read & understand Keepa graphs: https://www.fulltimefba.com/read-understand-keepa-graphs/
 - Tall Oak Advisors — Keepa Product Finder hacks: https://talloakadvisors.com/11-keepa-product-finder-hacks-for-profitable-amazon-sourcing/
 - OABeans — How to use Keepa: https://oabeans.com/how-to-use-keepa/
-- GoAura — Online Arbitrage getting started (ROI/BSR/90‑day): https://goaura.com/blog/online-arbitrage-guide
+- GoAura — Online Arbitrage getting started (ROI/BSR/90-day): https://goaura.com/blog/online-arbitrage-guide
 - Easync — Online arbitrage on Amazon 2025: https://easync.io/articles/online-arbitrage-on-amazon/
 
 **Sourcing sources & scanning tools**
@@ -247,8 +247,8 @@ fad‑dependent), and not IP‑restricted. [closo, flowlister, linnworks]
 - Yaballe — eBay VeRO List 2026 guide: https://yaballe.com/blog/guide-to-the-ebay-vero-list/
 - AutoDS — eBay VeRO list / copyright issues: https://www.autods.com/blog/dropshipping-tips-strategies/ebay-vero-guide/
 
-> **Caveat on source quality:** most "best products" and tool‑roundup pages are
+> **Caveat on source quality:** most "best products" and tool-roundup pages are
 > marketing content from vendors with a stake in the answer, so product lists are
 > directional. The *policy* points (eBay dropshipping ban, VeRO, Amazon buyer
 > enforcement) are corroborated across independent sources and the official eBay
-> policy page, and should be treated as the load‑bearing conclusions.
+> policy page, and should be treated as the load-bearing conclusions.
