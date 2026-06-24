@@ -8,8 +8,20 @@ const marketDefaultWhenConfigIsDefault = (configured: number, defaultValue: numb
 
 export interface ProfitRateInputs {
   ebayFinalValueFeeRate: number;
+  ebayFinalValueFeeThreshold?: number;
+  ebayFinalValueFeeBelowThresholdRate?: number;
+  ebayFinalValueFeeAboveThresholdRate?: number;
   ebayPaymentFeeRate: number;
   estimatedSalesTaxRate: number;
+  sourcePriceIncludesVat?: boolean;
+  reclaimInputVat?: boolean;
+  collectOutputVat?: boolean;
+  outputVatIncludedInSalePrice?: boolean;
+  vatModeKey?: string;
+  feeRateCardVersion?: string;
+  marketplaceKey?: string;
+  destinationMarketplaceId?: string;
+  currency?: string;
   returnRiskBuffer: number;
   priceChangeBuffer: number;
   sourceShippingCost: number;
@@ -27,8 +39,20 @@ export interface ProfitRateInputs {
 
 const ZERO_COST_INPUTS: ProfitRateInputs = {
   ebayFinalValueFeeRate: 0,
+  ebayFinalValueFeeThreshold: undefined,
+  ebayFinalValueFeeBelowThresholdRate: undefined,
+  ebayFinalValueFeeAboveThresholdRate: undefined,
   ebayPaymentFeeRate: 0,
   estimatedSalesTaxRate: 0,
+  sourcePriceIncludesVat: false,
+  reclaimInputVat: false,
+  collectOutputVat: false,
+  outputVatIncludedInSalePrice: true,
+  vatModeKey: 'breakeven',
+  feeRateCardVersion: 'breakeven',
+  marketplaceKey: undefined,
+  destinationMarketplaceId: undefined,
+  currency: undefined,
   returnRiskBuffer: 0,
   priceChangeBuffer: 0,
   sourceShippingCost: 0,
@@ -57,12 +81,24 @@ export function costedProfitInputsFromRuleConfig(ruleConfig: ActiveRuleConfig, m
   const marketDefaults = profitDefaultsForMarket(market);
   return {
     ebayFinalValueFeeRate: marketDefaults.ebayFinalValueFeeRate,
+    ebayFinalValueFeeThreshold: marketDefaults.ebayFinalValueFeeThreshold,
+    ebayFinalValueFeeBelowThresholdRate: marketDefaults.ebayFinalValueFeeBelowThresholdRate,
+    ebayFinalValueFeeAboveThresholdRate: marketDefaults.ebayFinalValueFeeAboveThresholdRate,
     ebayPaymentFeeRate: marketDefaults.ebayPaymentFeeRate,
     estimatedSalesTaxRate: marketDefaultWhenConfigIsDefault(
       ruleConfig.estimatedSalesTaxRate,
       defaultRuleConfig.estimatedSalesTaxRate,
       marketDefaults.estimatedSalesTaxRate
     ),
+    sourcePriceIncludesVat: marketDefaults.sourcePriceIncludesVat,
+    reclaimInputVat: marketDefaults.reclaimInputVat,
+    collectOutputVat: marketDefaults.collectOutputVat,
+    outputVatIncludedInSalePrice: marketDefaults.outputVatIncludedInSalePrice,
+    vatModeKey: marketDefaults.vatModeKey,
+    feeRateCardVersion: marketDefaults.feeRateCardVersion,
+    marketplaceKey: marketDefaults.marketplaceKey,
+    destinationMarketplaceId: marketDefaults.destinationMarketplaceId,
+    currency: marketDefaults.currency,
     returnRiskBuffer: ruleConfig.returnRiskBuffer,
     priceChangeBuffer: ruleConfig.priceChangeBuffer,
     sourceShippingCost: ruleConfig.sourceShippingCost,

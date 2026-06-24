@@ -37,6 +37,9 @@ export interface ProductOpportunity {
   profit: {
     estimatedFees: number;
     estimatedTax: number;
+    inputVatCredit?: number;
+    outputVatReserve?: number;
+    netVatCost?: number;
     bufferAmount: number;
     sourceShippingCost?: number;
     packagingCost?: number;
@@ -44,6 +47,14 @@ export interface ProductOpportunity {
     returnReserve?: number;
     cancellationReserve?: number;
     marketplaceRiskBuffer?: number;
+    feeRateCardVersion?: string;
+    vatModeKey?: string;
+    vatRate?: number;
+    sourcePriceIncludesVat?: boolean;
+    taxableSourceShipping?: boolean;
+    marketplaceKey?: string;
+    destinationMarketplaceId?: string;
+    currency?: string;
     totalSourceCost?: number;
     totalLandedCost?: number;
     expectedProfit: number;

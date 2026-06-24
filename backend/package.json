@@ -16,6 +16,7 @@
     "test": "npm run build && node ../scripts/run-dist-tests.mjs dist",
     "start": "node dist/index.js",
     "sold-winners:import": "tsx src/scripts/importSoldWinners.ts",
+    "sold-comps:import": "tsx src/scripts/importSoldComps.ts",
     "postinstall": "prisma generate || true",
     "prisma:seed": "node prisma/seed.mjs"
   },

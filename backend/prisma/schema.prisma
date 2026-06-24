@@ -139,10 +139,22 @@ model ProfitSnapshot {
   id                     String           @id @default(cuid())
   productCandidateId     String
   amazonMatchId          String
+  feeRateCardId          String?
+  vatModeId              String?
+  currency               String           @default("USD")
+  marketplaceKey         String?
+  destinationMarketplaceId String?
+  feeRateCardVersion     String?
+  vatModeKey             String?
+  vatRate                Decimal?         @db.Decimal(5, 4)
+  taxableSourceShipping  Boolean          @default(false)
+  sourcePriceIncludesVat Boolean          @default(false)
   estimatedEbaySalePrice Decimal          @db.Decimal(10, 2)
   amazonCost             Decimal          @db.Decimal(10, 2)
   estimatedFees          Decimal          @db.Decimal(10, 2)
   estimatedTax           Decimal          @db.Decimal(10, 2)
+  inputVatCredit         Decimal          @default(0.00) @db.Decimal(10, 2)
+  outputVatReserve       Decimal          @default(0.00) @db.Decimal(10, 2)
   bufferAmount           Decimal          @db.Decimal(10, 2)
   sourceShippingCost     Decimal          @default(0.00) @db.Decimal(10, 2)
   packagingCost          Decimal          @default(0.00) @db.Decimal(10, 2)
@@ -159,9 +171,14 @@ model ProfitSnapshot {
   createdAt              DateTime         @default(now())
   productCandidate       ProductCandidate @relation(fields: [productCandidateId], references: [id], onDelete: Cascade)
   amazonMatch            AmazonMatch      @relation(fields: [amazonMatchId], references: [id], onDelete: Cascade)
+  feeRateCard            FeeRateCard?     @relation(fields: [feeRateCardId], references: [id], onDelete: SetNull)
+  vatMode                VatMode?         @relation(fields: [vatModeId], references: [id], onDelete: SetNull)
 
   @@index([productCandidateId])
   @@index([amazonMatchId])
+  @@index([feeRateCardId])
+  @@index([vatModeId])
+  @@index([marketplaceKey, createdAt])
 }
 
 model AiDecision {
@@ -409,6 +426,55 @@ model RuleConfig {
   updatedAt                       DateTime @updatedAt
 }
 
+model FeeRateCard {
+  id                         String           @id @default(cuid())
+  key                        String           @unique
+  marketplaceKey             String
+  marketplaceId              String
+  sellerType                 String           @default("COMMERCIAL")
+  categoryId                 String?
+  categoryName               String?
+  variableFeeRate            Decimal          @db.Decimal(7, 4)
+  aboveThresholdFeeRate      Decimal?         @db.Decimal(7, 4)
+  thresholdAmount            Decimal?         @db.Decimal(10, 2)
+  fixedFeeBelowThreshold     Decimal?         @db.Decimal(10, 2)
+  fixedFeeAboveThreshold     Decimal?         @db.Decimal(10, 2)
+  currency                   String           @default("EUR")
+  effectiveFrom              DateTime
+  effectiveTo                DateTime?
+  sourceLabel                String?
+  sourceUrl                  String?
+  version                    String
+  active                     Boolean          @default(true)
+  metadataJson               Json?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  profitSnapshots            ProfitSnapshot[]
+
+  @@index([marketplaceKey, active])
+  @@index([marketplaceId, categoryId, active])
+  @@index([effectiveFrom, effectiveTo])
+}
+
+model VatMode {
+  id                         String           @id @default(cuid())
+  key                        String           @unique
+  marketplaceKey             String
+  label                      String
+  description                String?
+  vatRate                    Decimal          @db.Decimal(5, 4)
+  sourcePriceIncludesVat     Boolean          @default(true)
+  reclaimInputVat            Boolean          @default(false)
+  collectOutputVat           Boolean          @default(false)
+  outputVatIncludedInSalePrice Boolean        @default(true)
+  active                     Boolean          @default(true)
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  profitSnapshots            ProfitSnapshot[]
+
+  @@index([marketplaceKey, active])
+}
+
 model ApiUsage {
   id              String   @id @default(cuid())
   provider        String
@@ -419,6 +485,38 @@ model ApiUsage {
   createdAt       DateTime @default(now())
 
   @@index([provider, createdAt])
+}
+
+model SoldComp {
+  id              String   @id @default(cuid())
+  source          String   @default("terapeak")
+  sourceFile      String   @default("unknown")
+  sourceRow       Int
+  marketplaceId   String   @default("EBAY_DE")
+  soldAt          DateTime?
+  ebayItemId      String?
+  title           String
+  ebayUrl         String?
+  soldPrice       Decimal? @db.Decimal(10, 2)
+  shippingPrice   Decimal? @db.Decimal(10, 2)
+  totalPrice      Decimal? @db.Decimal(10, 2)
+  currency        String   @default("EUR")
+  condition       String?
+  category        String?
+  categoryId      String?
+  sellerName      String?
+  quantitySold    Int      @default(1)
+  familyKey       String
+  normalizedTitle String
+  rawJson         Json?
+  importedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sourceFile, sourceRow])
+  @@index([marketplaceId, soldAt])
+  @@index([familyKey])
+  @@index([ebayItemId])
+  @@index([soldPrice])
 }
 
 model DiscoveryScanRun {

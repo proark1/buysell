@@ -89,11 +89,41 @@ assertApprox(withShipping.expectedProfit, 16.2, 'profit includes shipping revenu
 assertApprox(withShipping.roiPercent, 45, 'ROI denominator is cash invested incl. label cost');
 assertApprox(withShipping.marginPercent, 27, 'margin uses gross revenue incl. shipping');
 
+const tieredFee = calculateProfit({
+  ebaySalePrice: 2000,
+  amazonItemCost: 1000,
+  ebayFinalValueFeeRate: 0.5,
+  ebayFinalValueFeeThreshold: 1000,
+  ebayFinalValueFeeBelowThresholdRate: 0.1,
+  ebayFinalValueFeeAboveThresholdRate: 0.02,
+  ebayPaymentFeeRate: 0,
+  estimatedSalesTaxRate: 0
+});
+assertApprox(tieredFee.estimatedVariableFees ?? 0, 120, 'tiered final value fee overrides flat fallback rate');
+
+const registeredVat = calculateProfit({
+  ebaySalePrice: 119,
+  amazonItemCost: 119,
+  ebayFinalValueFeeRate: 0,
+  ebayPaymentFeeRate: 0,
+  estimatedSalesTaxRate: 0.19,
+  sourcePriceIncludesVat: true,
+  reclaimInputVat: true,
+  collectOutputVat: true
+});
+assertApprox(registeredVat.estimatedTax, 0, 'gross VAT mode does not add source VAT on top');
+assertApprox(registeredVat.inputVatCredit ?? 0, 19, 'registered VAT mode credits input VAT from gross source price');
+assertApprox(registeredVat.outputVatReserve ?? 0, 19, 'registered VAT mode reserves output VAT from gross sale price');
+
 // Costed model still wires up market fees correctly (the revert path when BREAKEVEN_MODE=false).
 const germanInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'de');
 const usInputs = costedProfitInputsFromRuleConfig(defaultRuleConfig, 'us');
 assertApprox(germanInputs.estimatedSalesTaxRate, 0.19, 'Germany default source tax');
+if (!germanInputs.sourcePriceIncludesVat) throw new Error('Germany default VAT mode should treat source prices as gross');
 assertApprox(germanInputs.ebayPaymentFeeRate, 0, 'Germany payment fee is included in final value fee model');
+assertApprox(germanInputs.ebayFinalValueFeeRate, 0.12, 'Germany default commercial final value fee');
+assertApprox(germanInputs.ebayFinalValueFeeThreshold ?? 0, 1990, 'Germany tier threshold');
+assertApprox(germanInputs.ebayFinalValueFeeAboveThresholdRate ?? 0, 0.03, 'Germany above-threshold rate');
 assertApprox(germanInputs.paymentFixedFeeThreshold ?? 0, 10, 'Germany fixed fee threshold');
 assertApprox(germanInputs.paymentFixedFeeBelowThreshold ?? 0, 0.35, 'Germany lower fixed fee');
 assertApprox(germanInputs.paymentFixedFeeAboveThreshold ?? 0, 0.45, 'Germany higher fixed fee');

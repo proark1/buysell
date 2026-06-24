@@ -9,6 +9,7 @@ import type { CredentialType } from '../config/credentialKeys.js';
 import { getSecret } from '../services/secrets.js';
 import { getKeepaTokenStatus } from '../clients/keepaClient.js';
 import { getEbayAccessToken } from '../clients/ebaySellClient.js';
+import { getAmazonSpApiAccessToken } from '../clients/amazonSpApiClient.js';
 
 const updateSchema = z.object({ value: z.string() });
 const paramsSchema = z.object({ key: z.string().min(1) });
@@ -69,6 +70,17 @@ async function checkCredential(key: string): Promise<unknown> {
     }
     await getEbayAccessToken({ clientId, clientSecret, refreshToken, sandbox });
     return { ok: true, status: 'live', message: 'eBay OAuth token exchange succeeded.' };
+  }
+
+  if (key.startsWith('AMAZON_SP_API_')) {
+    const clientId = await getSecret(prisma, 'AMAZON_SP_API_CLIENT_ID');
+    const clientSecret = await getSecret(prisma, 'AMAZON_SP_API_CLIENT_SECRET');
+    const refreshToken = await getSecret(prisma, 'AMAZON_SP_API_REFRESH_TOKEN');
+    if (!clientId || !clientSecret || !refreshToken) {
+      return { ok: false, status: 'missing', message: 'Amazon SP-API client ID, client secret, and refresh token are required for a live LWA check.' };
+    }
+    await getAmazonSpApiAccessToken({ clientId, clientSecret, refreshToken });
+    return { ok: true, status: 'live', message: 'Amazon LWA token exchange succeeded.' };
   }
 
   const value = await getSecret(prisma, key);

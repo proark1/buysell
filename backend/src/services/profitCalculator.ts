@@ -4,6 +4,9 @@ export interface ProfitCalculatorInput {
   amazonItemCost: number;
   ebayFinalValueFeeRate?: number;
   categoryFinalValueFeeRate?: number;
+  ebayFinalValueFeeThreshold?: number;
+  ebayFinalValueFeeBelowThresholdRate?: number;
+  ebayFinalValueFeeAboveThresholdRate?: number;
   ebayPaymentFeeRate?: number;
   promotedListingFeeRate?: number;
   currencyConversionBufferRate?: number;
@@ -25,6 +28,15 @@ export interface ProfitCalculatorInput {
   stockoutRiskBuffer?: number;
   estimatedSalesTaxRate?: number;
   taxableSourceShipping?: boolean;
+  sourcePriceIncludesVat?: boolean;
+  reclaimInputVat?: boolean;
+  collectOutputVat?: boolean;
+  outputVatIncludedInSalePrice?: boolean;
+  vatModeKey?: string;
+  feeRateCardVersion?: string;
+  marketplaceKey?: string;
+  destinationMarketplaceId?: string;
+  currency?: string;
   returnRiskBuffer?: number;
   priceChangeBuffer?: number;
 }
@@ -33,6 +45,9 @@ export interface ProfitCalculatorResult {
   estimatedVariableFees?: number;
   estimatedFees: number;
   estimatedTax: number;
+  inputVatCredit?: number;
+  outputVatReserve?: number;
+  netVatCost?: number;
   bufferAmount: number;
   sourceShippingCost?: number;
   packagingCost?: number;
@@ -47,6 +62,14 @@ export interface ProfitCalculatorResult {
   listingUpgradeFees?: number;
   promotedListingFixedFee?: number;
   currencyConversionReserve?: number;
+  feeRateCardVersion?: string;
+  vatModeKey?: string;
+  vatRate?: number;
+  sourcePriceIncludesVat?: boolean;
+  taxableSourceShipping?: boolean;
+  marketplaceKey?: string;
+  destinationMarketplaceId?: string;
+  currency?: string;
   totalSourceCost?: number;
   totalLandedCost?: number;
   totalRiskReserve?: number;
@@ -57,6 +80,23 @@ export interface ProfitCalculatorResult {
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;
 const roundPercent = (value: number): number => Math.round(value * 1000) / 1000;
+
+const tieredFinalValueFee = (grossRevenue: number, input: ProfitCalculatorInput, fallbackRate: number): number => {
+  const threshold = input.ebayFinalValueFeeThreshold;
+  const belowRate = input.ebayFinalValueFeeBelowThresholdRate;
+  const aboveRate = input.ebayFinalValueFeeAboveThresholdRate;
+  if (
+    threshold !== undefined &&
+    threshold > 0 &&
+    belowRate !== undefined &&
+    aboveRate !== undefined
+  ) {
+    const belowBase = Math.min(grossRevenue, threshold);
+    const aboveBase = Math.max(0, grossRevenue - threshold);
+    return (belowBase * belowRate) + (aboveBase * aboveRate);
+  }
+  return grossRevenue * fallbackRate;
+};
 
 export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorResult {
   const ebayFinalValueFeeRate = input.categoryFinalValueFeeRate ?? input.ebayFinalValueFeeRate ?? 0.1325;
@@ -88,15 +128,28 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
   const marketplaceRiskBuffer = input.marketplaceRiskBuffer ?? 0;
   const stockoutRiskBuffer = input.stockoutRiskBuffer ?? 0;
   const estimatedSalesTaxRate = input.estimatedSalesTaxRate ?? 0;
+  const sourcePriceIncludesVat = input.sourcePriceIncludesVat ?? false;
+  const reclaimInputVat = input.reclaimInputVat ?? false;
+  const collectOutputVat = input.collectOutputVat ?? false;
+  const outputVatIncludedInSalePrice = input.outputVatIncludedInSalePrice ?? true;
   const returnRiskBuffer = input.returnRiskBuffer ?? 0;
   const priceChangeBuffer = input.priceChangeBuffer ?? 0;
-  const estimatedVariableFees = grossRevenue * (ebayFinalValueFeeRate + ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate);
+  const finalValueFee = tieredFinalValueFee(grossRevenue, input, ebayFinalValueFeeRate);
+  const estimatedVariableFees = finalValueFee + (grossRevenue * (ebayPaymentFeeRate + promotedListingFeeRate + currencyConversionBufferRate));
   const currencyConversionReserve = grossRevenue * currencyConversionBufferRate;
   const estimatedFees = estimatedVariableFees + paymentFixedFee + insertionFee + listingUpgradeFees + promotedListingFixedFee;
-  // Source sales tax is charged on the item, and optionally on taxable source shipping
-  // (relevant in high-VAT markets where shipping is taxed).
+  // Source tax/VAT can be additive (legacy sales-tax reserve) or included in a gross EU price.
   const taxableBase = input.amazonItemCost + (input.taxableSourceShipping ? sourceShippingCost : 0);
-  const estimatedTax = taxableBase * estimatedSalesTaxRate;
+  const estimatedTax = sourcePriceIncludesVat ? 0 : taxableBase * estimatedSalesTaxRate;
+  const inputVatCredit = sourcePriceIncludesVat && reclaimInputVat && estimatedSalesTaxRate > 0
+    ? taxableBase - (taxableBase / (1 + estimatedSalesTaxRate))
+    : 0;
+  const outputVatReserve = collectOutputVat && estimatedSalesTaxRate > 0
+    ? outputVatIncludedInSalePrice
+      ? grossRevenue - (grossRevenue / (1 + estimatedSalesTaxRate))
+      : grossRevenue * estimatedSalesTaxRate
+    : 0;
+  const netVatCost = estimatedTax + outputVatReserve - inputVatCredit;
   const returnReserve = grossRevenue * returnReserveRate;
   const returnShippingReserve = grossRevenue * returnShippingReserveRate;
   const cancellationReserve = grossRevenue * cancellationReserveRate;
@@ -106,10 +159,11 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
     + returnShippingReserve
     + cancellationReserve
     + marketplaceRiskBuffer
-    + stockoutRiskBuffer;
-  const totalSourceCost = input.amazonItemCost + sourceShippingCost + estimatedTax;
+    + stockoutRiskBuffer
+    + outputVatReserve;
+  const totalSourceCost = input.amazonItemCost + sourceShippingCost + estimatedTax - inputVatCredit;
   // Cash actually invested (out-of-pocket), excluding risk reserves which are not spend.
-  const cashInvested = totalSourceCost + shippingLabelCost + packagingCost;
+  const cashInvested = input.amazonItemCost + sourceShippingCost + estimatedTax + shippingLabelCost + packagingCost;
   const totalLandedCost = totalSourceCost + shippingLabelCost + packagingCost + bufferAmount;
   const expectedProfit = grossRevenue - estimatedFees - totalLandedCost;
 
@@ -117,6 +171,9 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
     estimatedVariableFees: roundMoney(estimatedVariableFees),
     estimatedFees: roundMoney(estimatedFees),
     estimatedTax: roundMoney(estimatedTax),
+    inputVatCredit: roundMoney(inputVatCredit),
+    outputVatReserve: roundMoney(outputVatReserve),
+    netVatCost: roundMoney(netVatCost),
     bufferAmount: roundMoney(bufferAmount),
     sourceShippingCost: roundMoney(sourceShippingCost),
     packagingCost: roundMoney(packagingCost),
@@ -131,6 +188,14 @@ export function calculateProfit(input: ProfitCalculatorInput): ProfitCalculatorR
     listingUpgradeFees: roundMoney(listingUpgradeFees),
     promotedListingFixedFee: roundMoney(promotedListingFixedFee),
     currencyConversionReserve: roundMoney(currencyConversionReserve),
+    feeRateCardVersion: input.feeRateCardVersion,
+    vatModeKey: input.vatModeKey,
+    vatRate: estimatedSalesTaxRate,
+    sourcePriceIncludesVat,
+    taxableSourceShipping: Boolean(input.taxableSourceShipping),
+    marketplaceKey: input.marketplaceKey,
+    destinationMarketplaceId: input.destinationMarketplaceId,
+    currency: input.currency,
     totalSourceCost: roundMoney(totalSourceCost),
     totalLandedCost: roundMoney(totalLandedCost),
     totalRiskReserve: roundMoney(bufferAmount),

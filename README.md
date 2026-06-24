@@ -315,7 +315,7 @@ Safety defaults can be edited in **Settings → Discovery Safety**.
 
 API Keys & Credentials:
 
-The **Settings** tab lets operators manage all API keys and config (SerpApi, Keepa, OpenAI, eBay credentials/marketplace/sandbox, and the local-agent secret) without redeploying. Values are encrypted with AES-256-GCM and stored in the `Credential` table (`backend/prisma/migrations/0004_add_credential`); a stored value takes precedence over the matching environment variable. The API never returns full secrets — only a masked preview, the source (`database` / `environment` / `unset`), and whether the key is configured:
+The **Settings** tab lets operators manage all API keys and config (SerpApi, Keepa, OpenAI, Amazon SP-API, eBay credentials/marketplace/sandbox, and the local-agent secret) without redeploying. Values are encrypted with AES-256-GCM and stored in the `Credential` table (`backend/prisma/migrations/0004_add_credential`); a stored value takes precedence over the matching environment variable. The API never returns full secrets — only a masked preview, the source (`database` / `environment` / `unset`), and whether the key is configured:
 
 ```bash
 # Read masked status of all managed keys
@@ -338,3 +338,26 @@ curl "http://localhost:3000/api/export/actions?format=csv" \
 ```
 
 Both routes require a configured local-agent secret, matching the rest of the protected API. `DATABASE_URL` and `BUYSELL_ENCRYPTION_KEY` are intentionally **not** manageable here — they are required from the environment to reach and decrypt the credential store. Set `BUYSELL_ENCRYPTION_KEY` to a stable 32+ character value in production so stored secrets remain decryptable across deploys.
+
+Germany marketplace research:
+
+```bash
+# Show active Germany fee cards and VAT modes
+curl "http://localhost:3000/api/economics?marketplaceKey=de" \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
+
+# Estimate Amazon.de selling fees for an ASIN through SP-API Product Fees
+curl -X POST http://localhost:3000/api/amazon/fees/estimate \
+  -H 'content-type: application/json' \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET" \
+  -d '{"asin":"B000000000","listingPrice":29.99,"currencyCode":"EUR"}'
+
+# Search active eBay.de listings through the official Browse API
+curl "http://localhost:3000/api/ebay/browse/search?query=barcode%20scanner&marketplaceId=EBAY_DE&limit=10" \
+  -H "x-local-agent-secret: $LOCAL_AGENT_SHARED_SECRET"
+
+# Import Terapeak / eBay Product Research sold-comp CSVs
+npm run sold-comps:import -w backend -- "/absolute/path/to/terapeak.csv" terapeak EBAY_DE EUR
+```
+
+Profit snapshots now persist the fee-card version, VAT mode, VAT rate, currency, marketplace, input-VAT credit, and output-VAT reserve that produced each opportunity. Germany defaults are seeded by migration `0024_marketplace_research`: `ebay-de-commercial-default-2026-02` and VAT modes `de_gross_no_reclaim`, `de_registered_standard`, and `de_legacy_additive`.

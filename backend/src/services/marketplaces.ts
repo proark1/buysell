@@ -6,7 +6,9 @@ export interface DiscoveryMarket {
   currencySymbol: string;
   amazonDomainId: number;
   amazonDomain: string;
+  amazonMarketplaceId?: string;
   ebayDomain: string;
+  ebayMarketplaceId?: string;
   defaultPostalCode?: string;
 }
 
@@ -43,8 +45,20 @@ export interface EbayComparisonSettings {
 
 export interface MarketplaceProfitDefaults {
   ebayFinalValueFeeRate: number;
+  ebayFinalValueFeeThreshold?: number;
+  ebayFinalValueFeeBelowThresholdRate?: number;
+  ebayFinalValueFeeAboveThresholdRate?: number;
   ebayPaymentFeeRate: number;
   estimatedSalesTaxRate: number;
+  sourcePriceIncludesVat?: boolean;
+  reclaimInputVat?: boolean;
+  collectOutputVat?: boolean;
+  outputVatIncludedInSalePrice?: boolean;
+  vatModeKey?: string;
+  feeRateCardVersion?: string;
+  marketplaceKey?: string;
+  destinationMarketplaceId?: string;
+  currency?: string;
   paymentFixedFee: number;
   paymentFixedFeeThreshold?: number;
   paymentFixedFeeBelowThreshold?: number;
@@ -60,7 +74,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '€',
     amazonDomainId: 3,
     amazonDomain: 'amazon.de',
+    amazonMarketplaceId: 'A1PA6795UKMFR9',
     ebayDomain: 'ebay.de',
+    ebayMarketplaceId: 'EBAY_DE',
     defaultPostalCode: '10115'
   },
   {
@@ -71,7 +87,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '$',
     amazonDomainId: 1,
     amazonDomain: 'amazon.com',
+    amazonMarketplaceId: 'ATVPDKIKX0DER',
     ebayDomain: 'ebay.com',
+    ebayMarketplaceId: 'EBAY_US',
     defaultPostalCode: '10001'
   },
   {
@@ -82,7 +100,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '£',
     amazonDomainId: 2,
     amazonDomain: 'amazon.co.uk',
-    ebayDomain: 'ebay.co.uk'
+    amazonMarketplaceId: 'A1F83G8C2ARO7P',
+    ebayDomain: 'ebay.co.uk',
+    ebayMarketplaceId: 'EBAY_GB'
   },
   {
     key: 'fr',
@@ -92,7 +112,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '€',
     amazonDomainId: 4,
     amazonDomain: 'amazon.fr',
-    ebayDomain: 'ebay.fr'
+    amazonMarketplaceId: 'A13V1IB3VIYZZH',
+    ebayDomain: 'ebay.fr',
+    ebayMarketplaceId: 'EBAY_FR'
   },
   {
     key: 'ca',
@@ -102,7 +124,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: 'CA$',
     amazonDomainId: 6,
     amazonDomain: 'amazon.ca',
-    ebayDomain: 'ebay.ca'
+    amazonMarketplaceId: 'A2EUQ1WTGCTBG2',
+    ebayDomain: 'ebay.ca',
+    ebayMarketplaceId: 'EBAY_CA'
   },
   {
     key: 'it',
@@ -112,7 +136,9 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '€',
     amazonDomainId: 8,
     amazonDomain: 'amazon.it',
-    ebayDomain: 'ebay.it'
+    amazonMarketplaceId: 'APJ6JRA9NG5V4',
+    ebayDomain: 'ebay.it',
+    ebayMarketplaceId: 'EBAY_IT'
   },
   {
     key: 'es',
@@ -122,15 +148,29 @@ export const amazonDiscoveryMarkets: DiscoveryMarket[] = [
     currencySymbol: '€',
     amazonDomainId: 9,
     amazonDomain: 'amazon.es',
-    ebayDomain: 'ebay.es'
+    amazonMarketplaceId: 'A1RKKUPIHCS9HS',
+    ebayDomain: 'ebay.es',
+    ebayMarketplaceId: 'EBAY_ES'
   }
 ];
 
 const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
   de: {
-    ebayFinalValueFeeRate: 0.11,
+    ebayFinalValueFeeRate: 0.12,
+    ebayFinalValueFeeThreshold: 1990,
+    ebayFinalValueFeeBelowThresholdRate: 0.12,
+    ebayFinalValueFeeAboveThresholdRate: 0.03,
     ebayPaymentFeeRate: 0,
     estimatedSalesTaxRate: 0.19,
+    sourcePriceIncludesVat: true,
+    reclaimInputVat: false,
+    collectOutputVat: false,
+    outputVatIncludedInSalePrice: true,
+    vatModeKey: 'de_gross_no_reclaim',
+    feeRateCardVersion: 'ebay-de-commercial-2026-02',
+    marketplaceKey: 'de',
+    destinationMarketplaceId: 'EBAY_DE',
+    currency: 'EUR',
     paymentFixedFee: 0.35,
     paymentFixedFeeThreshold: 10,
     paymentFixedFeeBelowThreshold: 0.35,
@@ -140,6 +180,11 @@ const marketplaceProfitDefaults: Record<string, MarketplaceProfitDefaults> = {
     ebayFinalValueFeeRate: 0.1325,
     ebayPaymentFeeRate: 0.03,
     estimatedSalesTaxRate: 0.08,
+    sourcePriceIncludesVat: false,
+    vatModeKey: 'us_additive_sales_tax',
+    marketplaceKey: 'us',
+    destinationMarketplaceId: 'EBAY_US',
+    currency: 'USD',
     paymentFixedFee: 0.3
   },
   uk: {

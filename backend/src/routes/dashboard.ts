@@ -235,6 +235,14 @@ const dashboardHtml = `<!doctype html>
     .compact-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;align-items:end}
     .schedule-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;align-items:end}
     .subtle-box{border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.18);padding:14px}
+    .evidence-panel{margin-top:12px;border:1px solid var(--border);border-radius:12px;background:rgba(2,6,23,.22);padding:12px;display:grid;gap:10px}
+    .evidence-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+    .evidence-box{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.42);padding:10px;min-width:0}
+    .evidence-box b{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+    .evidence-box span{display:block;font-size:13px;font-weight:700;overflow-wrap:anywhere}
+    .evidence-list{display:grid;gap:7px}
+    .evidence-item{border-top:1px solid var(--border);padding-top:7px;color:var(--muted);font-size:12px}
+    .evidence-item:first-child{border-top:none;padding-top:0}
     .danger-zone{border-color:rgba(248,113,113,.28);background:rgba(127,29,29,.08)}
     @media(max-width:960px){
       .grid-2,.grid-3,.workflow-steps{grid-template-columns:1fr}.layout{grid-template-columns:1fr}aside{display:none}
@@ -507,7 +515,10 @@ const dashboardHtml = `<!doctype html>
         <div class="grid-2">
           <div class="panel">
             <div class="panel-head"><h2>Top Opportunities</h2><span class="hint">Highest score candidates</span></div>
-            <div class="panel-body"><div id="topOpportunities" class="rank-list"></div></div>
+            <div class="panel-body">
+              <div id="topOpportunities" class="rank-list"></div>
+              <div id="opportunityEvidence" class="evidence-panel" style="display:none"></div>
+            </div>
           </div>
           <div class="panel">
             <div class="panel-head"><h2>Learning &amp; Reliability</h2><span class="hint">Feedback, locks, evidence, and realized P/L</span></div>
@@ -922,6 +933,21 @@ const dashboardHtml = `<!doctype html>
                   <button class="btn ghost" onclick="downloadExport('orders')">Orders CSV</button>
                   <button class="btn ghost" onclick="downloadExport('profit-ledger')">Profit CSV</button>
                 </div>
+              </div>
+              <div class="subtle-box" style="margin-top:12px">
+                <div class="setup-title">Germany economics</div>
+                <div id="economicsBox" style="margin-top:10px"><div class="empty">Economics load when Settings opens.</div></div>
+                <div class="actions-row"><button class="btn" onclick="loadEconomics()">Refresh Economics</button></div>
+              </div>
+              <div class="subtle-box" style="margin-top:12px">
+                <div class="setup-title">Terapeak / eBay sold-comp import</div>
+                <div class="form-grid" style="margin-top:10px">
+                  <div class="field"><label>CSV Path</label><input id="soldCompPath" placeholder="/absolute/path/to/terapeak.csv"></div>
+                  <div class="field"><label>Source</label><input id="soldCompSource" value="terapeak"></div>
+                  <div class="field"><label>Marketplace</label><input id="soldCompMarketplace" value="EBAY_DE"></div>
+                </div>
+                <div class="actions-row"><button class="btn primary" onclick="importSoldComps()">Import Sold Comps</button><button class="btn" onclick="loadSoldCompSummary()">Summary</button></div>
+                <div id="soldCompSummaryBox" style="margin-top:10px"><div class="empty">No sold-comp summary loaded yet.</div></div>
               </div>
             </details>
             <details class="advanced settings-group" open>
@@ -2594,8 +2620,68 @@ function renderPipeline(){
       'Profit '+money(profit.expectedProfit),
       'ROI '+(profit.roiPercent===undefined||profit.roiPercent===null?'—':Number(profit.roiPercent).toFixed(1)+'%')
     ].join(' · ');
-    return '<div class="rank-row"><div class="rank-score">'+esc(score)+'</div><div><div class="rank-title" title="'+esc(item.ebayTitle||'')+'">'+esc(item.ebayTitle||'Untitled opportunity')+'</div><div class="rank-meta">'+esc(meta)+'</div></div>'+badge(decision.decision||item.safetyStatus||'PENDING')+'</div>';
+    return '<div class="rank-row"><div class="rank-score">'+esc(score)+'</div><div><div class="rank-title" title="'+esc(item.ebayTitle||'')+'">'+esc(item.ebayTitle||'Untitled opportunity')+'</div><div class="rank-meta">'+esc(meta)+'</div></div><button class="btn ghost sm" onclick="showOpportunityEvidence(\\''+esc(item.id)+'\\')">Evidence</button>'+badge(decision.decision||item.safetyStatus||'PENDING')+'</div>';
   }).join(''):'<div class="empty">No scored opportunities yet. Open Discover to build the queue.</div>';
+}
+
+function evidenceMetric(label,value){
+  return '<div class="evidence-box"><b>'+esc(label)+'</b><span>'+txt(value)+'</span></div>';
+}
+function compactJsonList(value,limit){
+  if(!value)return [];
+  if(Array.isArray(value))return value.slice(0,limit||6).map(function(item){
+    if(item&&typeof item==='object'){
+      var parts=[item.type,item.source,item.value,item.confidence!==undefined?('conf '+Math.round(Number(item.confidence)*100)+'%'):null].filter(Boolean);
+      return parts.join(' · ');
+    }
+    return String(item);
+  });
+  if(typeof value==='object')return Object.keys(value).slice(0,limit||6).map(function(k){return k+': '+JSON.stringify(value[k]).slice(0,160)});
+  return [String(value)];
+}
+function showOpportunityEvidence(id){
+  var el=document.getElementById('opportunityEvidence');
+  if(!el)return;
+  el.style.display='grid';
+  el.innerHTML='<div class="empty" style="padding:16px">Loading evidence…</div>';
+  apiJson('/api/opportunities/'+encodeURIComponent(id)+'/evidence').then(function(res){
+    var o=res.opportunity||{};
+    var match=(o.amazonMatches&&o.amazonMatches[0])||{};
+    var profit=(o.profitSnapshots&&o.profitSnapshots[0])||{};
+    var decision=(o.aiDecisions&&o.aiDecisions[0])||{};
+    var identity=(o.evidenceJson&&o.evidenceJson.productIdentity)||[];
+    var economics=(o.evidenceJson&&o.evidenceJson.economics)||[];
+    var market=(o.evidenceJson&&o.evidenceJson.market)||[];
+    var risk=o.riskFlags||decision.riskFlags||[];
+    var fee=profit.feeRateCard||{};
+    var vat=profit.vatMode||{};
+    var rows=[
+      evidenceMetric('Score',o.opportunityScore),
+      evidenceMetric('Decision',decision.decision||o.safetyStatus),
+      evidenceMetric('eBay price',money(o.ebaySoldPrice)),
+      evidenceMetric('Amazon cost',money(match.buyBoxPrice||match.currentPrice)),
+      evidenceMetric('Expected profit',money(profit.expectedProfit)),
+      evidenceMetric('ROI',profit.roiPercent===undefined||profit.roiPercent===null?'—':Number(profit.roiPercent).toFixed(1)+'%'),
+      evidenceMetric('Fee card',profit.feeRateCardVersion||fee.key||'—'),
+      evidenceMetric('VAT mode',profit.vatModeKey||vat.key||'—'),
+      evidenceMetric('Currency',profit.currency||'—'),
+      evidenceMetric('Verification',((o.priceVerifications||[])[0]||{}).status||'—')
+    ].join('');
+    var evidenceLines=compactJsonList(identity,5).concat(compactJsonList(economics,4),compactJsonList(market,4),compactJsonList(risk,6));
+    var links='<div class="card-actions">';
+    if(o.ebayUrl)links+='<a class="btn sm" href="'+safeUrl(o.ebayUrl)+'" target="_blank" rel="noreferrer">Open eBay</a>';
+    if(match.amazonUrl)links+='<a class="btn sm" href="'+safeUrl(match.amazonUrl)+'" target="_blank" rel="noreferrer">Open Amazon</a>';
+    links+='</div>';
+    el.innerHTML='<div class="inline"><b>Evidence</b><span class="mono">'+esc(o.id||id)+'</span><span class="spacer"></span><button class="btn ghost sm" onclick="hideOpportunityEvidence()">Close</button></div>'+
+      '<div class="result-title">'+esc(o.ebayTitle||match.amazonTitle||'Untitled opportunity')+'</div>'+
+      '<div class="evidence-grid">'+rows+'</div>'+
+      '<div class="evidence-list">'+(evidenceLines.length?evidenceLines.map(function(line){return '<div class="evidence-item">'+esc(line)+'</div>'}).join(''):'<div class="empty" style="padding:12px">No structured evidence captured yet.</div>')+'</div>'+
+      links;
+  }).catch(function(e){el.innerHTML='<div class="empty" style="padding:16px">Could not load evidence: '+esc(e.message)+'</div>'});
+}
+function hideOpportunityEvidence(){
+  var el=document.getElementById('opportunityEvidence');
+  if(el){el.style.display='none';el.innerHTML='';}
 }
 
 function bsBar(label,value,max,color){
@@ -2834,7 +2920,7 @@ function selectAction(id){document.getElementById('actionId').value=id;updateAct
     document.getElementById('viewTitle').textContent=meta[0];
     document.getElementById('viewSub').textContent=meta[1];
     if(navView==='ebayDiscovery'){renderDiscoverMode();loadDashboardDiscoveryRows();}
-    if(navView==='settings'){loadCredentials();loadAlerts();}
+    if(navView==='settings'){loadCredentials();loadAlerts();loadEconomics();loadSoldCompSummary();}
 }
 
 function credBadge(source){var m={database:'green',environment:'blue',unset:'slate'};var t={database:'Saved in DB',environment:'From env',unset:'Not set'};var c=COLORS[m[source]||'slate'];return '<span class="badge" style="color:'+c+';background:'+c+'1f;border-color:'+c+'40">'+t[source]+'</span>'}
@@ -2897,6 +2983,38 @@ function renderAlerts(alerts){
   ['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=html;});
 }
 function loadAlerts(){apiJson('/api/alerts').then(function(res){renderAlerts(res.alerts||[])}).catch(function(e){var h='<div class="empty">Could not load alerts: '+esc(e.message)+'</div>';['alertsBox','notificationsBox'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=h;});})}
+function loadEconomics(){
+  var el=document.getElementById('economicsBox');if(!el)return;
+  apiJson('/api/economics?marketplaceKey=de').then(function(res){
+    var cards=res.feeRateCards||[],vats=res.vatModes||[];
+    var feeHtml=cards.length?cards.map(function(c){
+      var rate=(Number(c.variableFeeRate||0)*100).toFixed(1)+'%';
+      var cur=c.currency||'EUR';
+      var fixed=(c.fixedFeeBelowThreshold!==undefined&&c.fixedFeeAboveThreshold!==undefined)?(' · fixed '+Number(c.fixedFeeBelowThreshold||0).toFixed(2)+' '+cur+'/'+Number(c.fixedFeeAboveThreshold||0).toFixed(2)+' '+cur):'';
+      return '<div class="evidence-item"><b>'+esc(c.key)+'</b><br><span>'+esc(c.marketplaceId)+' · '+rate+fixed+' · '+esc(c.version||'')+'</span></div>';
+    }).join(''):'<div class="empty" style="padding:12px">No fee cards configured.</div>';
+    var vatHtml=vats.length?vats.map(function(v){
+      return '<span class="chip">'+esc(v.key)+' · '+(Number(v.vatRate||0)*100).toFixed(0)+'%</span>';
+    }).join(''):'<span class="chip">No VAT modes</span>';
+    el.innerHTML='<div class="evidence-list">'+feeHtml+'</div><div class="chips" style="margin-top:10px">'+vatHtml+'</div>';
+  }).catch(function(e){el.innerHTML='<div class="empty">Could not load economics: '+esc(e.message)+'</div>'});
+}
+function loadSoldCompSummary(){
+  var el=document.getElementById('soldCompSummaryBox');if(!el)return;
+  var marketplace=inputValue('soldCompMarketplace')||'EBAY_DE';
+  apiJson('/sold-comps/summary?marketplaceId='+encodeURIComponent(marketplace)).then(function(res){
+    el.innerHTML='<div class="chips"><span class="chip">Rows '+esc(res.soldCompCount||0)+'</span><span class="chip">Families '+esc(res.familyCount||0)+'</span><span class="chip">'+esc(marketplace)+'</span></div>';
+  }).catch(function(e){el.innerHTML='<div class="empty">Could not load sold-comp summary: '+esc(e.message)+'</div>'});
+}
+function importSoldComps(){
+  var path=inputValue('soldCompPath');
+  if(!path)return toast('Missing CSV path','Enter an absolute CSV path on this machine.','warn');
+  var body={path:path,source:inputValue('soldCompSource')||'terapeak',marketplaceId:inputValue('soldCompMarketplace')||'EBAY_DE',currency:'EUR'};
+  apiJson('/sold-comps/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(res){
+    toast('Sold comps imported',res.summary,'ok');
+    loadSoldCompSummary();
+  }).catch(function(e){toast('Sold-comp import failed',e.message,'err')});
+}
 function saveNotifPrefs(){
   try{
     var chk=function(id){var el=document.getElementById(id);return !!(el&&el.checked);};
